@@ -84,6 +84,24 @@ class InventarioMensual(models.Model):
         return f"{self.material_codigo} @ {self.fecha}"
 
 
+class CategoriaServicio(models.Model):
+    """Categoría de servicio por grupo de compras (GCp). Se usa como respaldo para
+    clasificar líneas de compra cuyo grupo de artículos no tiene categoría en
+    CATEGORÍAS OFICIAL (compras de servicios, que no pasan por un material)."""
+
+    grupo_compras = models.CharField(max_length=20, primary_key=True, verbose_name="GCp")
+    responsable = models.CharField(max_length=100, blank=True, verbose_name="Denominación")
+    categoria_servicio = models.CharField(max_length=100, verbose_name="Categorías Servicios")
+
+    class Meta:
+        verbose_name = "Categoría de servicio"
+        verbose_name_plural = "Categorías de servicio"
+        ordering = ["grupo_compras"]
+
+    def __str__(self):
+        return f"{self.grupo_compras} - {self.categoria_servicio}"
+
+
 class LineaCompra(models.Model):
     """Líneas de pedido/solicitud de compra (archivos ME2N_SUPPLY_<año>.csv)."""
 

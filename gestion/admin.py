@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Categoria, Material, InventarioMensual, LineaCompra
+from .models import Categoria, CategoriaServicio, Material, InventarioMensual, LineaCompra
 
 
 @admin.register(Categoria)
@@ -8,6 +8,13 @@ class CategoriaAdmin(admin.ModelAdmin):
     list_display = ("grupo_articulo", "descripcion", "familia", "categoria", "tipo_material")
     search_fields = ("grupo_articulo", "descripcion", "familia", "categoria")
     list_filter = ("familia", "categoria", "tipo_material")
+
+
+@admin.register(CategoriaServicio)
+class CategoriaServicioAdmin(admin.ModelAdmin):
+    list_display = ("grupo_compras", "responsable", "categoria_servicio")
+    search_fields = ("grupo_compras", "responsable", "categoria_servicio")
+    list_filter = ("categoria_servicio",)
 
 
 @admin.register(Material)

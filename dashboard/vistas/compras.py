@@ -16,37 +16,52 @@ if not anios:
 
 anio_sel = st.selectbox("Año", options=list(reversed(anios)), index=0)
 
-cumplimiento = q.cumplimiento_entrega(anio_sel)
-total = int(cumplimiento["total"] or 0)
-a_tiempo = int(cumplimiento["a_tiempo"] or 0)
-pct = (a_tiempo / total * 100) if total else 0
+resumen_contrato = q.resumen_compras_contrato(anio_sel)
+valor_bajo_contrato = float(resumen_contrato["valor_bajo_contrato"] or 0)
+valor_total_compras = float(resumen_contrato["valor_total"] or 0)
+pct_contrato = (valor_bajo_contrato / valor_total_compras * 100) if valor_total_compras else 0
 
-c1, c2, c3 = st.columns(3)
-c1.metric("Líneas de pedido", f"{total:,}")
-c2.metric("Entregadas a tiempo", f"{a_tiempo:,}")
-c3.metric("% cumplimiento de entrega", f"{pct:.1f}%")
+pmp = q.calcular_pmp(anio_sel)
 
-st.subheader("Monto de compras por mes")
-df_mes = q.compras_por_mes(anio_sel)
-fig = px.bar(df_mes, x="mes", y="valor_total", labels={"mes": "Mes", "valor_total": "Valor neto (S/)"})
-st.plotly_chart(fig, width="stretch")
+with st.container(border=True):
+    st.subheader("Valor de compras bajo contrato")
+    cc1, cc2, cc3 = st.columns(3)
+    cc1.metric("Valor Compras (S/ miles)", f"{valor_total_compras / 1000:,.0f}")
+    cc2.metric("Compras bajo contrato", f"{pct_contrato:.1f}%")
+    cc3.metric("PMP por O.C", f"{pmp:.0f}")
 
-col_izq, col_der = st.columns(2)
+st.divider()
 
-with col_izq:
-    st.subheader("Top proveedores")
-    df_prov = q.top_proveedores(anio_sel)
-    fig2 = px.bar(df_prov, x="valor_total", y="proveedor", orientation="h", labels={"valor_total": "Valor (S/)", "proveedor": ""})
-    fig2.update_layout(yaxis={"categoryorder": "total ascending"})
-    st.plotly_chart(fig2, width="stretch")
+st.subheader("Valor de compras por categoría")
+df_categoria_c = q.compras_por_categoria(anio_sel)
+fig_pie = px.pie(df_categoria_c, values="valor_total", names="categoria")
+st.plotly_chart(fig_pie, width="stretch")
 
-with col_der:
-    st.subheader("Materiales más comprados")
-    df_mat = q.top_materiales_comprados(anio_sel)
-    fig3 = px.bar(df_mat, x="valor_total", y="texto_breve", orientation="h", labels={"valor_total": "Valor (S/)", "texto_breve": ""})
-    fig3.update_layout(yaxis={"categoryorder": "total ascending"})
-    st.plotly_chart(fig3, width="stretch")
+st.subheader("Compras bajo contrato por categoría")
+df_contrato_c = q.compras_por_categoria_contrato(anio_sel)
+df_contrato_largo = df_contrato_c.melt(
+    id_vars="categoria",
+    value_vars=["valor_total", "valor_bajo_contrato"],
+    var_name="tipo",
+    value_name="valor",
+)
+df_contrato_largo["tipo"] = df_contrato_largo["tipo"].map({
+    "valor_total": "Compra total",
+    "valor_bajo_contrato": "Bajo contrato",
+})
+fig_contrato = px.bar(
+    df_contrato_largo, x="categoria", y="valor", color="tipo", barmode="group",
+    labels={"valor": "Valor (S/)", "categoria": "", "tipo": ""},
+    color_discrete_map={"Compra total": "red", "Bajo contrato": "white"},
+    category_orders={"categoria": df_contrato_c["categoria"].tolist()},
+)
+st.plotly_chart(fig_contrato, width="stretch")
 
-st.subheader("Pendientes por entregar")
-df_pend = q.pendientes_por_entregar(anio_sel)
-st.dataframe(df_pend, width="stretch", hide_index=True)
+st.subheader("PMP por O.C creada por categoría")
+df_pmp_cat = q.pmp_por_categoria(anio_sel)
+fig_pmp = px.bar(
+    df_pmp_cat, x="categoria", y="pmp",
+    labels={"pmp": "PMP (días)", "categoria": ""},
+    category_orders={"categoria": df_pmp_cat["categoria"].tolist()},
+)
+st.plotly_chart(fig_pmp, width="stretch")
