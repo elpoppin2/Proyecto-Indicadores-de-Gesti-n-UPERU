@@ -231,6 +231,58 @@ def resumen_inventario(fecha):
     return df.iloc[0]
 
 
+def variacion_inventario_por_material(fecha_inicial, fecha_final):
+    """Variación de Valor Final (MB5B) por código de material entre dos meses.
+    fecha_final debe ser posterior a fecha_inicial. Respeta el mismo filtro de
+    categoría que el resto del modelo de Inventario (FILTRO_INVENTARIO_CON_CATEGORIA)."""
+    return _query(f"""
+        WITH mes1 AS (
+            SELECT i.material_codigo AS material_codigo, MAX(i.texto_breve) AS texto_breve,
+                   SUM(i.valor_final) AS valor
+            FROM gestion_inventariomensual i
+            LEFT JOIN gestion_material m ON m.codigo = i.material_codigo
+            LEFT JOIN gestion_categoria c ON c.grupo_articulo = m.categoria_id
+            WHERE i.fecha = %s AND {FILTRO_INVENTARIO_CON_CATEGORIA}
+            GROUP BY i.material_codigo
+        ),
+        mes2 AS (
+            SELECT i.material_codigo AS material_codigo, MAX(i.texto_breve) AS texto_breve,
+                   SUM(i.valor_final) AS valor
+            FROM gestion_inventariomensual i
+            LEFT JOIN gestion_material m ON m.codigo = i.material_codigo
+            LEFT JOIN gestion_categoria c ON c.grupo_articulo = m.categoria_id
+            WHERE i.fecha = %s AND {FILTRO_INVENTARIO_CON_CATEGORIA}
+            GROUP BY i.material_codigo
+        )
+        SELECT
+            mes1.material_codigo AS material_codigo,
+            COALESCE(mes1.texto_breve, mes2.texto_breve) AS texto_breve,
+            mes1.valor AS valor_mes_inicial,
+            COALESCE(mes2.valor, 0) AS valor_mes_final,
+            COALESCE(mes2.valor, 0) - mes1.valor AS variacion_valor,
+            CASE WHEN mes1.valor != 0
+                 THEN (COALESCE(mes2.valor, 0) - mes1.valor) * 100.0 / mes1.valor
+                 ELSE NULL END AS variacion_pct
+        FROM mes1
+        LEFT JOIN mes2 ON mes2.material_codigo = mes1.material_codigo
+
+        UNION ALL
+
+        SELECT
+            mes2.material_codigo AS material_codigo,
+            mes2.texto_breve AS texto_breve,
+            0 AS valor_mes_inicial,
+            mes2.valor AS valor_mes_final,
+            mes2.valor AS variacion_valor,
+            NULL AS variacion_pct
+        FROM mes2
+        LEFT JOIN mes1 ON mes1.material_codigo = mes2.material_codigo
+        WHERE mes1.material_codigo IS NULL
+
+        ORDER BY variacion_valor DESC
+    """, [fecha_inicial, fecha_final])
+
+
 def anios_compras_disponibles():
     df = _query("SELECT DISTINCT anio_origen FROM gestion_lineacompra ORDER BY anio_origen")
     return df["anio_origen"].tolist()
