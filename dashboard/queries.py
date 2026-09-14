@@ -207,13 +207,18 @@ def valor_inventario_por_familia(fecha, top=15):
 
 
 def top_materiales_inventario(fecha, top=20):
+    # La descripción de MB5B (texto_breve) viene vacía en ~9% de las filas; se prioriza
+    # la descripción del material en ZMM060 (gestion_material.descripcion) y se usa
+    # MB5B solo como respaldo.
     return _query(f"""
-        SELECT i.material_codigo, i.texto_breve, SUM(i.stock_cierre) AS stock, SUM(i.valor_final) AS valor_total
+        SELECT i.material_codigo,
+               COALESCE(NULLIF(m.descripcion, ''), NULLIF(i.texto_breve, '')) AS texto_breve,
+               SUM(i.stock_cierre) AS stock, SUM(i.valor_final) AS valor_total
         FROM gestion_inventariomensual i
         LEFT JOIN gestion_material m ON m.codigo = i.material_codigo
         LEFT JOIN gestion_categoria c ON c.grupo_articulo = m.categoria_id
         WHERE i.fecha = %s AND {FILTRO_INVENTARIO_CON_CATEGORIA}
-        GROUP BY i.material_codigo, i.texto_breve
+        GROUP BY i.material_codigo, COALESCE(NULLIF(m.descripcion, ''), NULLIF(i.texto_breve, ''))
         ORDER BY valor_total DESC
         LIMIT %s
     """, [fecha, top])
@@ -234,10 +239,13 @@ def resumen_inventario(fecha):
 def variacion_inventario_por_material(fecha_inicial, fecha_final):
     """Variación de Valor Final (MB5B) por código de material entre dos meses.
     fecha_final debe ser posterior a fecha_inicial. Respeta el mismo filtro de
-    categoría que el resto del modelo de Inventario (FILTRO_INVENTARIO_CON_CATEGORIA)."""
+    categoría que el resto del modelo de Inventario (FILTRO_INVENTARIO_CON_CATEGORIA).
+    La descripción prioriza ZMM060 (gestion_material.descripcion) sobre el texto_breve
+    de MB5B, que viene vacío en ~9% de las filas."""
     return _query(f"""
         WITH mes1 AS (
-            SELECT i.material_codigo AS material_codigo, MAX(i.texto_breve) AS texto_breve,
+            SELECT i.material_codigo AS material_codigo,
+                   MAX(COALESCE(NULLIF(m.descripcion, ''), NULLIF(i.texto_breve, ''))) AS texto_breve,
                    SUM(i.valor_final) AS valor
             FROM gestion_inventariomensual i
             LEFT JOIN gestion_material m ON m.codigo = i.material_codigo
@@ -246,7 +254,8 @@ def variacion_inventario_por_material(fecha_inicial, fecha_final):
             GROUP BY i.material_codigo
         ),
         mes2 AS (
-            SELECT i.material_codigo AS material_codigo, MAX(i.texto_breve) AS texto_breve,
+            SELECT i.material_codigo AS material_codigo,
+                   MAX(COALESCE(NULLIF(m.descripcion, ''), NULLIF(i.texto_breve, ''))) AS texto_breve,
                    SUM(i.valor_final) AS valor
             FROM gestion_inventariomensual i
             LEFT JOIN gestion_material m ON m.codigo = i.material_codigo
