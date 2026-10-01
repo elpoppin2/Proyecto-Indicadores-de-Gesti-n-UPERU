@@ -1,0 +1,244 @@
+{% load dashboard_extras %}
+{% comment %}
+  Evaluación de precios de compra (Planificación): interanual (T vs T−12) o
+  mensual (T vs T−1), según inf.sufijo — ver views._contexto_inflacion.
+  Se incluye con: {% include "gestion/_evaluacion_precios.html" with inf=... %}
+{% endcomment %}
+<section class="bloque" id="{{ inf.id }}">
+  <div class="bloque-cabecera">
+    <h2>{{ inf.titulo }}</h2>
+    <button type="button" class="btn-link" data-imprimir="{{ inf.id }}">Descargar / Imprimir</button>
+  </div>
+  <p class="nota">
+    Precio de compra de cada mes (MB51, mismo criterio que Precios de entrada) contra {{ inf.contra }}
+    ({{ inf.ejemplo }}). Si ese mes no tuvo compra, se compara contra el último precio registrado antes
+    ({{ inf.sustituto }}), marcado con <span class="marca-sustituida">*</span>. Solo se evalúan los meses con compra.
+    <strong>Bolsa</strong> = (precio del mes − precio base) × toneladas compradas en el mes evaluado: el impacto en soles
+    de la variación, ponderado con la cantidad del período más reciente de cada comparación{% if inf.desfase == 12 %}
+    (2025 vs 2024 con las toneladas de 2025; 2026 vs 2025 con las de 2026){% endif %}. La fila Selección pondera
+    todos los materiales así: lo pagado ÷ lo que habrían costado esas mismas toneladas al precio base.
+    <strong>IPU (Índice de Precios Unacem)</strong> acumulado del año: {% if inf.desfase == 12 %}de enero al mes T contra el
+    mismo tramo del año anterior (Ene–Feb 2026 vs Ene–Feb 2025), ponderado con las toneladas del año más reciente{% else %}las
+    variaciones de cada mes encadenadas desde enero, (1 + v₁) × (1 + v₂) × … − 1{% endif %}; se reinicia cada enero.
+    Una comparación donde el precio más que se duplica o cae a menos de la mitad se marca con
+    <span class="marca-atipica">!</span> (dato atípico de MB51, p.ej. Ene-24 de Sílices y Puzolana de Terceros): se
+    muestra, pero no suma en la bolsa ni en la selección.
+  </p>
+  <form class="filtros" method="get" data-target="{{ inf.id }}">
+    <div class="campo">
+      <label for="periodo_{{ inf.sufijo }}">Período</label>
+      <select name="periodo_{{ inf.sufijo }}" id="periodo_{{ inf.sufijo }}">
+        {% for o in inf.periodos %}
+          <option value="{{ o.valor }}" {% if o.valor == inf.periodo_sel %}selected{% endif %}>{{ o.texto }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="categoria_{{ inf.sufijo }}">Categoría</label>
+      <select name="categoria_{{ inf.sufijo }}" id="categoria_{{ inf.sufijo }}">
+        {% for cat in inf.categorias %}
+          <option value="{{ cat }}" {% if cat == inf.categoria_sel %}selected{% endif %}>{{ cat }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="centro_{{ inf.sufijo }}">Centro</label>
+      <select name="centro_{{ inf.sufijo }}" id="centro_{{ inf.sufijo }}">
+        {% for c in inf.centros %}
+          <option value="{{ c }}" {% if c == inf.centro_sel %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% include "gestion/planificacion/_filtro_material.html" with nombre="material_"|add:inf.sufijo opciones=inf.materiales seleccion=inf.material_sel %}
+    <div class="campo">
+      <label for="analisis_{{ inf.sufijo }}">Análisis</label>
+      <select name="analisis_{{ inf.sufijo }}" id="analisis_{{ inf.sufijo }}">
+        {% for o in inf.analisis %}
+          <option value="{{ o.valor }}" {% if o.valor == inf.analisis_sel %}selected{% endif %}>{{ o.texto }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="ver_{{ inf.sufijo }}">Ver</label>
+      <select name="ver_{{ inf.sufijo }}" id="ver_{{ inf.sufijo }}">
+        {% for o in inf.ver %}
+          <option value="{{ o.valor }}" {% if o.valor == inf.ver_sel %}selected{% endif %}>{{ o.texto }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+
+  {% with r=inf.resumen %}
+  {% if not r %}
+    <p class="aviso">Sin compras con base de comparación para los filtros seleccionados.</p>
+  {% else %}
+    <div class="metricas">
+      <div class="metrica">
+        <span class="valor {% if r.bolsa > 0 %}dato-negativo{% elif r.bolsa < 0 %}dato-positivo{% endif %}">{% if r.bolsa > 0 %}+{% elif r.bolsa < 0 %}−{% endif %}S/ {{ r.bolsa|numero:0|cut:"-" }}</span>
+        <span class="etiqueta">Bolsa {{ r.desde }} a {{ r.hasta }} ({% if r.periodo_pct > 0 %}+{% endif %}{{ r.periodo_pct|numero:1 }}% ponderado · {{ r.toneladas|numero:0 }} T)</span>
+      </div>
+      {% for a in r.por_anio %}
+        <div class="metrica">
+          <span class="valor {% if a.pct > 0 %}dato-negativo{% elif a.pct < 0 %}dato-positivo{% endif %}"><small class="prefijo-ipu">IPU</small> {% if a.pct > 0 %}+{% endif %}{{ a.pct|numero:1 }}%</span>
+          <span class="etiqueta">{{ a.anio }}{% if a.anio_completo %} (Ene–Dic){% else %} acumulado a {{ a.hasta }}{% endif %}{% if a.anio_base %} vs {{ a.anio_base }}{% else %}, variaciones mensuales encadenadas{% endif %} · bolsa {% if a.bolsa > 0 %}+{% elif a.bolsa < 0 %}−{% endif %}S/ {{ a.bolsa|numero:0|cut:"-" }} con toneladas de {{ a.anio }} ({{ a.toneladas|numero:0 }} T)</span>
+        </div>
+      {% endfor %}
+      <div class="metrica">
+        <span class="valor {% if r.ultima_pct > 0 %}dato-negativo{% elif r.ultima_pct < 0 %}dato-positivo{% endif %}">{% if r.ultima_pct > 0 %}+{% endif %}{{ r.ultima_pct|numero:1 }}%</span>
+        <span class="etiqueta">{{ r.ultimo_mes }} vs {{ inf.base_titulo }} · bolsa {% if r.ultima_bolsa < 0 %}−{% else %}+{% endif %}S/ {{ r.ultima_bolsa|numero:0|cut:"-" }}{% if not inf.un_material %} · {{ r.suben }} ▲ / {{ r.bajan }} ▼ materiales en su última compra{% endif %}</span>
+      </div>
+    </div>
+
+    {% with g=inf.grafico_precio %}
+    {% if g %}
+      <h3 class="subtitulo">Precio del mes vs precio base</h3>
+      <div class="chart-scroll">
+      <div class="chart-wrap chart-precio">
+        <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Precio del mes contra el precio base">
+          <line class="base-barras" x1="0" y1="{{ g.base_barras }}" x2="{{ g.ancho }}" y2="{{ g.base_barras }}"></line>
+          {% for b in g.barras %}
+            <rect class="barra-toneladas con-detalle" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.ancho }}" height="{{ b.alto }}" rx="1.5" data-detalle="{{ b.titulo }}"></rect>
+          {% endfor %}
+          {% if g.linea_base %}<path class="linea-precio-base" d="{{ g.linea_base }}"></path>{% endif %}
+          <path class="linea" d="{{ g.linea }}"></path>
+          {% for pt in g.puntos %}
+            <circle class="punto" cx="{{ pt.x }}" cy="{{ pt.y }}" r="3"></circle>
+            <circle class="zona-detalle con-detalle" cx="{{ pt.x }}" cy="{{ pt.y }}" r="9" data-detalle="{{ pt.titulo }}"></circle>
+          {% endfor %}
+        </svg>
+        {% for pt in g.puntos %}
+          {% if pt.etiqueta %}<span class="etiqueta-valor" style="left:{{ pt.x_pct }}%; top:{{ pt.y_pct }}%;">{{ pt.etiqueta }}</span>{% endif %}
+        {% endfor %}
+        {% for e in g.eje %}
+          <span class="etiqueta-mes" style="left:{{ e.x_pct }}%;">{{ e.texto }}</span>
+        {% endfor %}
+      </div>
+      </div>
+      <div class="leyenda-curva">
+        <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>Precio del mes (S/ por T)</span>
+        <span class="leyenda-item"><span class="leyenda-marca leyenda-meta"></span>Precio base contra el que se compara ({{ inf.contra }})</span>
+        <span class="leyenda-item"><span class="leyenda-marca barra-toneladas"></span>Toneladas compradas en el mes</span>
+      </div>
+    {% endif %}
+    {% endwith %}
+
+    {% with g=inf.grafico %}
+    {% if g %}
+      <h3 class="subtitulo">IPU · Índice de Precios Unacem{% if not inf.un_material %} (selección ponderada){% endif %}{% if inf.en_soles %} · bolsa en S/{% endif %}</h3>
+      <div class="chart-scroll">
+      <div class="chart-wrap chart-ipu">
+        <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="IPU acumulado del año (línea) y variación de cada mes (puntos)">
+          {% for a in g.anios %}{% if a.separador %}<line class="separador-anio" x1="{{ a.x }}" y1="{{ g.tope }}" x2="{{ a.x }}" y2="{{ g.base }}"></line>{% endif %}{% endfor %}
+          <line class="linea-cero" x1="0" y1="{{ g.y_cero }}" x2="{{ g.ancho }}" y2="{{ g.y_cero }}"></line>
+          {% for t in g.trazos %}<path class="linea-ipu" d="{{ t }}"></path>{% endfor %}
+          {% for p in g.linea %}<circle class="punto-ipu" cx="{{ p.x }}" cy="{{ p.y }}" r="3.2"></circle>{% endfor %}
+          {% for p in g.marcas %}<circle class="marca-individual {% if p.sube %}marca-sube{% else %}marca-baja{% endif %}" cx="{{ p.x }}" cy="{{ p.y }}" r="4.8"></circle>{% endfor %}
+          {% for p in g.linea %}<circle class="zona-detalle con-detalle" cx="{{ p.x }}" cy="{{ p.y }}" r="9" data-detalle="{{ p.detalle }}"></circle>{% endfor %}
+          {% for p in g.marcas %}<circle class="zona-detalle con-detalle" cx="{{ p.x }}" cy="{{ p.y }}" r="9" data-detalle="{{ p.detalle }}"></circle>{% endfor %}
+        </svg>
+        {% for a in g.anios %}<span class="rotulo-anio" style="left:{{ a.x_pct }}%;">{{ a.texto }}</span>{% endfor %}
+        {% for p in g.linea %}
+        <span class="etiqueta-valor etiqueta-ipu etiqueta-{{ p.pos }} con-detalle" style="left:{{ p.x_pct }}%; top:{{ p.y_pct }}%;" data-detalle="{{ p.detalle }}">{{ p.etiqueta }}</span>
+        {% endfor %}
+        {% for p in g.marcas %}{% if p.etiqueta %}
+        <span class="etiqueta-valor etiqueta-individual etiqueta-{{ p.pos }} con-detalle" style="left:{{ p.x_pct }}%; top:{{ p.y_pct }}%;" data-detalle="{{ p.detalle }}">{{ p.etiqueta }}</span>
+        {% endif %}{% endfor %}
+        {% for e in g.eje %}<span class="etiqueta-mes" style="left:{{ e.x_pct }}%;">{{ e.texto }}</span>{% endfor %}
+      </div>
+      </div>
+      <div class="leyenda-curva">
+        <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>IPU acumulado del año{% if inf.desfase == 12 %} (Ene..mes vs el mismo tramo del año anterior){% else %} (variaciones mensuales encadenadas){% endif %}</span>
+        <span class="leyenda-item"><span class="leyenda-marca marca-sube"></span><span class="leyenda-marca marca-baja"></span>Valor individual del mes (sube / baja)</span>
+        <span class="leyenda-item texto-tenue">Se reinicia cada enero · pasa el mouse por un punto o etiqueta para ver el detalle</span>
+      </div>
+    {% endif %}
+    {% endwith %}
+
+    <h3 class="subtitulo">Por material y mes · {% if inf.acumulado %}acumulado del año (IPU){% else %}cada mes{% endif %}{% if inf.en_soles %} · bolsa en S/{% elif inf.en_precio %} · {% if inf.acumulado %}precio promedio del año a la fecha{% else %}precio en S/ por T{% endif %} y su variación{% endif %}</h3>
+    <div class="tabla-scroll">
+      <table class="tabla-inflacion">
+        <thead>
+          <tr>
+            <th>Material</th><th>Centro</th>
+            {% for m in inf.meses %}<th class="num">{{ m }}</th>{% endfor %}
+            {% for a in inf.anios %}<th class="num">Bolsa {{ a }} (S/)</th>{% endfor %}
+            <th class="num" data-orden="desc">Bolsa total (S/)</th><th class="num">Período %</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in inf.filas %}
+            <tr>
+              <td>{{ f.texto_breve }} <span class="celda-codigo texto-tenue">{{ f.material_codigo }}</span></td>
+              <td>{{ f.centro }}</td>
+              {% for c in f.celdas %}
+                {% if c %}
+                  <td class="num celda-inflacion {% if c.atipica %}celda-atipica{% elif c.sube %}celda-sube{% else %}celda-baja{% endif %}" style="--intensidad:{{ c.intensidad }};" data-detalle="{{ c.detalle }}">{{ c.texto }}{% if c.sustituida %}<span class="marca-sustituida">*</span>{% endif %}{% if c.atipica %}<span class="marca-atipica">!</span>{% endif %}{% if c.subtexto %}<span class="celda-subtexto">{{ c.subtexto }}</span>{% endif %}</td>
+                {% else %}
+                  <td class="num texto-tenue">—</td>
+                {% endif %}
+              {% endfor %}
+              {% for b in f.bolsa_anios %}<td class="num">{% if b is None %}—{% else %}{{ b|numero:0 }}{% endif %}</td>{% endfor %}
+              <td class="num"><strong>{{ f.bolsa|numero:0 }}</strong></td>
+              <td class="num">{% if f.periodo_pct > 0 %}+{% endif %}{{ f.periodo_pct|numero:1 }}%</td>
+            </tr>
+          {% endfor %}
+          {% if inf.filas|length > 1 and not inf.acumulado %}
+            <tr class="fila-total">
+              <td>Selección (ponderada, cada mes)</td><td></td>
+              {% for c in inf.canasta %}
+                <td class="num celda-inflacion {% if c.sube %}celda-sube{% else %}celda-baja{% endif %}" style="--intensidad:{{ c.intensidad }};" data-detalle="{{ c.detalle }}">{{ c.texto }}</td>
+              {% endfor %}
+              {% for b in inf.bolsa_anios_total %}<td class="num">{{ b|numero:0 }}</td>{% endfor %}
+              <td class="num">{{ r.bolsa|numero:0 }}</td>
+              <td class="num">{% if r.periodo_pct > 0 %}+{% endif %}{{ r.periodo_pct|numero:1 }}%</td>
+            </tr>
+          {% endif %}
+          {% if inf.filas|length > 1 or not inf.acumulado %}
+            <tr class="fila-total fila-ipu">
+              <td>IPU acumulado del año</td><td></td>
+              {% for c in inf.ipu_fila %}
+                {% if c %}
+                  <td class="num celda-inflacion {% if c.sube %}celda-sube{% else %}celda-baja{% endif %}" style="--intensidad:{{ c.intensidad }};" data-detalle="{{ c.detalle }}">{{ c.texto }}</td>
+                {% else %}
+                  <td class="num texto-tenue">—</td>
+                {% endif %}
+              {% endfor %}
+              {% for b in inf.bolsa_anios_total %}<td></td>{% endfor %}
+              <td></td><td></td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if inf.detalle %}
+      <h3 class="subtitulo">Detalle de la comparación</h3>
+      <div class="tabla-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Mes</th><th class="num">Toneladas</th><th class="num">Precio (S/ por T)</th>
+              <th>Comparado contra</th><th class="num">Precio base (S/ por T)</th><th class="num">Variación</th>
+              <th class="num">Bolsa (S/)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in inf.detalle %}
+              <tr>
+                <td>{{ d.mes_corto }}</td>
+                <td class="num">{{ d.toneladas|numero:0 }}</td>
+                <td class="num">{{ d.precio|numero:2 }}</td>
+                <td>{{ d.mes_base_corto }}{% if d.base_sustituida %} <span class="texto-tenue">(último registrado; {{ d.mes_referencia_corto }} sin compra)</span>{% endif %}</td>
+                <td class="num">{{ d.precio_base|numero:2 }}</td>
+                <td class="num {% if d.pct > 0 %}dato-negativo{% elif d.pct < 0 %}dato-positivo{% endif %}">{% if d.pct > 0 %}+{% endif %}{{ d.pct|numero:1 }}%</td>
+                <td class="num {% if d.atipica %}texto-tenue{% elif d.bolsa > 0 %}dato-negativo{% elif d.bolsa < 0 %}dato-positivo{% endif %}">{{ d.bolsa|numero:0 }}{% if d.atipica %} <span class="marca-atipica" title="Atípica: no suma en la bolsa">!</span>{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  {% endif %}
+  {% endwith %}
+</section>

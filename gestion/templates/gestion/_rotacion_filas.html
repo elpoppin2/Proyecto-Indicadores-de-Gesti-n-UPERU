@@ -1,0 +1,11 @@
+{% load dashboard_extras %}{% for r in filas %}<tr>
+  <td class="col-codigo">{{ r.material_codigo }}</td>
+  <td class="col-descripcion">{{ r.texto_breve }}</td>
+  <td>{{ r.centro }}</td>
+  <td>{{ r.unidad_medida_base }}</td>
+  <td class="num">{{ r.stock_cierre|numero }}</td>
+  <td class="num">{{ r.consumo_promedio|numero:1 }}</td>
+  <td class="num">{{ r.indice_rotacion|numero:2 }}</td>
+  <td class="num">{{ r.cobertura_meses|numero:2 }}</td>
+</tr>
+{% endfor %}

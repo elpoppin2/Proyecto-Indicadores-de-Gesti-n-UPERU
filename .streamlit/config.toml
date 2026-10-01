@@ -1,0 +1,22 @@
+# Tema visual del dashboard: fondo blanco, menú lateral negro, acento rojo.
+# Definido por el usuario. El rojo (#e34948) es el mismo tono validado (contraste +
+# separación CVD) que se usa como color principal de los gráficos en dashboard/theme.py.
+
+[server]
+runOnSave = true
+
+[theme]
+base = "light"
+primaryColor = "#e34948"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f5f4f2"
+textColor = "#0b0b0b"
+borderColor = "#e1e0d9"
+linkColor = "#e34948"
+
+[theme.sidebar]
+backgroundColor = "#000000"
+secondaryBackgroundColor = "#1a1a1a"
+textColor = "#ffffff"
+primaryColor = "#e34948"
+borderColor = "#2c2c2c"

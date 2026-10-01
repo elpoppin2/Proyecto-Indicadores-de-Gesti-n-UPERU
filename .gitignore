@@ -2,6 +2,13 @@ venv/
 __pycache__/
 *.pyc
 db.sqlite3
+db.sqlite3-shm
+db.sqlite3-wal
 .streamlit/secrets.toml
+# Clave de API del asistente de IA (ver config/settings.py)
+secretos/
 staticfiles/
 *.zip
+
+# Caché de consultas del dashboard (se regenera sola, ver dashboard/queries.py)
+.cache_consultas/

@@ -1,0 +1,88 @@
+{% load static dashboard_extras %}
+<section class="bloque" id="sec-cumplimiento-mensual">
+  <h2>Cumplimiento mensual</h2>
+  <p class="nota">
+    Nivel de cumplimiento (Real ÷ Plan) mes a mes, en vez de un solo mes a la vez. Un mes sin Plan (todavía no
+    llegó ese snapshot) o sin Real (mes futuro) no tiene barra — se va completando solo con cada archivo nuevo de
+    Plan de Abastecimiento.
+  </p>
+  <form class="filtros" method="get" data-target="sec-cumplimiento-mensual">
+    <div class="campo">
+      <label for="categoria_cumplmes">Categoría</label>
+      <select name="categoria_cumplmes" id="categoria_cumplmes">
+        {% for cat in planificacion_cumplimiento.categorias %}
+          <option value="{{ cat }}" {% if cat == planificacion_cumplimiento.categoria_sel %}selected{% endif %}>{{ cat }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="centro_cumplmes">Centro</label>
+      <select name="centro_cumplmes" id="centro_cumplmes">
+        {% for c in planificacion_cumplimiento.centros %}
+          <option value="{{ c }}" {% if c == planificacion_cumplimiento.centro_sel %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+
+  {% with g=planificacion_cumplimiento.grafico %}
+    {% if g %}
+      <div class="chart-scroll">
+      <div class="chart-wrap chart-barras">
+        <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Cumplimiento mensual de Abastecimiento">
+          <line class="linea-meta" x1="0" y1="{{ g.y_meta }}" x2="{{ g.ancho }}" y2="{{ g.y_meta }}"></line>
+          {% for b in g.barras %}
+            {% if b.valor %}
+              <rect class="{{ b.valor.clase }}" x="{{ b.valor.x }}" y="{{ b.valor.y }}" width="{{ b.valor.ancho }}" height="{{ b.valor.alto }}" rx="2"></rect>
+            {% endif %}
+          {% endfor %}
+        </svg>
+        {% for b in g.barras %}
+          {% if b.valor %}
+            <span class="etiqueta-valor" style="left:{{ b.valor.x_pct }}%; top:{{ b.valor.y_pct }}%;">{{ b.valor.etiqueta_valor }}</span>
+          {% endif %}
+          {% if b.mostrar_etiqueta %}
+            <span class="etiqueta-mes" style="left:{{ b.x_pct }}%;">{{ b.etiqueta }}</span>
+          {% endif %}
+        {% endfor %}
+      </div>
+      </div>
+      <div class="leyenda-curva">
+        <span class="leyenda-item"><span class="leyenda-marca leyenda-meta"></span>Meta — {{ g.meta_texto }}</span>
+        <span class="leyenda-item"><span class="leyenda-marca barra-buena"></span>≥ 100%</span>
+        <span class="leyenda-item"><span class="leyenda-marca barra-regular"></span>80–99%</span>
+        <span class="leyenda-item"><span class="leyenda-marca barra-mala"></span>&lt; 80%</span>
+      </div>
+    {% else %}
+      <p class="aviso">Sin datos suficientes para graficar la tendencia mensual.</p>
+    {% endif %}
+  {% endwith %}
+
+  {% if planificacion_cumplimiento.filas %}
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Mes</th>
+            <th class="num">Plan (T)</th>
+            <th class="num">Real (T)</th>
+            <th class="num">Diferencia (T)</th>
+            <th class="num">% Cumplimiento</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in planificacion_cumplimiento.filas %}
+            <tr>
+              <td>{{ f.mes|mesanio }}</td>
+              <td class="num">{{ f.cantidad_plan|numero:0 }}</td>
+              <td class="num">{{ f.cantidad_real|numero:0 }}</td>
+              <td class="num {% if f.diferencia > 0 %}dato-positivo{% elif f.diferencia < 0 %}dato-negativo{% endif %}">{{ f.diferencia|numero:0|default:"—" }}</td>
+              <td class="num {% if f.cumplimiento_pct >= 100 %}dato-positivo{% elif f.cumplimiento_pct < 80 %}dato-negativo{% endif %}">{{ f.cumplimiento_pct|numero:1|default:"—" }}{% if f.cumplimiento_pct != None %}%{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</section>

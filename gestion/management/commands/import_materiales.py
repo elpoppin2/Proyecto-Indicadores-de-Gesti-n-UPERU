@@ -1,19 +1,39 @@
+from django.db import transaction
 from django.core.management.base import BaseCommand
 
 from gestion.models import Categoria, Material
 from ._csv_utils import codigo, fecha, leer_filas, texto
+from ._seguimiento_archivos import necesita_importar, registrar_importado
 
 
 class Command(BaseCommand):
-    help = "Importa el maestro de materiales desde el CSV de la transacción SQ01/ZMM060 (MM60_SUPPLY.csv)."
+    help = (
+        "Importa el maestro de materiales desde el CSV de la transacción SQ01/ZMM060 "
+        "(MM60_SUPPLY.csv). Se salta si el archivo no cambió desde la última importación "
+        "(usar --forzar para reprocesarlo igual)."
+    )
 
     def add_arguments(self, parser):
         parser.add_argument("csv_path", help="Ruta al archivo CSV de materiales")
         parser.add_argument("--batch-size", type=int, default=2000)
+        parser.add_argument(
+            "--forzar", action="store_true",
+            help="Reprocesa el archivo aunque no haya cambiado desde la última importación.",
+        )
 
+    # Todo el comando en una sola transacción: mucho más rápido en SQLite que
+    # confirmar lote por lote, y si algo falla a medias no quedan datos
+    # parciales (p.ej. Compras sin el año que se estaba reemplazando).
+    @transaction.atomic
     def handle(self, *args, **options):
         path = options["csv_path"]
         batch_size = options["batch_size"]
+        forzar = options["forzar"]
+
+        if not forzar and not necesita_importar(path):
+            self.stdout.write("Materiales: sin cambios desde la última importación, saltado.")
+            return
+
         categorias_validas = set(Categoria.objects.values_list("grupo_articulo", flat=True))
 
         lote = []
@@ -61,4 +81,5 @@ class Command(BaseCommand):
                 volcar_lote()
 
         volcar_lote()
+        registrar_importado(path, total)
         self.stdout.write(self.style.SUCCESS(f"Materiales: {total} filas procesadas."))

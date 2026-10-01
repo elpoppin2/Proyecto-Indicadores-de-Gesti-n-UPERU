@@ -1,0 +1,173 @@
+{% load dashboard_extras %}
+{# Evaluación de consumo (ver views._contexto_consumo): Plan de Consumos del S&OP vs consumo real (MB51). Pedido por el usuario. #}
+{% with co=planificacion_consumo %}
+<section class="bloque" id="sec-consumo">
+  <div class="bloque-cabecera">
+    <h2>Evaluación de consumo</h2>
+    <button type="button" class="btn-link" data-imprimir="sec-consumo">Descargar / Imprimir</button>
+  </div>
+  <p class="nota">
+    Plan de Consumos del S&amp;OP contra el consumo real de MB51 (salidas al proceso: clases 2xx + Z01/Z04/353, mismo
+    criterio que Cobertura de stock). Cada mes se compara contra el plan del S&amp;OP más reciente emitido hasta ese mes
+    (hoy, {{ co.snapshot|mesanio }}). Solo entran los materiales y centros que trae el plan. Carbón Terceros en Condorcocha
+    se consume vía su chancado (14-00001112): se muestra como 06-00000005.
+  </p>
+  <form class="filtros" method="get" data-target="sec-consumo">
+    <div class="campo">
+      <label for="mes_consumo">Mes</label>
+      <select name="mes_consumo" id="mes_consumo">
+        {% for m in co.meses %}
+          <option value="{{ m|fechaiso }}" {% if m == co.mes_sel %}selected{% endif %}>{{ m|mesanio }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="categoria_consumo">Categoría</label>
+      <select name="categoria_consumo" id="categoria_consumo">
+        {% for c in co.categorias %}
+          <option value="{{ c }}" {% if c == co.categoria_sel %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="centro_consumo">Centro</label>
+      <select name="centro_consumo" id="centro_consumo">
+        {% for c in co.centros %}
+          <option value="{{ c }}" {% if c == co.centro_sel %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% include "gestion/planificacion/_filtro_material.html" with nombre="material_consumo" opciones=co.materiales seleccion=co.material_sel %}
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+
+  {% if not co.filas %}
+    <p class="aviso">Sin plan de consumo para los filtros seleccionados.</p>
+  {% else %}
+    {% if co.en_curso %}
+      <p class="aviso">Mes en curso: MB51 cargado al {{ co.fecha_corte|date:"d/m/Y" }} ({{ co.fraccion_pct|numero:0 }}% del mes). El cumplimiento se evalúa contra el plan prorrateado a esa fecha.</p>
+    {% endif %}
+    <div class="metricas">
+      <div class="metrica"><span class="valor">{{ co.total_plan|numero:0 }} T</span><span class="etiqueta">Plan de consumo {{ co.mes_sel|mesanio }}{% if co.en_curso %} · a la fecha {{ co.total_plan_fecha|numero:0 }} T{% endif %}</span></div>
+      <div class="metrica"><span class="valor">{{ co.total_real|numero:0 }} T</span><span class="etiqueta">Consumo real (MB51)</span></div>
+      <div class="metrica">
+        {% if co.en_curso %}
+          <span class="valor">{% if co.total_cumplimiento_fecha is not None %}{{ co.total_cumplimiento_fecha|numero:1 }}%{% else %}—{% endif %}</span><span class="etiqueta">Cumplimiento a la fecha · {% if co.total_cumplimiento is not None %}{{ co.total_cumplimiento|numero:1 }}%{% else %}—{% endif %} del plan del mes completo</span>
+        {% else %}
+          <span class="valor">{% if co.total_cumplimiento is not None %}{{ co.total_cumplimiento|numero:1 }}%{% else %}—{% endif %}</span><span class="etiqueta">Cumplimiento (real ÷ plan)</span>
+        {% endif %}
+      </div>
+      <div class="metrica"><span class="valor"><span class="dato-alerta">{{ co.n_sobre }} ▲</span> · <span class="dato-positivo">{{ co.n_bajo }} ▼</span></span><span class="etiqueta">Materiales sobre / bajo el plan (más de ±{{ co.tolerancia_mes }}%)</span></div>
+    </div>
+
+    {% with g=co.grafico %}
+    {% if g %}
+      <h3 class="subtitulo">Consumo real mes a mes vs plan S&amp;OP{% if co.material_sel|length != 1 %} <span class="texto-tenue">· suma de los materiales elegidos; elige uno para verlo solo</span>{% endif %}</h3>
+      <div class="chart-scroll">
+      <div class="chart-wrap chart-consumo">
+        <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Consumo real mensual contra el plan de consumos">
+          <line class="base-barras" x1="0" y1="{{ g.base }}" x2="{{ g.ancho }}" y2="{{ g.base }}"></line>
+          {% for b in g.barras %}
+            <rect class="barra-consumo-real{% if b.parcial %} barra-parcial{% endif %} con-detalle" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.ancho }}" height="{{ b.alto }}" rx="2" data-detalle="{{ b.detalle }}"></rect>
+          {% endfor %}
+          {% if g.linea %}<path class="linea-plan-consumo" d="{{ g.linea }}"></path>{% endif %}
+          {% for p in g.puntos %}
+            <circle class="punto-plan-consumo" cx="{{ p.x }}" cy="{{ p.y }}" r="3.2"></circle>
+            <circle class="zona-detalle con-detalle" cx="{{ p.x }}" cy="{{ p.y }}" r="9" data-detalle="{{ p.detalle }}"></circle>
+          {% endfor %}
+        </svg>
+        {% for b in g.barras %}{% if b.etiqueta %}
+          <span class="etiqueta-barra {% if b.dentro %}etiqueta-barra-dentro etiqueta-consumo-dentro{% else %}etiqueta-barra-encima{% endif %} con-detalle" style="left:{{ b.x_pct }}%; top:{{ b.y_pct }}%;" data-detalle="{{ b.detalle }}">{{ b.etiqueta }}</span>
+        {% endif %}{% endfor %}
+        {% for p in g.puntos %}
+          <span class="etiqueta-valor etiqueta-plan-consumo con-detalle" style="left:{{ p.x_pct }}%; top:{{ p.y_pct }}%;" data-detalle="{{ p.detalle }}">{{ p.etiqueta }}</span>
+        {% endfor %}
+        {% for e in g.eje %}<span class="etiqueta-mes" style="left:{{ e.x_pct }}%;">{{ e.texto }}</span>{% endfor %}
+      </div>
+      </div>
+      <div class="leyenda-curva">
+        <span class="leyenda-item"><span class="leyenda-marca barra-consumo-real"></span>Consumo real (MB51)</span>
+        <span class="leyenda-item"><span class="leyenda-marca barra-consumo-real barra-parcial"></span>Mes en curso (parcial)</span>
+        <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>Plan de consumos S&amp;OP {{ co.ultimo_snapshot|mesanio }}</span>
+      </div>
+    {% endif %}
+    {% endwith %}
+
+    <h3 class="subtitulo">Plan vs real por material · {{ co.mes_sel|mesanio }}</h3>
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Material</th><th>Descripción</th><th>Centro</th>
+            <th class="num">Plan (T)</th>{% if co.en_curso %}<th class="num">Plan a la fecha (T)</th>{% endif %}
+            <th class="num">Real (T)</th><th class="num" data-orden="desc">Diferencia (T)</th>
+            <th class="num">Cumplimiento{% if co.en_curso %} a la fecha{% endif %}</th><th>Estado</th>
+            <th class="num">Real prom. {{ co.meses_referencia }} meses (T)</th><th class="num">Mismo mes año anterior (T)</th>
+            <th class="num">Plan vs prom. {{ co.meses_referencia }} meses</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in co.filas %}
+            <tr>
+              <td class="celda-codigo">{{ f.material_codigo }}</td><td>{{ f.texto_breve }}</td><td>{{ f.centro }}</td>
+              <td class="num">{{ f.plan|numero:0 }}</td>
+              {% if co.en_curso %}<td class="num">{{ f.plan_fecha|numero:0 }}</td>{% endif %}
+              <td class="num">{{ f.real|numero:0 }}</td>
+              <td class="num">{{ f.diferencia|numero:0 }}</td>
+              {% if co.en_curso %}
+                <td class="num">{% if f.cumplimiento_fecha is not None %}{{ f.cumplimiento_fecha|numero:1 }}%{% else %}—{% endif %}</td>
+              {% else %}
+                <td class="num">{% if f.cumplimiento is not None %}{{ f.cumplimiento|numero:1 }}%{% else %}—{% endif %}</td>
+              {% endif %}
+              <td>{% if f.estado %}<span class="pill-consumo consumo-{{ f.estado }}">{% if f.estado == "sobre" %}Sobre el plan{% elif f.estado == "bajo" %}Bajo el plan{% else %}En línea{% endif %}</span>{% endif %}</td>
+              <td class="num">{% if f.promedio_ref is not None %}{{ f.promedio_ref|numero:0 }}{% else %}—{% endif %}</td>
+              <td class="num">{% if f.anio_anterior is not None %}{{ f.anio_anterior|numero:0 }}{% else %}—{% endif %}</td>
+              <td class="num">{% if f.plan_vs_promedio is not None %}{% if f.plan_vs_promedio > 0 %}+{% endif %}{{ f.plan_vs_promedio|numero:1 }}%{% else %}—{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="leyenda-curva">
+      <span class="leyenda-item"><span class="pill-consumo consumo-sobre">Sobre el plan</span> consume más de {{ co.tolerancia_mes }}% por encima</span>
+      <span class="leyenda-item"><span class="pill-consumo consumo-bajo">Bajo el plan</span> más de {{ co.tolerancia_mes }}% por debajo</span>
+      <span class="leyenda-item"><span class="pill-consumo consumo-en_linea">En línea</span> dentro de ±{{ co.tolerancia_mes }}%</span>
+    </div>
+
+    {% if co.futuro %}
+      <h3 class="subtitulo">¿El plan de los próximos meses es realista?</h3>
+      <p class="nota">
+        Promedio mensual del plan de consumos {{ co.ultimo_snapshot|mesanio }} para {{ co.futuro_desde|mesanio }} a {{ co.futuro_hasta|mesanio }},
+        contra el consumo real promedio de los últimos {{ co.meses_referencia }} meses cerrados ({{ co.cerrados_desde|mesanio }} a
+        {{ co.cerrados_hasta|mesanio }}) y del mismo período un año antes. Se marca con ⚠ cuando el plan se aleja más de
+        ±{{ co.tolerancia_plan }}% del consumo reciente: ese plan alimenta la Evolución de inventario, así que un plan alto
+        proyecta menos stock del que habrá (y uno bajo, más).
+      </p>
+      <div class="tabla-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Material</th><th>Descripción</th><th>Centro</th>
+              <th class="num">Plan prom. mensual (T)</th><th class="num">Real prom. reciente (T)</th>
+              <th class="num" data-orden="desc">Plan vs reciente</th><th class="num">Real prom. año anterior (T)</th>
+              <th class="num">Plan vs año anterior</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in co.futuro %}
+              <tr>
+                <td class="celda-codigo">{{ f.material_codigo }}</td><td>{{ f.texto_breve }}</td><td>{{ f.centro }}</td>
+                <td class="num">{{ f.plan_promedio|numero:0 }}</td>
+                <td class="num">{% if f.sin_historia %}—{% else %}{{ f.real_reciente|numero:0 }}{% endif %}</td>
+                <td class="num {% if f.alerta %}dato-alerta{% endif %}">{% if f.vs_reciente is not None %}{% if f.alerta %}⚠ {% endif %}{% if f.vs_reciente > 0 %}+{% endif %}{{ f.vs_reciente|numero:1 }}%{% else %}<span class="texto-tenue">sin consumo reciente</span>{% endif %}</td>
+                <td class="num">{% if f.real_anio_anterior %}{{ f.real_anio_anterior|numero:0 }}{% else %}—{% endif %}</td>
+                <td class="num">{% if f.vs_anio_anterior is not None %}{% if f.vs_anio_anterior > 0 %}+{% endif %}{{ f.vs_anio_anterior|numero:1 }}%{% else %}—{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  {% endif %}
+</section>
+{% endwith %}

@@ -1,44 +1,69 @@
 import glob
 import os
 
+from django.db import transaction
 from django.core.management.base import BaseCommand, CommandError
 
 from gestion.models import InventarioMensual
 from ._csv_utils import codigo, decimal, fecha, leer_filas, texto
+from ._seguimiento_archivos import fuera_de_ventana, necesita_importar, registrar_importado
 
 
 class Command(BaseCommand):
     help = (
         "Importa inventario mensual desde uno o varios CSV de la transacción MB5B "
-        "(acepta un archivo o un directorio con varios archivos mensuales)."
+        "(acepta un archivo o un directorio con varios archivos mensuales). Por "
+        "defecto se saltan los archivos que no cambiaron desde la última importación "
+        "(usar --forzar para reprocesarlos igual)."
     )
 
     def add_arguments(self, parser):
         parser.add_argument("ruta", help="Archivo CSV o carpeta con los CSV de inventario mensual")
         parser.add_argument("--batch-size", type=int, default=5000)
+        parser.add_argument(
+            "--forzar", action="store_true",
+            help="Reprocesa todos los archivos aunque no hayan cambiado desde la última importación.",
+        )
 
+    # Todo el comando en una sola transacción: mucho más rápido en SQLite que
+    # confirmar lote por lote, y si algo falla a medias no quedan datos
+    # parciales (p.ej. Compras sin el año que se estaba reemplazando).
+    @transaction.atomic
     def handle(self, *args, **options):
         ruta = options["ruta"]
         batch_size = options["batch_size"]
+        forzar = options["forzar"]
 
         if os.path.isdir(ruta):
-            archivos = sorted(glob.glob(os.path.join(ruta, "*.csv")))
+            archivos = sorted(
+                glob.glob(os.path.join(ruta, "*.csv")) + glob.glob(os.path.join(ruta, "*.xlsx"))
+            )
         elif os.path.isfile(ruta):
             archivos = [ruta]
         else:
             raise CommandError(f"Ruta no encontrada: {ruta}")
 
         if not archivos:
-            raise CommandError(f"No se encontraron archivos CSV en {ruta}")
+            raise CommandError(f"No se encontraron archivos CSV/Excel en {ruta}")
 
         total_general = 0
+        saltados = 0
+        cerrados = 0
         for archivo in archivos:
+            if not forzar and fuera_de_ventana(archivo):
+                cerrados += 1
+                continue
+            if not forzar and not necesita_importar(archivo):
+                saltados += 1
+                continue
             total = self._importar_archivo(archivo, batch_size)
+            registrar_importado(archivo, total)
             total_general += total
             self.stdout.write(f"  {os.path.basename(archivo)}: {total} filas")
 
         self.stdout.write(self.style.SUCCESS(
-            f"Inventario: {total_general} filas procesadas en {len(archivos)} archivo(s)."
+            f"Inventario: {total_general} filas procesadas en {len(archivos) - saltados - cerrados} archivo(s)"
+            f" ({saltados} sin cambios, {cerrados} de meses cerrados, saltados)."
         ))
 
     def _importar_archivo(self, archivo, batch_size):

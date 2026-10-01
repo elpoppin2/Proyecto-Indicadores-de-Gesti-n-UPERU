@@ -1,0 +1,529 @@
+{% load static dashboard_extras %}<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Indicadores UPERU{% endblock %}</title>
+  <script>
+    /* Aplica el tema guardado ANTES de pintar la página, para que no haya
+       parpadeo entre el tema del sistema y el elegido a mano. */
+    (function () {
+      try {
+        var guardado = localStorage.getItem("uperu_tema");
+        if (guardado === "light" || guardado === "dark") {
+          document.documentElement.setAttribute("data-theme", guardado);
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  {% comment %}
+    ?v=<fecha de modificación>: sin esto el navegador cachea dashboard.css por URL
+    fija (no se corre collectstatic en desarrollo, así que no sale con nombre de
+    archivo con hash) y un cambio de estilos no se ve hasta un hard-refresh
+    manual — ya pasó más de una vez. Cambia solo cuando el archivo cambia (antes
+    era la hora actual y cada página lo volvía a descargar).
+  {% endcomment %}
+  <link rel="stylesheet" href="{% static 'gestion/css/dashboard.css' %}?v={% version_estatico 'gestion/css/dashboard.css' %}">
+</head>
+<body>
+  {% block contenido %}{% endblock %}
+  <script>
+    (function () {
+      var boton = document.getElementById("theme-toggle");
+      if (!boton) return;
+
+      function temaActual() {
+        var explicito = document.documentElement.getAttribute("data-theme");
+        if (explicito === "light" || explicito === "dark") return explicito;
+        return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      function actualizarEtiqueta() {
+        boton.textContent = temaActual() === "dark" ? "Modo claro" : "Modo oscuro";
+      }
+
+      actualizarEtiqueta();
+      boton.addEventListener("click", function () {
+        var nuevo = temaActual() === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", nuevo);
+        try { localStorage.setItem("uperu_tema", nuevo); } catch (e) {}
+        actualizarEtiqueta();
+      });
+    })();
+  </script>
+  <script>
+    /* Cada tabla del dashboard tiene sus propios segmentadores (Mes/Familia/
+       Centro), en un <form class="filtros" data-target="id-de-la-sección">.
+       Sin este script, cambiar un <select> reenvía el formulario (GET) y
+       recarga toda la página — funciona, pero "salta" y pierde el scroll.
+       Con JS: se pide la MISMA página por fetch (con los parámetros de este
+       formulario fusionados a la URL actual, para no perder los filtros de
+       las demás tablas), y solo se reemplaza el <section>/<div> indicado en
+       data-target — el resto de la página no se toca. Si algo falla (sin
+       red, HTML inesperado), se recurre a la navegación normal como respaldo. */
+    (function () {
+      function formularioFiltro(nodo) {
+        return nodo.closest && nodo.closest('form.filtros[data-target]');
+      }
+
+      // `reiniciar`: en vez de fijar los valores del formulario, se quitan de
+      // la URL sus segmentadores visibles, y el servidor elige sus valores por
+      // defecto (los mismos que al entrar a la página). Los campos ocultos no
+      // se tocan: son filtros heredados de otra sección (p.ej. el mes de
+      // Inventario en su Top de materiales) y quitarlos las desalinearía.
+      function construirUrl(form, reiniciar) {
+        var params = new URLSearchParams(window.location.search);
+        if (reiniciar) {
+          // input[data-multi-valor]: el filtro Material de Planificación (varios materiales).
+          form.querySelectorAll('select[name], input[name]:not([type="hidden"]), input[data-multi-valor]').forEach(function (campo) {
+            params.delete(campo.name);
+          });
+        } else {
+          new FormData(form).forEach(function (valor, clave) { params.set(clave, valor); });
+        }
+        var qs = params.toString();
+        return window.location.pathname + (qs ? '?' + qs : '');
+      }
+
+      // Un pedido en curso por sección: si el usuario cambia otro filtro antes
+      // de que llegue la respuesta, el pedido anterior se cancela (si no, una
+      // respuesta vieja podía llegar después y pisar a la nueva).
+      var pedidosEnCurso = {};
+
+      async function actualizarSeccion(form, reiniciar) {
+        var targetId = form.dataset.target;
+        var seccionActual = document.getElementById(targetId);
+        var url = construirUrl(form, reiniciar);
+        if (!seccionActual) { window.location.href = url; return; }
+
+        if (pedidosEnCurso[targetId]) pedidosEnCurso[targetId].abort();
+        var control = new AbortController();
+        pedidosEnCurso[targetId] = control;
+        seccionActual.classList.add('cargando');
+        try {
+          // `_seccion`: las páginas que lo entienden (Planificación) devuelven
+          // solo esa sección, mucho más rápido que la página entera; las demás
+          // lo ignoran y devuelven la página completa, que también sirve.
+          var urlPedido = url + (url.indexOf('?') === -1 ? '?' : '&') + '_seccion=' + encodeURIComponent(targetId);
+          var respuesta = await fetch(urlPedido, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, signal: control.signal });
+          if (!respuesta.ok) throw new Error('HTTP ' + respuesta.status);
+          var html = await respuesta.text();
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          var seccionNueva = doc.getElementById(targetId);
+          if (!seccionNueva) throw new Error('No se encontró #' + targetId + ' en la respuesta');
+
+          // Los buscadores de código/descripción son solo del navegador (no
+          // viajan en la URL): si esta sección tiene alguno, se conserva lo
+          // escrito y se vuelve a aplicar el filtro sobre las filas nuevas.
+          // Al reiniciar, los buscadores también vuelven a quedar vacíos.
+          if (!reiniciar) seccionActual.querySelectorAll('[data-buscar]').forEach(function (viejo) {
+            var nuevo = seccionNueva.querySelector('#' + CSS.escape(viejo.id));
+            if (nuevo) nuevo.value = viejo.value;
+          });
+          // Igual, pero para las tablas con scroll infinito (buscan en el
+          // servidor): se conserva el texto y se vuelve a pedir la primera
+          // página con ese filtro ya aplicado.
+          var buscadoresServidor = [];
+          if (!reiniciar) seccionActual.querySelectorAll('[data-buscar-servidor]').forEach(function (viejo) {
+            var nuevo = seccionNueva.querySelector('#' + CSS.escape(viejo.id));
+            if (nuevo && viejo.value) { nuevo.value = viejo.value; buscadoresServidor.push(nuevo); }
+          });
+          seccionNueva.classList.add('seccion-actualizada');
+          seccionActual.replaceWith(seccionNueva);
+          agregarBotonesReinicio(seccionNueva);
+          seccionNueva.querySelectorAll('.tabla-buscable').forEach(window.uperuFiltrarBuscador);
+          buscadoresServidor.forEach(function (campo) {
+            campo.dispatchEvent(new Event('input', { bubbles: true }));
+          });
+          // El hash se conserva: en Planificación indica la pestaña (zona) activa.
+          window.history.replaceState(null, '', url + window.location.hash);
+
+          // El enlace "Exportar a Excel" debe reflejar los filtros actuales
+          // (queda fuera de cualquier sección reemplazada, así que no se
+          // actualiza solo): se le copia el mismo query string de la página.
+          var enlaceExportar = document.getElementById('link-exportar');
+          if (enlaceExportar) {
+            var destino = new URL(enlaceExportar.href, window.location.origin);
+            destino.search = window.location.search;
+            enlaceExportar.href = destino.toString();
+          }
+          // Aviso para quien resume otras secciones (Indicadores de Planificación).
+          document.dispatchEvent(new CustomEvent('uperu:seccion-actualizada', { detail: { id: targetId } }));
+        } catch (e) {
+          if (e.name === 'AbortError') return;  // lo reemplazó un pedido más nuevo
+          // Respaldo: navegación normal de página completa.
+          window.location.href = url + window.location.hash;
+        } finally {
+          if (pedidosEnCurso[targetId] === control) {
+            delete pedidosEnCurso[targetId];
+            seccionActual.classList.remove('cargando');
+          }
+        }
+      }
+
+      document.addEventListener('change', function (evento) {
+        var form = formularioFiltro(evento.target);
+        if (form) actualizarSeccion(form);
+      });
+
+      // Por si algún campo futuro dispara un submit real (Enter en un campo
+      // de texto, por ejemplo): se intercepta igual, mismo camino que 'change'.
+      document.addEventListener('submit', function (evento) {
+        var form = formularioFiltro(evento.target);
+        if (form) {
+          evento.preventDefault();
+          actualizarSeccion(form);
+        }
+      });
+
+      /* Botón "Reiniciar filtros" a la derecha del título de cada sección con
+         segmentadores: la vuelve a pedir sin sus filtros (valores por
+         defecto). Se agrega acá, genérico, en vez de a mano en cada plantilla;
+         y de nuevo cada vez que una sección se reemplaza. Pedido por el
+         usuario. */
+      function agregarBotonesReinicio(raiz) {
+        var formularios = Array.prototype.slice.call(raiz.querySelectorAll('form.filtros[data-target]'));
+        if (raiz.matches && raiz.matches('form.filtros[data-target]')) formularios.push(raiz);
+        formularios.forEach(function (form) {
+          var seccion = document.getElementById(form.dataset.target);
+          if (!seccion || form.hasAttribute('data-sin-reinicio')) return;  // p.ej. el Mes de Indicadores (sin título propio)
+          var titulo = seccion.querySelector('h2');
+          if (!titulo || titulo.querySelector('.btn-reiniciar')) return;
+          var boton = document.createElement('button');
+          boton.type = 'button';
+          boton.className = 'btn-reiniciar';
+          boton.dataset.reiniciar = form.dataset.target;
+          boton.title = 'Reiniciar filtros de esta sección';
+          boton.setAttribute('aria-label', 'Reiniciar filtros de esta sección');
+          boton.innerHTML = '<span aria-hidden="true">↺</span>';
+          titulo.appendChild(boton);
+        });
+      }
+      agregarBotonesReinicio(document);
+
+      // Para contenido que llega después de cargar la página (las zonas de
+      // Planificación se piden al abrirlas): mismo arranque que al cargar.
+      window.uperuInicializarContenido = function (raiz) {
+        agregarBotonesReinicio(raiz);
+        if (window.uperuFiltrarBuscador) raiz.querySelectorAll('.tabla-buscable').forEach(window.uperuFiltrarBuscador);
+      };
+
+      document.addEventListener('click', function (evento) {
+        var boton = evento.target.closest('[data-reiniciar]');
+        if (!boton) return;
+        var form = document.querySelector('form.filtros[data-target="' + boton.dataset.reiniciar + '"]');
+        if (form) actualizarSeccion(form, true);
+      });
+    })();
+  </script>
+  <script>
+    /* Columnas ordenables: clic en cualquier <th> de una tabla sin scroll
+       infinito de servidor ordena las filas por esa columna — numérica
+       (mayor/menor) si el encabezado es <th class="num">, alfabética en caso
+       contrario (alterna A→Z / Z→A). Pura manipulación del DOM ya renderizado,
+       sin volver a pedir nada al server. Usa delegación de eventos (document,
+       no cada <th>) para seguir funcionando en tablas que llegan después por
+       el AJAX de los filtros. Pedido por el usuario. */
+    (function () {
+      function valorNumerico(fila, indice) {
+        var celda = fila.children[indice];
+        if (!celda) return null;
+        var texto = celda.textContent.trim();
+        if (!texto || texto === '—') return null;
+        var limpio = texto.replace(/[^0-9,.-]/g, '').replace(/,/g, '');
+        var n = parseFloat(limpio);
+        return isNaN(n) ? null : n;
+      }
+
+      function valorTexto(fila, indice) {
+        var celda = fila.children[indice];
+        if (!celda) return '';
+        var texto = celda.textContent.trim();
+        return texto === '—' ? '' : texto;
+      }
+
+      document.addEventListener('click', function (evento) {
+        var th = evento.target.closest('table thead th');
+        // Las tablas con scroll infinito (data-paginado) ordenan pidiendo al
+        // servidor (ver el otro script, más abajo), no barajando el DOM local.
+        if (!th || th.closest('table[data-paginado]')) return;
+        var tabla = th.closest('table');
+        var tbody = tabla.querySelector('tbody');
+        if (!tbody) return;
+        var indice = Array.prototype.indexOf.call(th.parentNode.children, th);
+        var esNumerica = th.classList.contains('num');
+
+        var orden = th.dataset.orden === 'desc' ? 'asc' : 'desc';
+        // Solo un encabezado "activo" por tabla a la vez.
+        tabla.querySelectorAll('th[data-orden]').forEach(function (otro) {
+          if (otro !== th) otro.removeAttribute('data-orden');
+        });
+        th.dataset.orden = orden;
+
+        // La fila de TOTAL (si existe) queda siempre al final, no se reordena.
+        // Las filas hijas (.fila-hija, p.ej. los proveedores de un material)
+        // viajan pegadas a la fila de arriba: se ordenan solo las de primer nivel.
+        var grupos = [];
+        Array.prototype.slice.call(tbody.children).forEach(function (f) {
+          if (f.classList.contains('fila-total')) return;
+          if (f.classList.contains('fila-hija') && grupos.length) grupos[grupos.length - 1].hijas.push(f);
+          else grupos.push({ fila: f, hijas: [] });
+        });
+        var filas = grupos.map(function (g) { return g.fila; });
+        var hijasDe = new Map(grupos.map(function (g) { return [g.fila, g.hijas]; }));
+        var filaTotal = tbody.querySelector('.fila-total');
+
+        filas.sort(function (a, b) {
+          if (esNumerica) {
+            var va = valorNumerico(a, indice);
+            var vb = valorNumerico(b, indice);
+            if (va === null && vb === null) return 0;
+            if (va === null) return 1;   // sin dato, siempre al final
+            if (vb === null) return -1;
+            return orden === 'asc' ? va - vb : vb - va;
+          }
+          var ta = valorTexto(a, indice);
+          var tb = valorTexto(b, indice);
+          if (!ta && !tb) return 0;
+          if (!ta) return 1;   // sin dato, siempre al final
+          if (!tb) return -1;
+          var cmp = ta.localeCompare(tb, 'es', { sensitivity: 'base' });
+          return orden === 'asc' ? cmp : -cmp;
+        });
+
+        filas.forEach(function (fila) {
+          tbody.appendChild(fila);
+          hijasDe.get(fila).forEach(function (hija) { tbody.appendChild(hija); });
+        });
+        if (filaTotal) tbody.appendChild(filaTotal);
+      });
+    })();
+  </script>
+  <script>
+    /* Buscador de materiales (código/descripción): filtra en vivo las filas
+       de la tabla asociada, sin pedir nada al servidor. Cada tabla buscable
+       se envuelve en <div class="tabla-buscable"> junto con sus dos <input
+       data-buscar="codigo|descripcion">; las celdas a comparar llevan
+       class="col-codigo"/"col-descripcion". Expuesto en window para que el
+       script de filtros AJAX pueda re-aplicarlo tras reemplazar una sección. */
+    (function () {
+      function filtrarTablaBuscable(contenedor) {
+        var campoCodigo = contenedor.querySelector('[data-buscar="codigo"]');
+        var campoDesc = contenedor.querySelector('[data-buscar="descripcion"]');
+        var codigo = campoCodigo ? campoCodigo.value.trim().toLowerCase() : '';
+        var desc = campoDesc ? campoDesc.value.trim().toLowerCase() : '';
+        contenedor.querySelectorAll('table tbody tr').forEach(function (fila) {
+          var celdaCodigo = fila.querySelector('.col-codigo');
+          var celdaDesc = fila.querySelector('.col-descripcion');
+          var okCodigo = !codigo || (celdaCodigo && celdaCodigo.textContent.toLowerCase().indexOf(codigo) !== -1);
+          var okDesc = !desc || (celdaDesc && celdaDesc.textContent.toLowerCase().indexOf(desc) !== -1);
+          fila.hidden = !(okCodigo && okDesc);
+        });
+      }
+      window.uperuFiltrarBuscador = filtrarTablaBuscable;
+
+      // Debounce corto: en tablas de miles de filas (p.ej. Repuestos),
+      // filtrar en cada tecla sin esperar puede sentirse trabado.
+      var pendiente = null;
+      document.addEventListener('input', function (evento) {
+        var campo = evento.target.closest('[data-buscar]');
+        if (!campo) return;
+        var contenedor = campo.closest('.tabla-buscable');
+        if (!contenedor) return;
+        clearTimeout(pendiente);
+        pendiente = setTimeout(function () { filtrarTablaBuscable(contenedor); }, 120);
+      });
+    })();
+  </script>
+  <script>
+    /* Tablas con scroll infinito (como una tabla de Power BI): en vez de
+       mandar de una vez decenas de miles de filas (p.ej. Rotación > Detalle
+       por material en REPUESTOS, ~28,000 materiales), el servidor manda la
+       primera página y este script pide más a medida que el usuario baja el
+       scroll DE LA TABLA (el contenedor .tabla-alto-fijo, no de la página).
+       El buscador y el clic en un encabezado ordenable de estas tablas
+       también piden al servidor (sobre el total real, no solo lo ya
+       cargado) en vez de filtrar/ordenar lo que ya está en el DOM. El
+       contenedor guarda su propio estado (mes/familia/centro/búsqueda/orden/
+       cuánto lleva pedido) en atributos data-*. */
+    (function () {
+      function contarFilas(html) {
+        var m = html.match(/<tr\b/g);
+        return m ? m.length : 0;
+      }
+
+      function construirUrlPagina(contenedor, offset) {
+        var params = new URLSearchParams();
+        params.set('mes', contenedor.dataset.mes || '');
+        if (contenedor.dataset.familia && contenedor.dataset.familia !== 'Todas') {
+          params.set('familia', contenedor.dataset.familia);
+        }
+        if (contenedor.dataset.centro && contenedor.dataset.centro !== 'Todos') {
+          params.set('centro', contenedor.dataset.centro);
+        }
+        if (contenedor.dataset.buscarCodigo) params.set('buscar_codigo', contenedor.dataset.buscarCodigo);
+        if (contenedor.dataset.buscarDescripcion) params.set('buscar_descripcion', contenedor.dataset.buscarDescripcion);
+        if (contenedor.dataset.orden) params.set('orden', contenedor.dataset.orden);
+        if (contenedor.dataset.dir) params.set('dir', contenedor.dataset.dir);
+        params.set('offset', offset);
+        return contenedor.dataset.url + '?' + params.toString();
+      }
+
+      async function cargarPagina(contenedor, reiniciar) {
+        if (contenedor.dataset.cargando === 'true') return;
+        if (!reiniciar && contenedor.dataset.hayMas !== 'true') return;
+        var offset = reiniciar ? 0 : parseInt(contenedor.dataset.offset || '0', 10);
+        contenedor.dataset.cargando = 'true';
+        try {
+          var resp = await fetch(construirUrlPagina(contenedor, offset), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          });
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          var html = await resp.text();
+          var tbody = contenedor.querySelector('table tbody');
+          if (reiniciar) {
+            tbody.innerHTML = html;
+            contenedor.scrollTop = 0;
+          } else {
+            tbody.insertAdjacentHTML('beforeend', html);
+          }
+          contenedor.dataset.offset = offset + contarFilas(html);
+          contenedor.dataset.hayMas = resp.headers.get('X-Hay-Mas') === 'true' ? 'true' : 'false';
+          var total = resp.headers.get('X-Total');
+          if (total !== null && contenedor.dataset.contador) {
+            var elContador = document.getElementById(contenedor.dataset.contador);
+            if (elContador) elContador.textContent = total;
+          }
+        } catch (e) {
+          // Se deja como está; el usuario puede reintentar bajando de nuevo.
+        } finally {
+          contenedor.dataset.cargando = 'false';
+        }
+      }
+
+      // 'scroll' no burbujea: hay que escuchar en fase de captura para que
+      // llegue desde el contenedor con overflow, no solo desde `window`.
+      document.addEventListener('scroll', function (evento) {
+        var contenedor = evento.target;
+        if (!contenedor.classList || !contenedor.classList.contains('tabla-alto-fijo') || !contenedor.dataset.url) return;
+        var restante = contenedor.scrollHeight - contenedor.scrollTop - contenedor.clientHeight;
+        if (restante < 150) cargarPagina(contenedor, false);
+      }, true);
+
+      document.addEventListener('input', function (evento) {
+        var campo = evento.target.closest('[data-buscar-servidor]');
+        if (!campo) return;
+        var contenedor = campo.closest('.tabla-buscable').querySelector('[data-url]');
+        if (!contenedor) return;
+        if (campo.dataset.buscarServidor === 'codigo') {
+          contenedor.dataset.buscarCodigo = campo.value.trim();
+        } else {
+          contenedor.dataset.buscarDescripcion = campo.value.trim();
+        }
+        clearTimeout(contenedor._buscarPendiente);
+        contenedor._buscarPendiente = setTimeout(function () { cargarPagina(contenedor, true); }, 250);
+      });
+
+      document.addEventListener('click', function (evento) {
+        var th = evento.target.closest('table[data-paginado] th.num[data-columna]');
+        if (!th) return;
+        var contenedor = th.closest('table').closest('[data-url]');
+        if (!contenedor) return;
+        var actual = contenedor.dataset.orden === th.dataset.columna ? contenedor.dataset.dir : null;
+        var nuevoDir = actual === 'desc' ? 'asc' : 'desc';
+        th.closest('table').querySelectorAll('th[data-orden]').forEach(function (o) { o.removeAttribute('data-orden'); });
+        th.dataset.orden = nuevoDir;
+        contenedor.dataset.orden = th.dataset.columna;
+        contenedor.dataset.dir = nuevoDir;
+        cargarPagina(contenedor, true);
+      });
+    })();
+  </script>
+  <script>
+    /* Botón "Descargar / Imprimir" con alcance a un solo bloque (p.ej. un
+       gráfico + su tabla, sin encabezado/filtros/notas/el resto del reporte).
+       El CSS (dashboard.css, @media print) parte de ocultar TODO el documento
+       (`*`), así que hay que volver a marcar dos cosas por separado:
+       - los ANCESTROS del bloque (su padre, el padre de ese padre... hasta
+         <body>) con .imprimir-camino, para que el bloque tenga dónde
+         renderizarse (sin esto también quedan en display:none y el bloque,
+         aunque marcado, no se ve porque un padre oculto no muestra hijos);
+       - el bloque en sí Y TODO lo que tiene adentro (SVG, tablas, filas) con
+         .imprimir-objetivo — si solo se marca el contenedor, sus hijos siguen
+         cayendo en la regla `* { display: none }` y el bloque se imprime
+         vacío (bug real, visto en pantalla: un recuadro sin nada adentro).
+       Al terminar (evento afterprint) se desmarca todo. Genérico: cualquier
+       <button data-imprimir="id-del-bloque"> lo usa, sin JS ni CSS extra por
+       página. */
+    document.addEventListener('click', function (evento) {
+      var boton = evento.target.closest('[data-imprimir]');
+      if (!boton) return;
+      var objetivo = document.getElementById(boton.dataset.imprimir);
+      if (!objetivo) return;
+
+      var marcados = [];
+
+      var nodo = objetivo.parentElement;
+      while (nodo && nodo !== document.body) {
+        nodo.classList.add('imprimir-camino');
+        marcados.push(nodo);
+        nodo = nodo.parentElement;
+      }
+
+      var subarbol = [objetivo].concat(Array.prototype.slice.call(objetivo.querySelectorAll('*')));
+      subarbol.forEach(function (el) {
+        el.classList.add('imprimir-objetivo');
+        marcados.push(el);
+      });
+
+      document.body.classList.add('imprimir-aislado');
+
+      var limpiar = function () {
+        document.body.classList.remove('imprimir-aislado');
+        marcados.forEach(function (n) { n.classList.remove('imprimir-camino', 'imprimir-objetivo'); });
+        window.removeEventListener('afterprint', limpiar);
+      };
+      window.addEventListener('afterprint', limpiar);
+      window.print();
+      setTimeout(limpiar, 2000); // respaldo si el navegador no dispara afterprint
+    });
+  </script>
+  <script>
+    /* Recuadro de detalle de los gráficos: cualquier elemento con
+       data-detalle (varias líneas) lo muestra junto al mouse. Delegado en el
+       documento, así sigue funcionando cuando una sección se reemplaza al
+       cambiar un filtro. Pedido por el usuario. */
+    (function () {
+      var caja = document.createElement('div');
+      caja.className = 'detalle-grafico';
+      caja.hidden = true;
+      document.body.appendChild(caja);
+      function ubicar(evento) {
+        var margen = 14, ancho = caja.offsetWidth, alto = caja.offsetHeight;
+        var x = evento.clientX + margen, y = evento.clientY + margen;
+        if (x + ancho > window.innerWidth - 8) x = evento.clientX - ancho - margen;
+        if (y + alto > window.innerHeight - 8) y = evento.clientY - alto - margen;
+        caja.style.left = Math.max(8, x) + 'px';
+        caja.style.top = Math.max(8, y) + 'px';
+      }
+      document.addEventListener('mouseover', function (evento) {
+        var objetivo = evento.target.closest ? evento.target.closest('[data-detalle]') : null;
+        if (!objetivo) return;
+        caja.textContent = objetivo.getAttribute('data-detalle');
+        caja.hidden = false;
+        ubicar(evento);
+      });
+      document.addEventListener('mousemove', function (evento) {
+        if (!caja.hidden) ubicar(evento);
+      });
+      document.addEventListener('mouseout', function (evento) {
+        var objetivo = evento.target.closest ? evento.target.closest('[data-detalle]') : null;
+        if (!objetivo) return;
+        var hacia = evento.relatedTarget && evento.relatedTarget.closest ? evento.relatedTarget.closest('[data-detalle]') : null;
+        if (!hacia) caja.hidden = true;
+      });
+    })();
+  </script>
+</body>
+</html>

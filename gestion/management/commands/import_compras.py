@@ -2,10 +2,12 @@ import glob
 import os
 import re
 
+from django.db import transaction
 from django.core.management.base import BaseCommand, CommandError
 
 from gestion.models import LineaCompra
 from ._csv_utils import codigo, decimal, entero, fecha, leer_filas, texto
+from ._seguimiento_archivos import necesita_importar, registrar_importado
 
 AÑO_RE = re.compile(r"(20\d{2})")
 
@@ -17,38 +19,70 @@ class Command(BaseCommand):
     )
 
     def add_arguments(self, parser):
-        parser.add_argument("ruta", help="Archivo CSV o carpeta con los CSV de compras")
+        parser.add_argument("ruta", help="Archivo CSV/Excel o carpeta con los archivos de compras")
         parser.add_argument("--batch-size", type=int, default=5000)
         parser.add_argument("--anio", type=int, help="Forzar año de origen si el nombre del archivo no lo indica")
+        parser.add_argument(
+            "--reemplazar", action="store_true",
+            help="Borra las líneas existentes de LineaCompra para el año antes de insertar "
+                 "(necesario al reimportar el mismo año, ya que este comando no deduplica).",
+        )
+        parser.add_argument(
+            "--forzar", action="store_true",
+            help="Reprocesa todos los archivos aunque no hayan cambiado desde la última importación.",
+        )
 
+    # Todo el comando en una sola transacción: mucho más rápido en SQLite que
+    # confirmar lote por lote, y si algo falla a medias no quedan datos
+    # parciales (p.ej. Compras sin el año que se estaba reemplazando).
+    @transaction.atomic
     def handle(self, *args, **options):
         ruta = options["ruta"]
         batch_size = options["batch_size"]
         anio_forzado = options.get("anio")
+        reemplazar = options["reemplazar"]
+        forzar = options["forzar"]
 
         if os.path.isdir(ruta):
-            archivos = sorted(glob.glob(os.path.join(ruta, "*.csv")))
+            archivos = sorted(
+                glob.glob(os.path.join(ruta, "*.csv")) + glob.glob(os.path.join(ruta, "*.xlsx"))
+            )
         elif os.path.isfile(ruta):
             archivos = [ruta]
         else:
             raise CommandError(f"Ruta no encontrada: {ruta}")
 
         if not archivos:
-            raise CommandError(f"No se encontraron archivos CSV en {ruta}")
+            raise CommandError(f"No se encontraron archivos CSV/Excel en {ruta}")
 
         total_general = 0
+        saltados = 0
         for archivo in archivos:
             match = AÑO_RE.search(os.path.basename(archivo))
             anio = anio_forzado or (int(match.group(1)) if match else None)
             if not anio:
                 raise CommandError(f"No se pudo determinar el año de origen para {archivo}; usa --anio")
 
+            # Un año (un archivo entero) se reemplaza solo si cambió desde la última
+            # importación: este comando no deduplica por línea, así que reimportar un
+            # archivo sin cambios significaría borrar y volver a insertar lo mismo.
+            if not forzar and not necesita_importar(archivo):
+                saltados += 1
+                continue
+
+            if reemplazar:
+                borrados, _ = LineaCompra.objects.filter(anio_origen=anio).delete()
+                if borrados:
+                    self.stdout.write(f"  ({anio}) borradas {borrados} filas existentes antes de reimportar")
+
             total = self._importar_archivo(archivo, anio, batch_size)
+            registrar_importado(archivo, total)
             total_general += total
             self.stdout.write(f"  {os.path.basename(archivo)} ({anio}): {total} filas")
 
         self.stdout.write(self.style.SUCCESS(
-            f"Compras: {total_general} filas procesadas en {len(archivos)} archivo(s)."
+            f"Compras: {total_general} filas procesadas en {len(archivos) - saltados} archivo(s)"
+            f" ({saltados} sin cambios, saltados)."
         ))
 
     def _importar_archivo(self, archivo, anio, batch_size):

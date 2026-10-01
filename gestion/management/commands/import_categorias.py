@@ -1,5 +1,7 @@
+from django.db import transaction
 from django.core.management.base import BaseCommand
 
+from dashboard.queries import marcar_datos_actualizados
 from gestion.models import Categoria
 from ._csv_utils import leer_filas, texto
 
@@ -10,6 +12,10 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("csv_path", help="Ruta al archivo CSV de categorías")
 
+    # Todo el comando en una sola transacción: mucho más rápido en SQLite que
+    # confirmar lote por lote, y si algo falla a medias no quedan datos
+    # parciales (p.ej. Compras sin el año que se estaba reemplazando).
+    @transaction.atomic
     def handle(self, *args, **options):
         path = options["csv_path"]
         creados, actualizados = 0, 0
@@ -32,6 +38,7 @@ class Command(BaseCommand):
             else:
                 actualizados += 1
 
+        transaction.on_commit(marcar_datos_actualizados)
         self.stdout.write(self.style.SUCCESS(
             f"Categorías: {creados} creadas, {actualizados} actualizadas."
         ))

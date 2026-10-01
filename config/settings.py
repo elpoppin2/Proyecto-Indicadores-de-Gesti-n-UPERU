@@ -59,6 +59,12 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # Comprime las respuestas HTML dinámicas (whitenoise ya comprime los
+    # estáticos). Importa sobre todo para páginas de categorías con miles de
+    # filas de detalle por material (p.ej. REPUESTOS): el texto de una tabla
+    # se repite mucho y comprime muy bien, aunque el navegador igual tenga
+    # que construir todas las filas en el DOM al recibirla.
+    'django.middleware.gzip.GZipMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -87,6 +93,10 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
+LOGIN_URL = 'login'
+LOGIN_REDIRECT_URL = 'overview'
+LOGOUT_REDIRECT_URL = 'login'
+
 
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
@@ -99,6 +109,27 @@ DATABASES = {
         conn_max_age=600,
     )
 }
+
+# SQLite (solo en local; en Azure/PostgreSQL no aplica) ajustado para una base
+# de ~3 GB que se lee mucho y se escribe una vez al día:
+# - WAL: el dashboard sigue leyendo mientras la carga diaria escribe (antes,
+#   una consulta durante la carga podía esperar o fallar con "database is
+#   locked"), y cada confirmación de escritura es más barata.
+# - synchronous=NORMAL: lo recomendado con WAL; no arriesga la integridad de
+#   la base, a lo sumo la última transacción ante un corte de luz.
+# - 256 MB de caché de páginas, temporales en memoria y lectura mapeada en
+#   memoria (mmap) de hasta 3 GB: las agregaciones sobre millones de filas
+#   dejan de ir tanto al disco.
+# - busy_timeout: si dos procesos escriben a la vez, espera en vez de fallar.
+if DATABASES['default']['ENGINE'] == 'django.db.backends.sqlite3':
+    DATABASES['default'].setdefault('OPTIONS', {})['init_command'] = (
+        "PRAGMA journal_mode=WAL;"
+        "PRAGMA synchronous=NORMAL;"
+        "PRAGMA cache_size=-262144;"
+        "PRAGMA temp_store=MEMORY;"
+        "PRAGMA mmap_size=3221225472;"
+        "PRAGMA busy_timeout=30000;"
+    )
 
 
 # Password validation
@@ -146,6 +177,20 @@ STORAGES = {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
 }
+
+
+# Asistente de IA de Planificación (gestion/asistente.py). La clave de API
+# NUNCA va en el código ni en el HTML: se toma de la variable de entorno
+# ANTHROPIC_API_KEY o, si no está, del archivo local secretos/anthropic_api_key.txt
+# (excluido de git). Sin clave, el panel del asistente se muestra desactivado.
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '').strip()
+_ARCHIVO_CLAVE_ASISTENTE = BASE_DIR / 'secretos' / 'anthropic_api_key.txt'
+if not ANTHROPIC_API_KEY and _ARCHIVO_CLAVE_ASISTENTE.exists():
+    ANTHROPIC_API_KEY = _ARCHIVO_CLAVE_ASISTENTE.read_text(encoding='utf-8').strip()
+ASISTENTE_MODELO = os.environ.get('ASISTENTE_MODELO', 'claude-sonnet-5')
+# Máximo de consultas a los datos (herramientas) por pregunta, para acotar
+# tiempo y costo.
+ASISTENTE_MAX_PASOS = int(os.environ.get('ASISTENTE_MAX_PASOS', '8'))
 
 
 # Email

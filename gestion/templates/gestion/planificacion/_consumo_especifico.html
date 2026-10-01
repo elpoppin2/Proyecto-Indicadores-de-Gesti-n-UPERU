@@ -1,0 +1,173 @@
+{% load dashboard_extras %}
+{# Consumo por tonelada producida (ver views._contexto_consumo_especifico). Pedido por el usuario. #}
+<section class="bloque" id="sec-consumo-especifico">
+  <div class="bloque-cabecera">
+    <h2>Consumo por tonelada producida</h2>
+    <button type="button" class="btn-link" data-imprimir="sec-consumo-especifico">Descargar / Imprimir</button>
+  </div>
+  <p class="nota">
+    Cuántos kg de cada material se gastan por tonelada de clinker o de cemento producida en la misma planta. MB51 registra
+    la producción (101/102 de órdenes de producción) y lo que consume cada orden (261/262): siguiendo esa cadena, cada
+    material queda asignado al producto final al que llega su consumo. Las calizas, arcillas, correctivos y carbones
+    terminan en clinker (vía crudo o combustible sólido); el yeso, las puzolanas, la escoria y el clinker, en cemento. El consumo
+    del mes es el mismo de la Evaluación de consumo. Un mes con MB51 incompleto (p.ej. Feb-2026) queda fuera y se ve como un hueco.
+  </p>
+  <form class="filtros" method="get" data-target="sec-consumo-especifico">
+    <div class="campo">
+      <label for="mes_factor">Mes</label>
+      <select name="mes_factor" id="mes_factor">
+        {% for m in fa.meses %}
+          <option value="{{ m|fechaiso }}" {% if m == fa.mes_sel %}selected{% endif %}>{{ m|mesanio }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="centro_factor">Centro</label>
+      <select name="centro_factor" id="centro_factor">
+        {% for c in fa.centros %}
+          <option value="{{ c }}" {% if c == fa.centro_sel %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="producto_factor">Se consume en</label>
+      <select name="producto_factor" id="producto_factor">
+        {% for p in fa.productos %}
+          <option value="{{ p.valor }}" {% if p.valor == fa.producto_sel %}selected{% endif %}>{{ p.texto }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% include "gestion/planificacion/_filtro_material.html" with nombre="material_factor" opciones=fa.materiales seleccion=fa.material_sel %}
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+
+  {% if not fa.filas %}
+    <p class="aviso">Sin consumo ni producción para los filtros seleccionados.</p>
+  {% else %}
+    {% if fa.parcial %}
+      <p class="aviso">Mes en curso: MB51 cargado al {{ fa.fecha_corte|date:"d/m/Y" }}. El promedio de referencia se prorratea a esa fecha.</p>
+    {% endif %}
+    <div class="metricas">
+      {% for p in fa.resumen_produccion %}
+        <div class="metrica">
+          <span class="valor">{{ p.actual|numero:0 }} T</span>
+          <span class="etiqueta">{{ p.texto }} producido · {{ fa.mes_sel|mesanio }}{% if p.var is not None %} · <span class="{% if p.var >= 0 %}dato-positivo{% else %}dato-negativo{% endif %}">{% if p.var > 0 %}+{% endif %}{{ p.var|numero:1 }}%</span> vs prom. {{ fa.meses_referencia }} meses{% endif %}</span>
+        </div>
+      {% endfor %}
+      <div class="metrica">
+        <span class="valor"><span class="dato-alerta">{{ fa.n_alto }} ▲</span> · <span class="dato-positivo">{{ fa.n_bajo }} ▼</span></span>
+        <span class="etiqueta">Materiales que gastan más / menos por T (últimos 3 meses vs 12 meses, más de ±{{ fa.tolerancia }}%)</span>
+      </div>
+    </div>
+
+    {% with g=fa.grafico %}
+    {% if g %}
+      <h3 class="subtitulo">{{ fa.titulo_grafico }}{% if fa.material_sel|length != 1 %} <span class="texto-tenue">· elige un material para ver su consumo por T</span>{% endif %}</h3>
+      <div class="chart-scroll">
+      <div class="chart-wrap chart-lineas">
+        <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="{{ fa.titulo_grafico }}">
+          {% for m in g.grilla %}<line class="grilla-lineas" x1="{{ g.x0 }}" y1="{{ m.y }}" x2="{{ g.x1 }}" y2="{{ m.y }}"></line>{% endfor %}
+          {% for r in g.referencias %}<line class="referencia-lineas {{ r.clase }}" x1="{{ g.x0 }}" y1="{{ r.y }}" x2="{{ g.x1 }}" y2="{{ r.y }}"></line>{% endfor %}
+          {% for s in g.series %}
+            {% for t in s.tramos %}<path class="linea-serie {{ s.clase }}" d="{{ t }}"></path>{% endfor %}
+            {% for p in s.puntos %}
+              <circle class="punto-serie {{ s.clase }}" cx="{{ p.x }}" cy="{{ p.y }}" r="3"></circle>
+              <circle class="zona-detalle con-detalle" cx="{{ p.x }}" cy="{{ p.y }}" r="9" data-detalle="{{ p.detalle }}"></circle>
+            {% endfor %}
+          {% endfor %}
+        </svg>
+        {% for m in g.grilla %}<span class="etiqueta-grilla" style="top:{{ m.y_pct }}%;">{{ m.texto }}</span>{% endfor %}
+        {% for s in g.series %}{% for p in s.puntos %}{% if p.etiqueta %}
+          <span class="etiqueta-valor etiqueta-{{ s.clase }}{% if p.derecha %} etiqueta-derecha{% endif %} con-detalle" style="left:{{ p.x_pct }}%; top:{{ p.y_pct }}%;" data-detalle="{{ p.detalle }}">{{ p.etiqueta }}</span>
+        {% endif %}{% endfor %}{% endfor %}
+        {% for e in g.eje %}<span class="etiqueta-mes" style="left:{{ e.x_pct }}%;">{{ e.texto }}</span>{% endfor %}
+      </div>
+      </div>
+      <div class="leyenda-curva">
+        {% for s in g.series %}<span class="leyenda-item"><span class="leyenda-marca leyenda-linea {{ s.clase }}"></span>{{ s.nombre }}</span>{% endfor %}
+        {% for r in g.referencias %}<span class="leyenda-item"><span class="leyenda-marca leyenda-referencia {{ r.clase }}"></span>{{ r.texto }}</span>{% endfor %}
+      </div>
+    {% endif %}
+    {% endwith %}
+
+    <h3 class="subtitulo">Consumo por T por material · {{ fa.mes_sel|mesanio }}</h3>
+    <p class="nota">
+      La diferencia del consumo del mes contra el promedio de los {{ fa.meses_referencia }} meses anteriores se separa en dos
+      partes que suman exacto. <strong>Por producción</strong>: se produjo más o menos clinker o cemento, con el mismo consumo por T.
+      <strong>Por consumo por T</strong>: se gastó más o menos material por cada tonelada producida, por ejemplo por un cambio en
+      la mezcla del crudo o en la receta del cemento.
+    </p>
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Material</th><th>Descripción</th><th>Centro</th><th>Se consume en</th>
+            <th class="num">Consumo (T)</th><th class="num">Producción (T)</th>
+            <th class="num">kg/T mes</th><th class="num">kg/T 3 meses</th><th class="num">kg/T {{ fa.meses_factor }} meses</th>
+            <th>3 vs {{ fa.meses_factor }} meses</th>
+            <th class="num" data-orden="desc">Dif. vs prom. {{ fa.meses_referencia }} meses (T)</th>
+            <th class="num">Por producción (T)</th><th class="num">Por consumo por T (T)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in fa.filas %}
+            <tr>
+              <td class="celda-codigo">{{ f.material_codigo }}</td><td>{{ f.texto_breve }}</td><td>{{ f.centro }}</td>
+              <td>{{ f.producto_texto }}{% if f.participacion < 99.5 %} <span class="texto-tenue">({{ f.participacion|numero:0 }}%)</span>{% endif %}</td>
+              <td class="num">{{ f.consumo|numero:0 }}</td>
+              <td class="num">{{ f.produccion|numero:0 }}</td>
+              <td class="num"><strong>{{ f.factor|numero:0 }}</strong></td>
+              <td class="num">{{ f.factor_3|numero:0 }}</td>
+              <td class="num">{% if f.factor_12 is not None %}{{ f.factor_12|numero:0 }}{% else %}—{% endif %}</td>
+              <td>{% if f.estado %}<span class="pill-consumo {% if f.estado == 'alto' %}consumo-sobre{% elif f.estado == 'bajo' %}consumo-bajo{% else %}consumo-en_linea{% endif %}">{% if f.var_3_vs_12 > 0 %}+{% endif %}{{ f.var_3_vs_12|numero:0 }}%</span>{% endif %}</td>
+              <td class="num">{% if f.diferencia is not None %}{% if f.diferencia > 0 %}+{% endif %}{{ f.diferencia|numero:0 }}{% else %}—{% endif %}</td>
+              <td class="num">{% if f.efecto_produccion is not None %}{% if f.efecto_produccion > 0 %}+{% endif %}{{ f.efecto_produccion|numero:0 }}{% else %}—{% endif %}</td>
+              <td class="num">{% if f.efecto_factor is not None %}{% if f.efecto_factor > 0 %}+{% endif %}{{ f.efecto_factor|numero:0 }}{% else %}—{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="leyenda-curva">
+      <span class="leyenda-item"><span class="pill-consumo consumo-sobre">+%</span> gasta más de {{ fa.tolerancia }}% más por T que en los últimos {{ fa.meses_factor }} meses</span>
+      <span class="leyenda-item"><span class="pill-consumo consumo-bajo">−%</span> más de {{ fa.tolerancia }}% menos</span>
+      <span class="leyenda-item"><span class="pill-consumo consumo-en_linea">%</span> dentro de ±{{ fa.tolerancia }}%</span>
+    </div>
+
+    {% if fa.implicita %}
+      <h3 class="subtitulo">¿Qué producción supone el plan de consumos?</h3>
+      <p class="nota">
+        Plan de consumos {{ fa.ultimo_snapshot|mesanio }}, promedio mensual de {{ fa.futuro_desde|mesanio }} a {{ fa.futuro_hasta|mesanio }},
+        dividido entre el consumo por T de los últimos {{ fa.meses_factor }} meses: es la producción de clinker o cemento que ese plan da
+        por hecha. Todos los materiales de una misma planta y producto deberían suponer una producción parecida. Se marca con ⚠ cuando se
+        aleja más de ±{{ fa.tolerancia_plan }}% de la producción real de los últimos {{ fa.meses_referencia }} meses cerrados. Los materiales
+        de muy poco consumo (unos pocos kg por T) dan valores poco estables.
+      </p>
+      <div class="tabla-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Material</th><th>Descripción</th><th>Centro</th><th>Producto</th>
+              <th class="num">Plan prom. mensual (T)</th><th class="num">kg/T {{ fa.meses_factor }} meses</th>
+              <th class="num">Producción que supone el plan (T/mes)</th><th class="num">Producción real prom. (T/mes)</th>
+              <th class="num" data-orden="desc">Diferencia</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in fa.implicita %}
+              <tr>
+                <td class="celda-codigo">{{ f.material_codigo }}</td><td>{{ f.texto_breve }}</td><td>{{ f.centro }}</td><td>{{ f.producto_texto }}</td>
+                <td class="num">{{ f.plan_promedio|numero:0 }}</td>
+                <td class="num">{{ f.factor_12|numero:0 }}</td>
+                <td class="num">{% if f.produccion_plan %}{{ f.produccion_plan|numero:0 }}{% else %}—{% endif %}</td>
+                <td class="num">{% if f.produccion_reciente %}{{ f.produccion_reciente|numero:0 }}{% else %}—{% endif %}</td>
+                <td class="num {% if f.alerta %}dato-alerta{% endif %}">{% if f.diferencia is not None %}{% if f.alerta %}⚠ {% endif %}{% if f.diferencia > 0 %}+{% endif %}{{ f.diferencia|numero:1 }}%{% else %}—{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  {% endif %}
+</section>
+

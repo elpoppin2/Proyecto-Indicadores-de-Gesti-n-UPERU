@@ -1,0 +1,174 @@
+{% load static dashboard_extras %}
+<section class="bloque" id="sec-plan-detalle">
+  <h2>Detalle por material y Evaluación diaria</h2>
+  <p class="nota">
+    Filtros propios (Mes/Centro/Material, todos en lista desplegable) — no afectan la Evaluación mensual de arriba.
+    El Material se acota al Centro elegido, para no armar combinaciones sin datos.
+  </p>
+  <form class="filtros" method="get" data-target="sec-plan-detalle">
+    <div class="campo">
+      <label for="mes_detalle">Mes</label>
+      <select name="mes_detalle" id="mes_detalle">
+        {% for f in planificacion_detalle.opciones_mes %}
+          <option value="{{ f|fechaiso }}" {% if f == planificacion_detalle.mes %}selected{% endif %}>{{ f|mesanio }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="centro_detalle">Centro</label>
+      <select name="centro_detalle" id="centro_detalle">
+        {% for c in planificacion_detalle.centros %}
+          <option value="{{ c }}" {% if c == planificacion_detalle.centro_sel %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% include "gestion/planificacion/_filtro_material.html" with nombre="material_detalle" opciones=planificacion_detalle.materiales seleccion=planificacion_detalle.material_sel %}
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+
+  <div class="bloque-cabecera">
+    <h2 class="subtitulo">Detalle por material</h2>
+    {% if planificacion_detalle.filas %}<button type="button" class="btn-link" data-proveedores-todos aria-pressed="{% if planificacion_detalle.expandir %}true{% else %}false{% endif %}">{% if planificacion_detalle.expandir %}Ocultar proveedores{% else %}Ver proveedores de todos{% endif %}</button>{% endif %}
+  </div>
+  {% if planificacion_detalle.filas %}
+    <p class="nota">
+      Abre un material para ver sus ingresos por proveedor (tickets de báscula ZMM056); en los ingresos propios el proveedor es la
+      planta de origen. El plan por proveedor se completará cuando se cargue la tabla de distribución por proveedor.
+    </p>
+    <div class="tabla-scroll">
+      <table class="tabla-con-hijas">
+        <thead>
+          <tr>
+            <th>Material</th><th>Descripción / proveedor</th><th>Centro</th><th>Categoría</th><th>Familia</th>
+            <th class="num" data-orden="desc">Plan (T)</th>
+            <th class="num">Real (T)</th>
+            <th class="num">Carros</th>
+            <th class="num">% del real</th>
+            <th class="num">Diferencia (T)</th>
+            <th class="num">% Cumplimiento</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in planificacion_detalle.filas %}
+            <tr>
+              <td>{{ r.material_codigo }}</td>
+              <td>
+                {{ r.texto_breve }}
+                {% if r.proveedores %}<button type="button" class="btn-proveedores" data-grupo="{{ r.grupo }}" aria-expanded="{% if planificacion_detalle.expandir %}true{% else %}false{% endif %}">{{ r.proveedores|length }} proveedor{{ r.proveedores|length|pluralize:"es" }}</button>{% endif %}
+              </td>
+              <td>{{ r.centro }}</td>
+              <td>{{ r.categoria }}</td>
+              <td>{{ r.familia }}</td>
+              <td class="num">{{ r.cantidad_plan|numero:0 }}</td>
+              <td class="num">{{ r.cantidad_real|numero:0 }}</td>
+              <td class="num">{{ r.carros|numero }}</td>
+              <td class="num"></td>
+              <td class="num {% if r.diferencia > 0 %}dato-positivo{% elif r.diferencia < 0 %}dato-negativo{% endif %}">{{ r.diferencia|numero:0 }}</td>
+              <td class="num {% if r.cumplimiento_pct >= 100 %}dato-positivo{% elif r.cumplimiento_pct < 80 %}dato-negativo{% endif %}">{{ r.cumplimiento_pct|numero:1|default:"—" }}%</td>
+            </tr>
+            {% for p in r.proveedores %}
+              <tr class="fila-hija" data-grupo="{{ r.grupo }}"{% if not planificacion_detalle.expandir %} hidden{% endif %}>
+                <td></td>
+                <td class="celda-proveedor">{{ p.proveedor }} <span class="texto-tenue">{{ p.codigo }} · {{ p.tipo }}</span></td>
+                <td></td><td></td><td></td>
+                <td class="num texto-tenue">—</td>
+                <td class="num">{{ p.real|numero:0 }}</td>
+                <td class="num">{{ p.carros|numero }}</td>
+                <td class="num">{% if p.participacion is not None %}{{ p.participacion|numero:1 }}%{% endif %}</td>
+                <td class="num texto-tenue">—</td>
+                <td class="num texto-tenue">—</td>
+              </tr>
+            {% endfor %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="aviso">Sin materiales para los filtros seleccionados.</p>
+  {% endif %}
+
+  <div class="bloque-cabecera">
+    <h2 class="subtitulo">Evaluación diaria</h2>
+    <button type="button" class="btn-link" data-imprimir="curva-s-diaria">Descargar / Imprimir</button>
+  </div>
+  <p class="nota">
+    Plan diario estimado = Plan mensual (con los filtros de arriba) ÷ días calendario del mes — no es un plan diario
+    real, es una referencia lineal para ver el ritmo necesario. Curva S: acumulado del Plan estimado vs. acumulado
+    de Ingresos Físicos reales, día a día.
+  </p>
+  <div id="curva-s-diaria">
+  <h3 class="titulo-bloque">{{ planificacion_detalle.titulo_curva }}</h3>
+  <div class="curva-s-fila">
+    {% if planificacion_detalle.diario %}
+      <div class="tabla-scroll tabla-alto-fijo" style="--alto-tabla: 340px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Día</th>
+              <th class="num">Plan diario (T)</th>
+              <th class="num">Real diario (T)</th>
+              <th class="num">Carros</th>
+              <th class="num">Acum. Plan (T)</th>
+              <th class="num">Acum. Real (T)</th>
+              <th class="num">% Cumplimiento acum.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in planificacion_detalle.diario %}
+              <tr>
+                <td>{{ f.fecha|date:"d/m" }}</td>
+                <td class="num">{{ f.plan_diario|numero:1 }}</td>
+                <td class="num">{{ f.real_diario|numero:1 }}</td>
+                <td class="num">{{ f.carros|numero }}</td>
+                <td class="num">{{ f.acumulado_plan|numero:0 }}</td>
+                <td class="num">{{ f.acumulado_real|numero:0 }}</td>
+                <td class="num {% if f.cumplimiento_pct >= 100 %}dato-positivo{% elif f.cumplimiento_pct < 80 %}dato-negativo{% endif %}">{{ f.cumplimiento_pct|numero:1|default:"—" }}%</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="aviso">Sin datos diarios para el mes seleccionado.</p>
+    {% endif %}
+
+    <div class="curva-s-grafico">
+      {% with g=planificacion_detalle.curva_s %}
+        {% if g %}
+          <div class="chart-scroll">
+          <div class="chart-wrap chart-curva-s">
+            <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Curva S de cumplimiento: Objetivo acumulado vs Real acumulado">
+              <path class="linea-plan" d="{{ g.linea_a }}"></path>
+              <path class="linea-real" d="{{ g.linea_b }}"></path>
+              {% for e in g.etiquetas %}
+                {% if e.mostrar %}
+                  <circle class="punto-plan" cx="{{ e.a.x }}" cy="{{ e.a.y }}" r="2.6"></circle>
+                  {% if e.b %}
+                    <circle class="punto-real" cx="{{ e.b.x }}" cy="{{ e.b.y }}" r="2.6"></circle>
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+            </svg>
+            {% for e in g.etiquetas %}
+              {% if e.mostrar %}
+                <span class="etiqueta-valor etiqueta-valor-plan etiqueta-{{ e.a.pos }}" style="left:{{ e.a.x_pct }}%; top:{{ e.a.y_pct }}%;">{{ e.a.valor }}</span>
+                {% if e.b %}
+                  <span class="etiqueta-valor etiqueta-valor-real etiqueta-{{ e.b.pos }}" style="left:{{ e.b.x_pct }}%; top:{{ e.b.y_pct }}%;">{{ e.b.valor }}</span>
+                {% endif %}
+                <span class="etiqueta-mes" style="left:{{ e.x_pct }}%;">{{ e.etiqueta }}</span>
+              {% endif %}
+            {% endfor %}
+          </div>
+          </div>
+          <div class="leyenda-curva">
+            <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>Objetivo acumulado — {{ g.ultimo_a.valor }}</span>
+            <span class="leyenda-item"><span class="leyenda-marca leyenda-real"></span>Real acumulado — {{ g.ultimo_b.valor }}</span>
+          </div>
+        {% else %}
+          <p class="aviso">Sin datos suficientes para graficar la curva S en el mes seleccionado.</p>
+        {% endif %}
+      {% endwith %}
+    </div>
+  </div>
+  </div>
+</section>

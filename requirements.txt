@@ -46,3 +46,6 @@ uvicorn==0.52.4
 watchdog==6.0.0
 websockets==16.1.1
 whitenoise==6.12.0
+python-calamine==0.8.2
+waitress==3.0.2
+anthropic==1.9.0

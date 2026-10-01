@@ -1,0 +1,106 @@
+{% extends "gestion/base.html" %}
+{% load static dashboard_extras %}
+{% block titulo %}Planificación — Indicadores UPERU{% endblock %}
+{% block contenido %}
+<div class="wrap wrap-planificacion">
+
+  <header class="pagina">
+    <div class="encabezado-texto">
+      <span class="eyebrow">Indicadores de Gestión · UPERU</span>
+      <h1>PLANIFICACIÓN</h1>
+    </div>
+    <div class="sesion">
+      <button type="button" id="theme-toggle" class="btn-link">Modo oscuro</button>
+      <span>{{ request.user.username }}</span>
+      <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" class="btn-link">Cerrar sesión</button></form>
+    </div>
+  </header>
+
+  {% if categorias_nav %}
+    <nav class="nav-categorias">
+      {% for c in categorias_nav %}
+        {% if c.slug == "overview" %}
+          <a href="{% url 'overview' %}" class="nav-link {% if c.activo %}activo{% endif %}">{{ c.nombre }}</a>
+        {% elif c.slug == "planificacion" %}
+          <a href="{% url 'planificacion' %}" class="nav-link {% if c.activo %}activo{% endif %}">{{ c.nombre }}</a>
+        {% else %}
+          <a href="{% url 'categoria_detalle' slug=c.slug %}" class="nav-link {% if c.activo %}activo{% endif %}">{{ c.nombre }}</a>
+        {% endif %}
+      {% endfor %}
+    </nav>
+  {% endif %}
+
+  {% if sin_datos %}
+    <p class="aviso">Todavía no hay Plan de Abastecimiento ni Ingresos Físicos (S&amp;OP) cargados.</p>
+  {% else %}
+
+    <nav class="zonas" role="tablist" aria-label="Zonas de Planificación">
+      {% for z in zonas %}
+        <button type="button" class="zona-tab" role="tab" id="zona-tab-{{ z.clave }}" data-zona="{{ z.clave }}" aria-controls="zona-{{ z.clave }}" aria-selected="{% if forloop.first %}true{% else %}false{% endif %}"{% if not forloop.first %} tabindex="-1"{% endif %}><span class="zona-nombre">{{ z.nombre }}</span><span class="zona-desc">{{ z.descripcion }}</span></button>
+      {% endfor %}
+      <span class="zona-indicador" aria-hidden="true"></span>
+    </nav>
+
+    {# Solo Indicadores viene en la página; cada zona se pide al abrirla (o antes, en segundo plano, ver zonas.js). #}
+    {% for z in zonas %}
+      {% if forloop.first %}
+        <div class="zona-panel" id="zona-{{ z.clave }}" role="tabpanel" aria-labelledby="zona-tab-{{ z.clave }}">{{ indicadores_html }}</div>
+      {% else %}
+        <div class="zona-panel" id="zona-{{ z.clave }}" role="tabpanel" aria-labelledby="zona-tab-{{ z.clave }}" data-secciones="{{ z.secciones }}" data-pendiente hidden>
+          <div class="zona-esqueleto" aria-hidden="true"><div class="esqueleto-bloque"></div><div class="esqueleto-bloque esqueleto-bajo"></div></div>
+        </div>
+      {% endif %}
+    {% endfor %}
+
+    <script src="{% static 'gestion/js/zonas.js' %}?v={% version_estatico 'gestion/js/zonas.js' %}"></script>
+  {% endif %}
+
+
+  {# Asistente de IA de Planificación (ver gestion/asistente.py): botón fijo abajo a la derecha que abre un panel lateral de chat. Pedido por el usuario. #}
+  <button type="button" class="asistente-lanzador" id="asistente-abrir" aria-controls="asistente-panel" aria-expanded="false">
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 2l1.9 5.6L19.5 9.5l-5.6 1.9L12 17l-1.9-5.6L4.5 9.5l5.6-1.9L12 2zm7 11l.95 2.55L22.5 16.5l-2.55.95L19 20l-.95-2.55L15.5 16.5l2.55-.95L19 13zM5 14l.7 1.8 1.8.7-1.8.7L5 19l-.7-1.8-1.8-.7 1.8-.7L5 14z"/></svg>
+    <span>Asistente IA</span>
+  </button>
+  <aside class="asistente-panel" id="asistente-panel" hidden aria-label="Asistente de Planificación"
+         data-url="{% url 'asistente_planificacion' %}" data-activo="{% if asistente_activo %}1{% else %}0{% endif %}">
+    <header class="asistente-cabecera">
+      <div class="asistente-titulos">
+        <strong>Asistente de Planificación</strong>
+        <span class="asistente-sub">IA · responde con los datos cargados del S&amp;OP</span>
+      </div>
+      <div class="asistente-acciones">
+        <button type="button" class="btn-link" id="asistente-nueva">Nueva conversación</button>
+        <button type="button" class="asistente-cerrar" id="asistente-cerrar" aria-label="Cerrar el asistente">&times;</button>
+      </div>
+    </header>
+    <div class="asistente-mensajes" id="asistente-mensajes" aria-live="polite">
+      {% if not asistente_activo %}
+        <div class="asistente-aviso">
+          <strong>El asistente todavía no está activado.</strong>
+          Falta configurar la clave de API del servicio de IA (la gestiona Sistemas). Apenas esté, este panel funciona sin más cambios.
+        </div>
+      {% endif %}
+      <div class="asistente-bienvenida" id="asistente-bienvenida">
+        <p>Pregúntame sobre abastecimiento, stock, precios, IPU, calidad, premios o costo por energía. Respondo solo con los datos cargados y te indico de qué sección salen las cifras.</p>
+        <div class="asistente-sugerencias">
+          <button type="button" class="asistente-sugerencia" {% if not asistente_activo %}disabled{% endif %}>¿Qué materiales corren riesgo de quiebre en los próximos meses y cuánto hay que pedir?</button>
+          <button type="button" class="asistente-sugerencia" {% if not asistente_activo %}disabled{% endif %}>¿Cómo va el cumplimiento del plan de abastecimiento este mes?</button>
+          <button type="button" class="asistente-sugerencia" {% if not asistente_activo %}disabled{% endif %}>¿Qué materiales explican el IPU de 2026 y cuál es la bolsa?</button>
+          <button type="button" class="asistente-sugerencia" {% if not asistente_activo %}disabled{% endif %}>¿Qué proveedor de Carbón Terceros conviene más por costo por energía y calidad?</button>
+          <button type="button" class="asistente-sugerencia" {% if not asistente_activo %}disabled{% endif %}>Si el Carbón Terceros sube 5%, ¿cuánto impacta en los próximos 12 meses?</button>
+        </div>
+      </div>
+    </div>
+    <form class="asistente-formulario" id="asistente-formulario">
+      {% csrf_token %}
+      <label for="asistente-pregunta" class="solo-lector">Tu pregunta</label>
+      <textarea id="asistente-pregunta" rows="2" maxlength="2000"
+                placeholder="Escribe tu pregunta (Enter envía, Shift+Enter salta de línea)" {% if not asistente_activo %}disabled{% endif %}></textarea>
+      <button type="submit" class="asistente-enviar" id="asistente-enviar" {% if not asistente_activo %}disabled{% endif %}>Enviar</button>
+    </form>
+    <p class="asistente-pie">Respuestas generadas por IA a partir de los datos del dashboard: verifica las cifras en la sección indicada antes de decidir.</p>
+  </aside>
+  <script src="{% static 'gestion/js/asistente.js' %}?v={% version_estatico 'gestion/js/asistente.js' %}" defer></script>
+
+</div>
+{% endblock %}

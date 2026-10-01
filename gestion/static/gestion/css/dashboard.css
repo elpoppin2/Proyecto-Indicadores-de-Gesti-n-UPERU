@@ -1,0 +1,1119 @@
+/* Identidad visual del prototipo HTML de Materias Primas: tipografía industrial
+   (igual que el artefacto "Bitácora UPERU"), pero con fondo blanco, gráficos en
+   rojo y tablas en gris visible, a pedido del usuario. Ajuste acotado a esta
+   página — el dashboard de Streamlit sigue su propio theme.py/config.toml. */
+
+:root {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f2f2f2;
+  --ink: #1a1a1a;
+  --muted: #63666a;
+  --line: #d9d9d9;
+  --table-line: #adadad;
+  --table-header: #4d4d4d;
+  --accent: #e34948;
+  --accent-ink: #ffffff;
+  --up: #3f7d54;
+  --down: #b5502a;
+  --alerta-bg: #fbe9e3;
+  --warn: #9a6400;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .05), 0 6px 20px -8px rgba(0, 0, 0, .12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1b1b1b; --surface: #242424; --surface-2: #2d2d2d;
+    --ink: #f1f1f1; --muted: #a8a8a8; --line: #3a3a3a;
+    --table-line: #5a5a5a; --table-header: #c7c7c7;
+    --accent: #e66767; --accent-ink: #1b1b1b;
+    --up: #74c090; --down: #e0864c;
+    --alerta-bg: #3a2620; --warn: #e3ad4f;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 28px -10px rgba(0, 0, 0, .5);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1b1b1b; --surface: #242424; --surface-2: #2d2d2d;
+  --ink: #f1f1f1; --muted: #a8a8a8; --line: #3a3a3a;
+  --table-line: #5a5a5a; --table-header: #c7c7c7;
+  --accent: #e66767; --accent-ink: #1b1b1b;
+  --up: #74c090; --down: #e0864c;
+  --alerta-bg: #3a2620; --warn: #e3ad4f;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 28px -10px rgba(0, 0, 0, .5);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  padding-inline: 20px;
+  padding-block: 26px 60px;
+}
+
+.wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 26px; }
+/* Solo Planificación: bastante más espacio en blanco a la derecha que el
+   resto de páginas (menos tablas/columnas por sección), así que se le da más
+   ancho para que las tablas usen ese espacio; y los datos de sus tablas un
+   toque más chicos que en el resto del sitio (las cabeceras quedan igual).
+   Pedido por el usuario. */
+.wrap-planificacion { max-width: 1400px; }
+.wrap-planificacion td { font-size: 12px; }
+
+/* --- Encabezado --- */
+header.pagina { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.encabezado-texto { display: flex; flex-direction: column; gap: 4px; }
+.eyebrow {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--accent); font-weight: 600;
+}
+h1 {
+  font-family: "Big Shoulders Display", ui-sans-serif, sans-serif;
+  font-weight: 800; font-size: clamp(30px, 5vw, 44px);
+  line-height: .95; margin: 0; text-wrap: balance; letter-spacing: .01em;
+}
+.sesion { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+.sesion a { color: var(--accent); text-decoration: none; font-weight: 600; }
+.sesion a:hover { text-decoration: underline; }
+.btn-link {
+  background: none; border: none; color: var(--accent); font: inherit;
+  font-weight: 600; cursor: pointer; padding: 0;
+}
+.btn-link:hover { text-decoration: underline; }
+/* Botón "Reiniciar filtros" junto al título de cada sección con segmentadores
+   (lo agrega base.html). Pedido por el usuario. */
+.btn-reiniciar {
+  display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;
+  width: 24px; height: 24px; margin-left: 10px; padding: 0; border-radius: 50%;
+  border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+  font: 600 15px/1 "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; cursor: pointer;
+  transition: color .15s, border-color .15s, transform .3s;
+}
+.btn-reiniciar:hover { color: var(--accent); border-color: var(--accent); transform: rotate(-90deg); }
+.btn-reiniciar:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .btn-reiniciar, .btn-reiniciar:hover { transition: none; transform: none; } }
+@media print { .btn-reiniciar { display: none !important; } }
+.subtitulo {
+  font-family: "Big Shoulders Display", sans-serif; font-weight: 700;
+  font-size: 16px; margin: 6px 0 0;
+}
+/* Identifica un gráfico/tabla exportable con el botón "Descargar / Imprimir"
+   una vez separado del resto de la página (Mes/Centro/Material ya no se ven,
+   la selección hecha en el filtro queda resumida acá). Pedido por el usuario. */
+.titulo-bloque {
+  font-family: "Big Shoulders Display", sans-serif; font-weight: 700;
+  font-size: 18px; margin: 0; letter-spacing: .01em; color: var(--ink);
+}
+
+/* --- Navegación entre categorías --- */
+.nav-categorias {
+  display: flex; flex-wrap: wrap; gap: 6px 4px;
+  border-bottom: 1px solid var(--line); padding-bottom: 12px;
+}
+.nav-link {
+  font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--muted); text-decoration: none;
+  padding: 6px 12px; border-radius: 20px; border: 1px solid transparent;
+}
+.nav-link:hover { color: var(--ink); border-color: var(--line); }
+.nav-link.activo { color: var(--accent-ink); background: var(--accent); font-weight: 600; }
+
+/* --- Secciones --- */
+section.bloque {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  padding: 20px 22px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 16px;
+}
+.bloque h2 {
+  font-family: "Big Shoulders Display", sans-serif; font-weight: 700;
+  font-size: 22px; margin: 0; letter-spacing: .01em;
+}
+.bloque .nota {
+  font-size: 12.5px; color: var(--muted); margin: -8px 0 0;
+}
+.bloque-cabecera { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+
+/* --- Filtros (formularios GET, sin JS más que el auto-submit) --- */
+form.filtros { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+.campo { display: flex; flex-direction: column; gap: 4px; }
+.campo label {
+  font-family: "IBM Plex Mono", monospace; font-size: 10.5px; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--muted);
+}
+.campo select {
+  font: inherit; font-size: 13.5px; padding: 7px 10px; border-radius: 7px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink); min-width: 160px;
+}
+.campo select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* --- Métricas --- */
+.metricas { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.metrica { display: flex; flex-direction: column; gap: 2px; }
+.metrica .valor {
+  font-family: "Big Shoulders Display", sans-serif; font-weight: 700;
+  font-size: 26px; font-variant-numeric: tabular-nums;
+}
+.metrica .etiqueta { font-size: 12px; color: var(--muted); }
+
+/* --- Tablas: gris visible en bordes/encabezado + franjas alternadas --- */
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; border: 1px solid var(--table-line); }
+table caption { text-align: left; font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--table-line); }
+th {
+  font-family: "IBM Plex Mono", monospace; font-size: 10.5px; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--accent-ink); font-weight: 600;
+  background: var(--table-header); border-bottom: 1px solid var(--table-line);
+}
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.tabla-scroll { overflow-x: auto; }
+tbody tr:nth-child(even) { background: var(--surface-2); }
+tbody tr:hover { background: var(--line); }
+
+/* --- Columnas ordenables (clic en el encabezado): numéricas mayor/menor,
+   de texto alfabético — cualquier columna, en cualquier tabla sin scroll
+   infinito de servidor. Las tablas con scroll infinito (data-paginado) piden
+   la página ordenada al servidor y por ahora solo soportan sus columnas
+   numéricas (ver _ROTACION_COLUMNAS_ORDENABLES en views.py), así que ahí se
+   deja el cursor solo en esas. Definido por el usuario. */
+table:not([data-paginado]) thead th { cursor: pointer; user-select: none; }
+table:not([data-paginado]) thead th:hover { color: var(--accent); }
+table[data-paginado] th.num[data-columna] { cursor: pointer; user-select: none; }
+table[data-paginado] th.num[data-columna]:hover { color: var(--accent); }
+table thead th[data-orden]::after { margin-left: 5px; font-size: 8px; vertical-align: middle; }
+table thead th[data-orden="asc"]::after { content: "\25B2"; }
+table thead th[data-orden="desc"]::after { content: "\25BC"; }
+
+/* --- Tabla con muchas filas (p.ej. Rotación por material sin límite):
+   mantiene la altura de la sección razonable y desplaza solo el cuerpo,
+   con el encabezado siempre visible arriba. --- */
+.tabla-alto-fijo { max-height: var(--alto-tabla, 480px); overflow-y: auto; }
+.tabla-alto-fijo th { position: sticky; top: 0; z-index: 1; }
+
+/* --- Buscador de materiales (código/descripción), filtra la tabla en vivo --- */
+.buscador { display: flex; gap: 14px; flex-wrap: wrap; }
+.campo input[type="text"] {
+  font: inherit; font-size: 13.5px; padding: 7px 10px; border-radius: 7px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink); min-width: 180px;
+}
+.campo input[type="text"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* --- Gráfico de evolución (SVG + etiquetas superpuestas en HTML) ---
+   Las etiquetas de texto NO van dentro del <svg>: un <text> ahí se escala junto
+   con el gráfico (que se estira al 100% del contenedor) y termina viéndose más
+   grande que el resto de la tipografía del sitio. Como <span> HTML normal,
+   siempre respetan el tamaño de fuente real, igual que cualquier otra etiqueta
+   del proyecto (misma familia/tamaño que .campo label). */
+.chart-wrap { position: relative; }
+.chart-svg { width: 100%; height: auto; display: block; }
+.chart-svg .area { fill: var(--accent); opacity: .14; }
+.chart-svg .linea { fill: none; stroke: var(--accent); stroke-width: 2; }
+.chart-svg .punto { fill: var(--accent); }
+
+/* --- Curva S de cumplimiento (Objetivo acumulado vs Real acumulado) ---
+   Objetivo en rojo (var(--accent), ya es un tono rojo en ambos temas), Real
+   en negro/blanco (var(--ink): negro en tema claro, se invierte a blanco en
+   oscuro para seguir siendo legible sobre el fondo). Pedido por el usuario. */
+.chart-curva-s .linea-plan { fill: none; stroke: var(--accent); stroke-width: 2.2; }
+.chart-curva-s .linea-real { fill: none; stroke: var(--ink); stroke-width: 2.2; }
+.chart-curva-s .punto-plan { fill: var(--accent); }
+.chart-curva-s .punto-real { fill: var(--ink); }
+
+.leyenda-curva { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+.leyenda-item { display: inline-flex; align-items: center; gap: 6px; }
+.leyenda-marca { width: 14px; height: 2.5px; border-radius: 2px; display: inline-block; }
+.leyenda-plan { background: var(--accent); }
+.leyenda-real { background: var(--ink); }
+.leyenda-meta { background: var(--muted); }
+
+/* --- Cumplimiento mensual: barras verticales, una por mes, coloreadas por
+   umbral (mismos tonos que .dato-positivo/.dato-negativo) más una línea
+   punteada en la meta (100%). Pedido por el usuario. */
+.chart-barras .linea-meta { stroke: var(--muted); stroke-width: 1.4; stroke-dasharray: 4 4; }
+.chart-barras .barra-buena { fill: var(--up); }
+.chart-barras .barra-regular { fill: var(--muted); }
+.chart-barras .barra-mala { fill: var(--down); }
+.leyenda-marca.barra-buena, .leyenda-marca.barra-regular, .leyenda-marca.barra-mala { height: 10px; border-radius: 2px; }
+
+/* --- Evolución de inventario proyectada (S&OP): línea de stock en tinta,
+   área suave, línea de 0 punteada, y los meses en quiebre (stock negativo)
+   con el punto en color de alerta. Pedido por el usuario. */
+.chart-proyeccion .area { fill: var(--accent); opacity: .08; }
+.chart-proyeccion .linea { fill: none; stroke: var(--accent); stroke-width: 2.2; }
+.chart-proyeccion .punto { fill: var(--accent); }
+.chart-proyeccion .base-barras { stroke: var(--line); stroke-width: 1; }
+/* Abastecimiento en gris; Consumo en blanco con borde negro (en los dos
+   temas, para que se distinga del fondo). Pedido por el usuario. */
+.chart-proyeccion .barra-ingreso, .leyenda-marca.barra-ingreso { fill: #9a9a9a; background: #9a9a9a; }
+.chart-proyeccion .barra-consumo { fill: #ffffff; stroke: #111111; stroke-width: 1; }
+.leyenda-marca.barra-consumo { background: #ffffff; border: 1px solid #111111; }
+.leyenda-marca.barra-ingreso, .leyenda-marca.barra-consumo { height: 10px; width: 10px; border-radius: 2px; }
+/* Valor de cada barra, en miles (K), en vertical dentro de la barra (o
+   encima si la barra es muy baja). */
+.etiqueta-barra {
+  position: absolute; writing-mode: vertical-rl; white-space: nowrap; pointer-events: none;
+  font-family: "IBM Plex Mono", monospace; font-size: 9px; font-weight: 600; line-height: 1;
+}
+.etiqueta-barra-dentro { transform: translate(-50%, -50%) rotate(180deg); }
+.etiqueta-barra-encima { transform: translate(-50%, -100%) rotate(180deg); color: var(--muted); }
+.etiqueta-barra-dentro.barra-ingreso-texto, .etiqueta-barra-dentro.barra-consumo-texto { color: #111111; }
+.chart-proyeccion .punto-negativo { fill: var(--down); }
+.celda-codigo { white-space: nowrap; }
+
+/* --- Mínimos y máximos (S&OP): banda objetivo en el gráfico, estado de cada
+   celda de la matriz y pastillas del diagnóstico. Ámbar = sobre el máximo
+   (sobrecubierto), rojo = bajo el mínimo / quiebre, verde = en rango.
+   Pedido por el usuario. */
+.chart-proyeccion .banda-minmax { fill: var(--up); opacity: .13; }
+.chart-proyeccion .linea-minimo { fill: none; stroke: var(--down); stroke-width: 1.3; stroke-dasharray: 5 4; }
+.chart-proyeccion .linea-maximo { fill: none; stroke: var(--warn); stroke-width: 1.3; stroke-dasharray: 5 4; }
+.leyenda-marca.banda-minmax { height: 10px; width: 14px; border-radius: 2px; background: var(--up); opacity: .45; }
+.leyenda-nota { font-style: italic; }
+.dato-alerta { color: var(--warn); }
+td.estado-quiebre { background: rgba(214, 64, 52, .32); color: var(--down); font-weight: 600; }
+td.estado-bajo_minimo { background: rgba(214, 64, 52, .14); color: var(--down); }
+td.estado-en_rango { background: rgba(63, 160, 100, .14); }
+td.estado-sobre_maximo { background: rgba(214, 160, 40, .2); }
+.leyenda-marca.estado-quiebre { height: 10px; width: 14px; background: rgba(214, 64, 52, .6); }
+.leyenda-marca.estado-bajo_minimo { height: 10px; width: 14px; background: rgba(214, 64, 52, .28); }
+.leyenda-marca.estado-en_rango { height: 10px; width: 14px; background: rgba(63, 160, 100, .35); }
+.leyenda-marca.estado-sobre_maximo { height: 10px; width: 14px; background: rgba(214, 160, 40, .45); }
+.pill-diagnostico {
+  display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap;
+  border: 1px solid currentColor;
+}
+.diag-quiebre, .diag-bajo_minimo { color: var(--down); }
+.diag-sobrecubierto, .diag-sobre_maximo_puntual { color: var(--warn); }
+.diag-equilibrado { color: var(--up); }
+.diag-sin_parametro { color: var(--muted); }
+
+.chart-proyeccion .linea-cero { stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 4 4; }
+/* Todos los meses llevan etiqueta en el eje: un poco más chica para que
+   entren 17-18 meses sin pisarse. */
+.chart-proyeccion .etiqueta-mes { font-size: 9.5px; letter-spacing: 0; }
+
+/* Recuadro de detalle al pasar el mouse (ver base.html): las etiquetas de
+   datos, puntos y barras que lo tienen reciben el mouse (las etiquetas de
+   los gráficos, por defecto, no). Pedido por el usuario. */
+.chart-wrap .con-detalle { pointer-events: auto; cursor: help; }
+.chart-wrap .zona-detalle { fill: transparent; }
+.chart-wrap span.con-detalle:hover { text-decoration: underline dotted; text-underline-offset: 2px; }
+.detalle-grafico {
+  position: fixed; z-index: 50; max-width: 340px; padding: 8px 11px; border-radius: 8px; pointer-events: none;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--table-line); box-shadow: var(--shadow);
+  font-size: 12px; line-height: 1.5; font-variant-numeric: tabular-nums; white-space: pre-line;
+}
+.detalle-grafico::first-line { font-weight: 600; }
+
+/* --- Evolución de precios de entrada (S&OP): línea roja del precio y
+   barritas grises de toneladas compradas; con varios materiales, una grilla
+   de tarjetas con minigráfico. Precio que sube = rojo (encarece), que baja =
+   verde. Pedido por el usuario. */
+.chart-precio .linea { fill: none; stroke: var(--accent); stroke-width: 2.2; stroke-linejoin: round; }
+.chart-precio .punto { fill: var(--accent); }
+.chart-precio .base-barras { stroke: var(--line); stroke-width: 1; }
+.chart-precio .barra-toneladas, .leyenda-marca.barra-toneladas { fill: #9a9a9a; background: #9a9a9a; }
+.leyenda-marca.barra-toneladas { height: 10px; width: 10px; border-radius: 2px; }
+.grilla-precios { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.tarjeta-precio {
+  display: flex; flex-direction: column; gap: 6px; text-align: left; font: inherit; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; cursor: pointer;
+}
+.tarjeta-precio:hover { border-color: var(--accent); }
+.tarjeta-precio:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tarjeta-precio-cabecera { display: flex; flex-direction: column; gap: 1px; min-height: 2.9em; }
+.tarjeta-precio-nombre { font-weight: 600; font-size: 13px; line-height: 1.25; }
+.tarjeta-precio-codigo { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; color: var(--muted); }
+.tarjeta-precio-valor {
+  font-family: "Big Shoulders Display", sans-serif; font-weight: 700; font-size: 22px; font-variant-numeric: tabular-nums;
+}
+.tarjeta-precio-valor small { font-family: "IBM Plex Sans", sans-serif; font-weight: 400; font-size: 11.5px; color: var(--muted); }
+.minigrafico { width: 100%; height: 46px; display: block; overflow: visible; }
+.minigrafico path { fill: none; stroke: var(--accent); stroke-width: 1.8; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.minigrafico circle { fill: var(--accent); }
+.tarjeta-precio-variacion { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); }
+.tarjeta-precio-variacion .dato-negativo, .tarjeta-precio-variacion .dato-positivo { font-weight: 600; }
+
+/* --- Inflación de precios interanual: rojo = el precio subió frente a un
+   año antes (encarece), verde = bajó; la celda se intensifica con la
+   magnitud (tope a ±30%). * = comparado contra el último precio registrado
+   porque el mismo mes del año anterior no tuvo compra. Pedido por el
+   usuario. */
+td.celda-inflacion { white-space: nowrap; cursor: help; }
+td.celda-sube { background: color-mix(in srgb, var(--down) calc(var(--intensidad) * 45%), transparent); }
+td.celda-baja { background: color-mix(in srgb, var(--up) calc(var(--intensidad) * 45%), transparent); }
+.marca-sustituida { color: var(--warn); font-weight: 700; margin-left: 1px; }
+/* Comparación atípica (dato anómalo de MB51): gris rayado, no suma. */
+td.celda-atipica {
+  color: var(--muted);
+  background: repeating-linear-gradient(135deg, var(--surface-2) 0 4px, transparent 4px 8px);
+}
+.marca-atipica { color: var(--down); font-weight: 700; margin-left: 2px; }
+.tabla-inflacion th, .tabla-inflacion td { padding-inline: 8px; }
+.tabla-inflacion th { white-space: nowrap; }
+.tabla-inflacion td:first-child { min-width: 240px; }
+/* IPU (Índice de Precios Unacem): línea = acumulado del año (color de
+   acento, cortada en cada enero), puntos = valor de cada mes (rojo sube,
+   verde baja) con anillo del color de fondo para separarse de la línea. */
+.chart-ipu { padding-top: 14px; }
+.chart-ipu .linea-cero { stroke: var(--table-line); stroke-width: 1; }
+.chart-ipu .separador-anio { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart-ipu .linea-ipu { fill: none; stroke: var(--accent); stroke-width: 2.4; stroke-linejoin: round; }
+.chart-ipu .punto-ipu { fill: var(--accent); }
+.chart-ipu .marca-individual { stroke: var(--surface); stroke-width: 2; }
+.marca-sube { fill: var(--down); background: var(--down); }
+.marca-baja { fill: var(--up); background: var(--up); }
+.leyenda-marca.marca-sube, .leyenda-marca.marca-baja { width: 9px; height: 9px; border-radius: 50%; }
+.chart-ipu .etiqueta-ipu { color: var(--accent); font-size: 9.5px; }
+.chart-ipu .etiqueta-individual { color: var(--muted); font-size: 9px; font-weight: 500; }
+.rotulo-anio {
+  position: absolute; top: 0; transform: translateX(6px); font-family: "IBM Plex Mono", monospace;
+  font-size: 10.5px; font-weight: 600; color: var(--muted); pointer-events: none;
+}
+.metrica .prefijo-ipu { font-size: .55em; letter-spacing: .04em; color: var(--muted); }
+tr.fila-ipu td:first-child { color: var(--accent); }
+
+/* Ver precio: la variación va debajo del precio, más chica. */
+.celda-subtexto { display: block; font-size: 10px; color: var(--muted); line-height: 1.2; }
+.chart-precio .linea-precio-base { fill: none; stroke: var(--muted); stroke-width: 1.4; stroke-dasharray: 5 4; }
+
+/* --- Calidad (S&OP): tarjetas con la tabla de parámetros de cada material y,
+   con un material elegido, un panel con gráfico semanal por parámetro. Sin
+   color de bueno/malo: todavía no hay especificaciones cargadas. Pedido por
+   el usuario. */
+.tabla-parametros { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.fila-parametro {
+  display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr); gap: 6px;
+  font-variant-numeric: tabular-nums; padding: 2px 0; border-bottom: 1px dotted var(--line);
+}
+.fila-parametro > span:not(:first-child) { text-align: right; }
+.fila-parametro small { color: var(--muted); font-size: 10px; }
+.fila-parametro-cabecera {
+  font-family: "IBM Plex Mono", monospace; font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted); border-bottom: 1px solid var(--line);
+}
+.fila-parametro .tendencia { color: var(--muted); font-size: 9px; }
+.grilla-calidad { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.panel-calidad {
+  display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px 14px 8px; background: var(--surface); min-width: 0;
+}
+.panel-calidad-cabecera { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.panel-calidad-nombre { font-weight: 600; font-size: 13.5px; }
+.panel-calidad-nombre small { font-weight: 400; color: var(--muted); font-size: 11px; }
+.panel-calidad-promedio {
+  font-family: "Big Shoulders Display", sans-serif; font-weight: 700; font-size: 22px; font-variant-numeric: tabular-nums;
+}
+.panel-calidad-rango { font-size: 11px; color: var(--muted); }
+.chart-calidad .linea { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linejoin: round; }
+.chart-calidad .punto { fill: var(--accent); }
+.chart-calidad .linea-promedio { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; }
+/* Con un proveedor elegido: promedio de todos los proveedores del material
+   (referencia) y su fila resaltada en la tabla Por proveedor. */
+.chart-calidad .linea-referencia { stroke: var(--warn); stroke-width: 1.4; stroke-dasharray: 2 3; }
+.leyenda-marca.leyenda-referencia { background: var(--warn); }
+.panel-calidad-referencia strong { color: var(--ink); font-weight: 600; }
+tr.fila-seleccionada td, .wrap-planificacion .tabla-scroll tbody tr.fila-seleccionada td { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); font-weight: 600; }
+.chart-calidad .etiqueta-valor { font-size: 9px; }
+.chart-calidad .etiqueta-mes { font-size: 9.5px; }
+
+/* --- Premios y castigos por calidad: barra divergente desde el centro de la
+   celda — premio (se paga más por mejor calidad) a la derecha en verde,
+   castigo (se descuenta por peor calidad) a la izquierda en rojo. Pedido por
+   el usuario. */
+.acciones-cabecera { display: inline-flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }
+th.col-barra, td.col-barra { min-width: 170px; text-align: center; }
+.barra-divergente {
+  position: relative; display: block; height: 18px; font-variant-numeric: tabular-nums;
+  background: linear-gradient(var(--line), var(--line)) center / 1px 100% no-repeat;
+}
+.barra-divergente .barra-premio, .barra-divergente .barra-castigo { position: absolute; top: 3px; height: 12px; }
+.barra-divergente .barra-premio { left: 50%; background: var(--up); opacity: .55; border-radius: 0 3px 3px 0; }
+.barra-divergente .barra-castigo { right: 50%; background: var(--down); opacity: .55; border-radius: 3px 0 0 3px; }
+.barra-divergente-valor {
+  position: relative; font-size: 11.5px; font-weight: 600; line-height: 18px; padding: 0 4px;
+  background: color-mix(in srgb, var(--surface) 75%, transparent); border-radius: 3px;
+}
+.leyenda-marca.barra-premio { height: 10px; width: 14px; border-radius: 2px; background: var(--up); opacity: .55; }
+.leyenda-marca.barra-castigo { height: 10px; width: 14px; border-radius: 2px; background: var(--down); opacity: .55; }
+.texto-tenue { color: var(--muted); font-size: 11px; }
+.chart-calidad .etiqueta-valor.alinear-inicio { transform: translate(-4px, calc(-100% - 5px)); }
+.chart-calidad .etiqueta-valor.alinear-fin { transform: translate(calc(-100% + 4px), calc(-100% - 5px)); }
+.chart-calidad .etiqueta-mes.alinear-inicio { transform: translateX(-12px); }
+.chart-calidad .etiqueta-mes.alinear-fin { transform: translateX(calc(-100% + 12px)); }
+
+/* --- Costo por energía (carbones): PCS vs precio con la línea de costo por
+   Gcal promedio; energía más barata que el promedio en verde (debajo de la
+   línea, barra hacia la izquierda), más cara en rojo. Pedido por el usuario. */
+.chart-energia { padding-top: 16px; }
+.chart-energia .grilla { stroke: var(--line); stroke-width: 1; opacity: .6; }
+.chart-energia .eje { stroke: var(--table-line); stroke-width: 1; }
+.chart-energia .linea-iso { fill: none; stroke: var(--muted); stroke-width: 1.4; stroke-dasharray: 5 4; }
+.chart-energia .burbuja { stroke: var(--surface); stroke-width: 2; fill-opacity: .65; }
+.burbuja-barato { fill: var(--up); background: var(--up); }
+.burbuja-caro { fill: var(--down); background: var(--down); }
+.burbuja-igual { fill: var(--muted); background: var(--muted); }
+.leyenda-marca.burbuja-barato, .leyenda-marca.burbuja-caro { width: 10px; height: 10px; border-radius: 50%; opacity: .65; }
+.titulo-eje-y {
+  position: absolute; top: 0; left: 0; font-family: "IBM Plex Mono", monospace; font-size: 10px;
+  letter-spacing: .04em; color: var(--muted);
+}
+.etiqueta-eje-y {
+  position: absolute; left: 0; transform: translateY(-50%); padding-right: 6px; text-align: right;
+  font-family: "IBM Plex Mono", monospace; font-size: 10px; color: var(--muted); pointer-events: none;
+}
+.etiqueta-burbuja {
+  position: absolute; transform: translate(var(--desplazamiento), -50%); font-size: 10.5px; font-weight: 600;
+  color: var(--ink); white-space: nowrap; pointer-events: none;
+  text-shadow: 0 0 3px var(--surface), 0 0 3px var(--surface);
+}
+.etiqueta-burbuja.alinear-fin { transform: translate(calc(-100% - var(--desplazamiento)), -50%); }
+.barra-divergente .barra-barato, .barra-divergente .barra-caro { position: absolute; top: 3px; height: 12px; opacity: .55; }
+.barra-divergente .barra-barato { right: 50%; background: var(--up); border-radius: 3px 0 0 3px; }
+.barra-divergente .barra-caro { left: 50%; background: var(--down); border-radius: 0 3px 3px 0; }
+tr.fila-total td { font-weight: 600; border-top: 2px solid var(--table-line); }
+
+/* --- Evaluación diaria: tabla (con scroll de alto fijo) a la izquierda,
+   curva S a la derecha, ambas emparejadas en altura. Pedido por el usuario:
+   apiladas, la tabla (30 filas) quedaba mucho más alta que el gráfico. --- */
+.curva-s-fila { display: flex; gap: 20px; align-items: flex-start; }
+.curva-s-fila > .tabla-alto-fijo { flex: 1 1 320px; min-width: 0; }
+.curva-s-grafico { flex: 1 1 380px; min-width: 0; }
+@media (max-width: 720px) {
+  .curva-s-fila { flex-direction: column; }
+}
+
+.etiqueta-valor {
+  position: absolute; transform: translate(-50%, calc(-100% - 5px));
+  font-family: "IBM Plex Mono", monospace; font-size: 9.5px; font-weight: 600;
+  color: var(--ink); white-space: nowrap; pointer-events: none;
+}
+/* Curva S (dos series): cuál punto (Objetivo/Real) queda arriba en cada
+   columna cambia según el mes, así que ahí la dirección de la etiqueta no es
+   fija por serie — la calcula charts.py por punto (e.a.pos / e.b.pos) y estas
+   dos clases (que pisan el transform de más arriba) siempre separan la
+   etiqueta de arriba de la de abajo por al menos 9px desde su propio punto,
+   para que nunca se toquen aunque las dos líneas casi se crucen. Los gráficos
+   de una sola serie (PMP, Inventario, barras de Cumplimiento) no agregan
+   ninguna de estas dos y se quedan con el transform por defecto de arriba. */
+.etiqueta-valor-plan { color: var(--accent); }
+.etiqueta-valor-real { color: var(--ink); }
+.etiqueta-arriba { transform: translate(-50%, calc(-100% - 9px)); }
+.etiqueta-abajo { transform: translate(-50%, 9px); }
+/* La etiqueta del Real, centrada en su propio punto, quedaba justo encima de
+   la línea negra y se veía pisada por el trazo — se corre un poco a la
+   derecha (estas dos, con más clases, pisan a .etiqueta-arriba/.etiqueta-abajo
+   de arriba). Pedido por el usuario. */
+.etiqueta-valor-real.etiqueta-arriba { transform: translate(calc(-50% + 10px), calc(-100% - 9px)); }
+.etiqueta-valor-real.etiqueta-abajo { transform: translate(calc(-50% + 10px), 9px); }
+.etiqueta-mes {
+  position: absolute; bottom: 2px; transform: translateX(-50%);
+  font-family: "IBM Plex Mono", monospace; font-size: 10.5px; letter-spacing: .04em;
+  color: var(--muted); white-space: nowrap; pointer-events: none;
+}
+
+/* --- Barras horizontales (familias), en CSS puro --- */
+.barras { display: flex; flex-direction: column; gap: 8px; }
+.barra-fila { display: grid; grid-template-columns: 160px 1fr 90px; align-items: center; gap: 10px; }
+.barra-etiqueta { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barra-pista { background: var(--surface-2); border-radius: 5px; height: 12px; overflow: hidden; }
+.barra-relleno { background: var(--accent); height: 100%; border-radius: 5px 0 0 5px; }
+.barra-valor { font-size: 12.5px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* --- Estados --- */
+.dato-positivo { color: var(--up); }
+.dato-negativo { color: var(--down); }
+.aviso { color: var(--muted); font-size: 13.5px; padding: 10px 0; }
+/* Sección pidiendo datos nuevos (cambió un filtro): su contenido se atenúa y
+   una línea de acento recorre el borde de arriba mientras espera. */
+.cargando { pointer-events: none; position: relative; }
+.cargando > * { opacity: .5; transition: opacity .15s; }
+section.bloque.cargando::before {
+  content: ""; position: absolute; top: -1px; left: 14px; right: 14px; height: 2px; border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent) no-repeat;
+  background-size: 35% 100%; animation: barra-carga 1s ease-in-out infinite;
+}
+@keyframes barra-carga { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+
+/* --- Alerta (materiales críticos en riesgo) --- */
+.alerta {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--alerta-bg); border: 1px solid var(--down); color: var(--down);
+  border-radius: 10px; padding: 12px 16px; font-size: 13.5px; font-weight: 600;
+}
+.alerta-num {
+  font-family: "Big Shoulders Display", sans-serif; font-weight: 800;
+  font-size: 22px; line-height: 1;
+}
+
+/* --- Login --- */
+.login-shell {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: var(--bg); padding: 20px;
+}
+.login-card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: var(--shadow); padding: 32px 30px; width: 100%; max-width: 360px;
+  display: flex; flex-direction: column; gap: 18px;
+}
+.login-card h1 { font-size: 30px; }
+.login-card .campo input {
+  font: inherit; font-size: 14px; padding: 9px 11px; border-radius: 7px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink); width: 100%;
+}
+.login-card .campo input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.login-card button {
+  background: var(--accent); color: var(--accent-ink); border: none; border-radius: 8px;
+  padding: 11px; font-family: "IBM Plex Sans", sans-serif; font-weight: 600; font-size: 14.5px;
+  cursor: pointer;
+}
+.login-card button:hover { filter: brightness(1.05); }
+.login-card .error { color: var(--down); font-size: 13px; }
+
+@media (max-width: 640px) {
+  .barra-fila { grid-template-columns: 96px 1fr 70px; }
+}
+
+/* --- Celular (pedido por el usuario: no se veía cómodo) ---
+   Los gráficos con etiquetas superpuestas (Curva S, Cumplimiento mensual) no
+   se pueden comprimir a 360px sin que las etiquetas choquen, así que se dejan
+   a su tamaño de diseño (640px) dentro de un contenedor que se desliza a los
+   lados. Las tablas ya se deslizaban; ahí se compactan y la primera columna
+   (Material/Día/Mes) queda fija para no perder de qué fila se trata. Los
+   selects van a 16px: con menos, iOS hace zoom solo al tocarlos. */
+.chart-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+@media (max-width: 640px) {
+  body { padding-inline: 10px; padding-block: 16px 40px; }
+  .wrap { gap: 16px; }
+  section.bloque { padding: 14px 12px; gap: 12px; border-radius: 10px; }
+  .bloque h2 { font-size: 20px; }
+  .bloque .nota { font-size: 12px; }
+  header.pagina { align-items: flex-start; }
+  .sesion { flex-wrap: wrap; gap: 6px 12px; }
+  .nav-categorias { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .nav-link { flex: none; white-space: nowrap; padding: 8px 12px; }
+
+  form.filtros { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; }
+  form.filtros .campo:nth-of-type(odd):last-of-type { grid-column: 1 / -1; }
+  .campo { min-width: 0; }
+  .campo select, .campo input[type="text"] { width: 100%; min-width: 0; font-size: 16px; padding: 9px 10px; }
+
+  .metricas { grid-template-columns: 1fr 1fr; }
+  .metrica .valor { font-size: 22px; }
+
+  table { font-size: 12px; }
+  th, td { padding: 6px 8px; }
+  th { font-size: 9.5px; }
+  .wrap-planificacion td { font-size: 11.5px; }
+  td.num, th.num { white-space: nowrap; }
+  .wrap-planificacion .tabla-scroll th:first-child,
+  .wrap-planificacion .tabla-scroll td:first-child {
+    position: sticky; left: 0; z-index: 1; background: var(--surface);
+    box-shadow: 1px 0 0 var(--table-line);
+  }
+  .wrap-planificacion .tabla-scroll tbody tr:nth-child(even) td:first-child { background: var(--surface-2); }
+  .wrap-planificacion .tabla-scroll th:first-child { z-index: 3; background: var(--table-header); }
+
+  .chart-scroll::before {
+    content: "Desliza el gráfico \2192"; display: block; margin-bottom: 4px;
+    font-size: 10.5px; color: var(--muted); font-family: "IBM Plex Mono", monospace;
+  }
+  .chart-scroll > .chart-wrap { min-width: 640px; }
+  .chart-scroll > .chart-proyeccion { min-width: 900px; }
+}
+
+/* --- Botón "Descargar / Imprimir" con alcance a un solo bloque ---
+   El botón (data-imprimir="<id>", ver base.html) marca: los ANCESTROS del
+   bloque elegido con .imprimir-camino (para que tengan dónde renderizarse,
+   sin mostrar sus otros hijos) y el bloque + todo su contenido con
+   .imprimir-objetivo (para que se vea completo, no solo el contenedor vacío
+   — un padre en display:none no muestra a sus hijos aunque el hijo tenga su
+   propio display puesto por otro lado). `revert` y no `block`: no rompe el
+   layout real de cada elemento (flex, grid, tabla...). Funciona para
+   cualquier id sin agregar una regla nueva por cada uno. Fuera de la clase
+   .imprimir-aislado el comportamiento en pantalla no cambia en nada. Pedido
+   por el usuario, como alternativa a "pantallazos" del reporte sin depender
+   de ninguna librería externa. */
+@media print {
+  body.imprimir-aislado * { display: none !important; }
+  body.imprimir-aislado .imprimir-camino,
+  body.imprimir-aislado .imprimir-objetivo {
+    display: revert !important;
+  }
+}
+
+/* El botón de reiniciar no sale al imprimir/descargar una sección (gana a
+   la regla de .imprimir-objetivo de arriba por especificidad). */
+@media print {
+  .btn-reiniciar, body.imprimir-aislado .btn-reiniciar.imprimir-objetivo { display: none !important; }
+}
+
+/* --- Evaluación de consumo: barras grises = consumo real (el mes en curso
+   más claro, todavía no cierra), línea de acento = plan de consumos S&OP.
+   Pedido por el usuario. --- */
+.chart-consumo .base-barras { stroke: var(--line); stroke-width: 1; }
+.barra-consumo-real { fill: #8f8f8f; background: #8f8f8f; }
+.barra-consumo-real.barra-parcial { fill: #c9c9c9; background: #c9c9c9; }
+.leyenda-marca.barra-consumo-real { width: 10px; height: 10px; border-radius: 2px; }
+.chart-consumo .linea-plan-consumo { fill: none; stroke: var(--accent); stroke-width: 2.2; stroke-linejoin: round; }
+.chart-consumo .punto-plan-consumo { fill: var(--accent); }
+.chart-consumo .etiqueta-plan-consumo { color: var(--accent); font-size: 9px; }
+.etiqueta-consumo-dentro { color: #ffffff; }
+.pill-consumo {
+  display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap;
+  border: 1px solid currentColor;
+}
+.consumo-sobre { color: var(--warn); }
+.consumo-bajo { color: var(--down); }
+.consumo-en_linea { color: var(--up); }
+
+/* --- Zonas (pestañas) de Planificación: barra fija arriba al bajar, con el
+   nombre de la zona y una línea de qué contiene; la activa lleva la barra de
+   acento debajo. Pedido por el usuario ("lavado de cara": todo era muy
+   vertical). --- */
+.zonas {
+  position: sticky; top: 0; z-index: 20; background: var(--bg);
+  display: flex; gap: 2px; border-bottom: 1px solid var(--line);
+  margin-top: -12px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: thin;
+}
+/* Cada pestaña se queda en su ancho: antes la descripción (sin salto de
+   línea) se salía y se montaba sobre la pestaña vecina, la barra se
+   desbordaba (barras de desplazamiento horizontal y vertical) y al hacer
+   clic se desplazaba, cruzando las pestañas. Reportado por el usuario. */
+.zona-tab {
+  flex: 1 1 0; min-width: 150px; overflow: hidden; display: flex; flex-direction: column; gap: 3px; text-align: left;
+  background: none; border: 0; border-bottom: 3px solid transparent; margin-bottom: -1px;
+  padding: 12px 14px 10px; cursor: pointer; color: var(--muted); font: inherit;
+  transition: background-color .15s, border-color .15s, color .15s;
+}
+.zona-tab:hover { background: var(--surface-2); color: var(--ink); }
+.zona-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.zona-tab[aria-selected="true"] { border-bottom-color: var(--accent); color: var(--ink); }
+.zona-nombre {
+  font-family: "Big Shoulders Display", sans-serif; font-weight: 700;
+  font-size: 19px; line-height: 1; letter-spacing: .02em; white-space: nowrap;
+}
+.zona-tab[aria-selected="true"] .zona-nombre { color: var(--accent); }
+.zona-desc {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: .05em;
+  text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.zona-nombre { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.zona-panel { display: flex; flex-direction: column; gap: 26px; }
+.zona-panel[hidden] { display: none; }
+/* Con JS, la marca de la pestaña activa es una sola barra que se desliza de
+   una pestaña a otra (zonas.js la ubica), en vez del borde de cada botón. */
+.zona-indicador {
+  position: absolute; left: 0; bottom: 0; height: 3px; width: 0; border-radius: 3px 3px 0 0;
+  background: var(--accent); pointer-events: none;
+}
+.zonas-con-indicador .zona-tab[aria-selected="true"] { border-bottom-color: transparent; }
+.zonas-animadas .zona-indicador { transition: transform .32s cubic-bezier(.2, .8, .2, 1), width .32s cubic-bezier(.2, .8, .2, 1); }
+.zona-tab .zona-nombre { display: inline-block; transition: transform .12s ease-out, color .15s; transform-origin: left center; }
+.zona-tab:active .zona-nombre { transform: scale(.96); }
+
+/* Una zona entra desde el lado hacia el que se movió la pestaña. Arranca casi
+   opaca: si arrancaba en 0, al cambiar de pestaña la zona anterior
+   desaparecía y la nueva se veía en blanco un instante (parpadeo debajo de
+   la barra, reportado por el usuario), más largo la primera vez que se abre
+   una zona pesada (Consumo, Inventario). */
+@keyframes zona-entrar { from { opacity: .85; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+@keyframes zona-entrar-der { from { opacity: .85; transform: translateX(12px); } to { opacity: 1; transform: none; } }
+@keyframes zona-entrar-izq { from { opacity: .85; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
+.zona-panel.entrando { animation: zona-entrar .28s cubic-bezier(.2, .8, .2, 1); }
+.zona-panel.entrando-der { animation: zona-entrar-der .3s cubic-bezier(.2, .8, .2, 1); }
+.zona-panel.entrando-izq { animation: zona-entrar-izq .3s cubic-bezier(.2, .8, .2, 1); }
+/* Paneles de Indicadores: aparecen en cascada al entrar a la zona, desde un
+   estado ya visible (desde 0 parpadeaban). La franja de números clave de
+   cada zona, justo debajo de la barra, no se anima: es lo primero que se lee. */
+@keyframes tarjeta-entrar { from { opacity: .5; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.zona-panel[class*="entrando"] .panel-indicador { animation: tarjeta-entrar .34s cubic-bezier(.2, .8, .2, 1) both; animation-delay: calc(var(--i, 0) * 40ms); }
+/* Sección recién actualizada por un filtro y filas recién ordenadas. */
+@keyframes seccion-asentar { from { opacity: .55; } to { opacity: 1; } }
+.seccion-actualizada { animation: seccion-asentar .3s ease-out; }
+@keyframes filas-asentar { from { opacity: .35; } to { opacity: 1; } }
+tbody.tabla-ordenada { animation: filas-asentar .25s ease-out; }
+
+/* Zona todavía no cargada: bloques grises con un brillo que pasa. */
+.zona-esqueleto { display: flex; flex-direction: column; gap: 26px; }
+.esqueleto-bloque {
+  height: 420px; border-radius: 12px; border: 1px solid var(--line);
+  background: linear-gradient(100deg, var(--surface) 30%, var(--surface-2) 50%, var(--surface) 70%) var(--surface);
+  background-size: 250% 100%; animation: esqueleto-brillo 1.3s linear infinite;
+}
+.esqueleto-bajo { height: 260px; }
+@keyframes esqueleto-brillo { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+.zona-refrescando { opacity: .6; transition: opacity .15s; pointer-events: none; }
+.zona-error { padding: 24px 0; color: var(--muted); display: flex; align-items: center; gap: 12px; }
+.zona-error p { margin: 0; }
+
+/* Clic: los botones y tarjetas "ceden" un poco al presionarlos. */
+.btn-link { display: inline-block; transition: transform .12s ease-out; }
+.btn-link:active { transform: scale(.96); }
+.btn-reiniciar:active { transform: rotate(-90deg) scale(.9); }
+.tarjeta-precio { transition: border-color .15s, transform .12s ease-out, box-shadow .15s; }
+.tarjeta-precio:active { transform: scale(.98); }
+.campo select { transition: border-color .15s, box-shadow .15s; }
+.campo select:hover { border-color: var(--table-line); }
+.btn-ir-zona span { display: inline-block; transition: transform .15s ease-out; }
+.btn-ir-zona:hover span { transform: translateX(3px); }
+
+/* Las secciones fuera de pantalla no se dibujan hasta acercarse (tablas
+   largas): cambiar de zona y bajar por la página es más liviano. */
+.zona-panel > section.bloque { content-visibility: auto; contain-intrinsic-size: auto 900px; }
+/* Al saltar a una sección (#sec-consumo), que su título no quede debajo de
+   la barra de pestañas fija. */
+.zona-panel > section { scroll-margin-top: 84px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .zona-tab, .zona-indicador, .zona-tab .zona-nombre, .btn-link, .tarjeta-precio, .btn-ir-zona span { transition: none !important; }
+  .zona-panel[class*="entrando"], .zona-panel[class*="entrando"] .panel-indicador, .zona-panel[class*="entrando"] .kpi-franja,
+  .zona-panel[class*="entrando"] .escala-barra, .seccion-actualizada,
+  tbody.tabla-ordenada, .esqueleto-bloque, section.bloque.cargando::before { animation: none !important; }
+  .btn-link:active, .tarjeta-precio:active, .zona-tab:active .zona-nombre { transform: none; }
+}
+@media (max-width: 900px) {
+  .zona-tab { flex: none; min-width: 0; padding: 10px 12px 8px; }
+  .zona-desc { display: none; }
+}
+@media print { .zonas { display: none !important; } }
+
+/* Pestaña Indicadores: un panel por indicador con su resultado (cifra +
+   pastilla de estado) y el gráfico que lo explica. Dos columnas; los
+   gráficos mes a mes largos ocupan el ancho completo. Pedido por el usuario. */
+.indicadores-graficos { display: flex; flex-direction: column; gap: 14px; }
+.indicadores-nota { font-size: 12.5px; color: var(--muted); margin: 0; }
+/* Filtro Mes de Indicadores, a la izquierda de la nota. */
+.indicadores-cabecera { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px 22px; }
+.indicadores-cabecera form.filtros { margin: 0; }
+.indicadores-cabecera .indicadores-nota { flex: 1 1 320px; max-width: 80ch; padding-bottom: 4px; }
+.indicadores-graficos.cargando .paneles-indicador { opacity: .55; transition: opacity .15s; }
+.paneles-indicador { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+.panel-ancho { grid-column: 1 / -1; }
+@media (max-width: 980px) { .paneles-indicador { grid-template-columns: minmax(0, 1fr); } }
+.panel-indicador {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow);
+  padding: 18px 20px 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0;
+  transition: border-color .18s;
+}
+.panel-indicador:hover { border-color: var(--table-line); }
+.panel-cabecera { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.panel-titulos { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.panel-zona {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--accent); font-weight: 600;
+}
+.panel-cabecera h2 {
+  font-family: "Big Shoulders Display", sans-serif; font-weight: 700; font-size: 20px; line-height: 1.1;
+  margin: 0; letter-spacing: .01em; text-wrap: balance;
+}
+.panel-cabecera .btn-link { font-size: 12.5px; white-space: nowrap; margin-top: 2px; }
+.panel-resultado { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
+.panel-cifra {
+  font-family: "Big Shoulders Display", sans-serif; font-weight: 700; font-size: 34px; line-height: 1;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.panel-sub { flex-basis: 100%; font-size: 12.5px; color: var(--muted); }
+.pill-estado {
+  align-self: center; padding: 2px 9px; border-radius: 999px; border: 1px solid currentColor;
+  font-family: "IBM Plex Mono", monospace; font-size: 10.5px; font-weight: 600; letter-spacing: .05em;
+  text-transform: uppercase; white-space: nowrap;
+}
+.pill-estado::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; margin-right: 6px; vertical-align: 1px; }
+.estado-ok { color: var(--up); background: color-mix(in srgb, var(--up) 10%, transparent); }
+.estado-alerta { color: var(--down); background: color-mix(in srgb, var(--down) 10%, transparent); }
+.estado-aviso { color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.estado-neutro { color: var(--muted); }
+.panel-pie { display: flex; flex-direction: column; gap: 6px; margin-top: auto; }
+.panel-pie .leyenda-curva { margin-top: 0; gap: 6px 14px; font-size: 11.5px; }
+.panel-nota { margin: 0; font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+.panel-vacio { font-size: 12.5px; padding: 18px 0; }
+
+/* Barras sobre una escala (% de la meta, desviación con signo, días): nombre,
+   pista con la referencia punteada (y la banda de tolerancia) y el valor. */
+.escala { display: flex; flex-direction: column; gap: 7px; }
+.escala-fila {
+  display: grid; grid-template-columns: minmax(6.5rem, 12.5rem) minmax(0, 1fr) 3.3rem;
+  align-items: center; gap: 10px; font-size: 12.5px;
+}
+.escala-nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.escala-sub { font-family: "IBM Plex Mono", monospace; font-size: 9.5px; color: var(--muted); }
+.escala-pista { position: relative; height: 14px; border-radius: 3px; background: var(--surface-2); }
+.escala-banda { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--up) 16%, transparent); }
+.escala-ref { position: absolute; top: -3px; bottom: -3px; width: 0; border-left: 1.5px dashed var(--muted); z-index: 1; }
+.escala-barra { position: absolute; top: 2px; bottom: 2px; border-radius: 2px; transform-origin: left center; }
+.escala-barra.escala-negativa { transform-origin: right center; }
+.escala-recortada { -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); mask-image: linear-gradient(90deg, #000 88%, transparent); }
+.escala-negativa.escala-recortada { -webkit-mask-image: linear-gradient(270deg, #000 88%, transparent); mask-image: linear-gradient(270deg, #000 88%, transparent); }
+.escala-valor { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.escala-fila.con-detalle:hover .escala-pista { box-shadow: 0 0 0 1px var(--table-line); }
+.escala-fila.con-detalle:hover .escala-nombre { color: var(--accent); }
+.escala-eje .escala-pista { background: none; height: 12px; }
+.escala-ref-texto {
+  position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap;
+  font-family: "IBM Plex Mono", monospace; font-size: 9.5px; color: var(--muted);
+}
+.tono-bien { background: var(--up); }
+.tono-regular { background: var(--warn); }
+.tono-mal { background: var(--down); }
+.tono-neutra { background: var(--table-header); opacity: .55; }
+@keyframes barra-crecer { from { transform: scaleX(0); } to { transform: none; } }
+.zona-panel[class*="entrando"] .escala-barra { animation: barra-crecer .55s cubic-bezier(.2, .8, .2, 1) both; animation-delay: 140ms; }
+@media (max-width: 560px) {
+  .escala-fila { grid-template-columns: minmax(0, 1fr) 3.1rem; row-gap: 3px; }
+  .escala-nombre { grid-column: 1 / -1; }
+  .escala-eje > span:first-child { display: none; }
+}
+
+/* Columnas por mes (apiladas / con signo) con línea opcional. */
+.chart-columnas .grilla-lineas { stroke: var(--line); stroke-width: 1; }
+.chart-columnas .linea-cero { stroke: var(--table-line); stroke-width: 1.2; }
+.chart-columnas rect:not(.zona-detalle) { stroke: var(--surface); stroke-width: 1; }
+.chart-columnas .linea-col { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-columnas .punto-col { fill: var(--ink); stroke: var(--surface); stroke-width: 1.5; }
+.chart-columnas .etiqueta-final { transform: translate(8px, -50%); }
+.chart-columnas .etiqueta-abajo { transform: translate(-50%, 5px); }
+.chart-columnas .zona-detalle:hover { fill: color-mix(in srgb, var(--ink) 5%, transparent); }
+.col-quiebre, .marca-col-quiebre { fill: var(--down); background: var(--down); }
+.col-bajo_minimo, .marca-col-bajo_minimo { fill: color-mix(in srgb, var(--down) 45%, var(--surface)); background: color-mix(in srgb, var(--down) 45%, var(--surface)); }
+.col-en_rango, .marca-col-en_rango { fill: color-mix(in srgb, var(--up) 55%, var(--surface)); background: color-mix(in srgb, var(--up) 55%, var(--surface)); }
+.col-sobre_maximo, .marca-col-sobre_maximo { fill: color-mix(in srgb, var(--warn) 60%, var(--surface)); background: color-mix(in srgb, var(--warn) 60%, var(--surface)); }
+.col-sin_parametro, .marca-col-sin_parametro { fill: var(--line); background: var(--line); }
+.col-sube, .marca-col-sube { fill: var(--down); background: var(--down); }
+.col-baja, .marca-col-baja { fill: var(--up); background: var(--up); }
+.col-premio, .marca-col-premio { fill: color-mix(in srgb, var(--up) 70%, var(--surface)); background: color-mix(in srgb, var(--up) 70%, var(--surface)); }
+.col-castigo, .marca-col-castigo { fill: color-mix(in srgb, var(--down) 70%, var(--surface)); background: color-mix(in srgb, var(--down) 70%, var(--surface)); }
+.leyenda-marca[class*="marca-col-"], .marca-bien, .marca-regular, .marca-mal, .marca-neutra { width: 12px; height: 10px; border-radius: 2px; }
+.marca-bien { background: var(--up); }
+.marca-regular { background: var(--warn); }
+.marca-mal { background: var(--down); }
+.marca-neutra { background: var(--table-header); opacity: .55; }
+.marca-linea-ipu, .marca-linea-neto { background: var(--ink); }
+.marca-serie-0 { background: var(--accent); }
+.marca-serie-1 { background: repeating-linear-gradient(90deg, var(--table-header) 0 4px, transparent 4px 7px); }
+
+/* Filtro Material con varios materiales y grupos (zonas.js): botón con el
+   resumen, como un <select>, y un panel con buscador, grupos y casillas. */
+.filtro-multi { position: relative; }
+.filtro-multi select[data-multi] { display: none !important; }
+.filtro-multi-boton {
+  font: inherit; font-size: 13.5px; text-align: left; cursor: pointer;
+  min-width: 220px; max-width: 340px; padding: 7px 30px 7px 10px; border-radius: 7px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative;
+  transition: border-color .15s, box-shadow .15s;
+}
+.filtro-multi-boton::after {
+  content: ""; position: absolute; right: 11px; top: 50%; width: 6px; height: 6px; margin-top: -5px;
+  border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg);
+}
+.filtro-multi-boton:hover { border-color: var(--table-line); }
+.filtro-multi-boton:focus-visible, .filtro-multi-boton[aria-expanded="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+.filtro-multi-panel {
+  position: fixed; z-index: 60; display: flex; flex-direction: column; gap: 10px; padding: 12px;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--table-line); border-radius: 10px;
+  box-shadow: var(--shadow), 0 12px 32px -12px rgba(0, 0, 0, .35); font-size: 13px;
+}
+.filtro-multi-buscar {
+  font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 7px; width: 100%; box-sizing: border-box;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+}
+.filtro-multi-buscar:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.filtro-multi-grupos { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-grupo {
+  font: 600 11.5px "IBM Plex Sans", sans-serif; padding: 3px 9px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--ink);
+  transition: background-color .12s, border-color .12s, color .12s;
+}
+.chip-grupo .chip-cuenta { font-family: "IBM Plex Mono", monospace; font-size: 10px; color: var(--muted); }
+.chip-grupo:hover { border-color: var(--accent); }
+.chip-grupo[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.chip-grupo[aria-pressed="true"] .chip-cuenta { color: inherit; opacity: .8; }
+.chip-grupo:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.filtro-multi-lista { overflow-y: auto; min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+.grupo-bloque { display: flex; flex-direction: column; }
+.grupo-bloque[hidden], .opcion-material[hidden] { display: none; }
+.grupo-titulo {
+  display: flex; align-items: center; gap: 8px; padding: 4px 2px; cursor: pointer;
+  font-family: "IBM Plex Mono", monospace; font-size: 10.5px; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line);
+}
+.opcion-material { display: flex; align-items: center; gap: 8px; padding: 4px 2px 4px 14px; cursor: pointer; border-radius: 5px; }
+.opcion-material:hover { background: var(--surface-2); }
+.opcion-material input, .grupo-titulo input { accent-color: var(--accent); margin: 0; }
+.opcion-nombre { flex: 1 1 auto; min-width: 0; }
+.opcion-codigo { font-family: "IBM Plex Mono", monospace; font-size: 10px; color: var(--muted); white-space: nowrap; }
+.filtro-multi-pie { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-top: 2px; border-top: 1px solid var(--line); }
+.filtro-multi-pie .btn-link { font-size: 12.5px; }
+.filtro-multi-aplicar {
+  font: 600 12.5px "IBM Plex Sans", sans-serif; padding: 6px 14px; border-radius: 7px; border: 0; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink); transition: transform .12s ease-out;
+}
+.filtro-multi-aplicar:active { transform: scale(.97); }
+.filtro-multi-aplicar:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+@media (max-width: 640px) { .filtro-multi-boton { min-width: 0; width: 100%; max-width: none; font-size: 16px; padding: 9px 30px 9px 10px; } }
+
+/* Detalle por material (Cumplimiento): los proveedores de cada material
+   (ZMM056) como filas hijas que se abren con el botón junto a la descripción. */
+.btn-proveedores {
+  margin-left: 8px; padding: 1px 8px 1px 6px; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--surface); color: var(--muted); cursor: pointer; white-space: nowrap; vertical-align: 1px;
+  font: 600 10.5px "IBM Plex Mono", monospace; letter-spacing: .03em;
+}
+.btn-proveedores::before { content: "\25B8"; display: inline-block; margin-right: 4px; transition: transform .15s; }
+.btn-proveedores[aria-expanded="true"]::before { transform: rotate(90deg); }
+.btn-proveedores:hover { color: var(--accent); border-color: var(--accent); }
+.btn-proveedores:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tabla-con-hijas tr.fila-hija td { font-size: 12.5px; background: color-mix(in srgb, var(--surface-2) 55%, var(--surface)); }
+.tabla-con-hijas .celda-proveedor { padding-left: 24px; position: relative; }
+.tabla-con-hijas .celda-proveedor::before { content: "\21B3"; position: absolute; left: 9px; color: var(--muted); }
+
+/* Números clave de cada zona, arriba de sus secciones (antes eran las
+   tarjetas de Indicadores), con un punto de estado (rojo = requiere
+   atención, verde = bien). */
+.franja-kpis {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 1px;
+  background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow);
+}
+.franja-kpis[hidden] { display: none; }
+.kpi-franja { background: var(--surface); padding: 14px 18px; display: flex; flex-direction: column; gap: 4px; }
+.kpi-valor {
+  font-family: "Big Shoulders Display", sans-serif; font-weight: 700; font-size: 26px; line-height: 1.05;
+  font-variant-numeric: tabular-nums; white-space: nowrap; display: inline-flex; align-items: center; gap: 8px;
+}
+.kpi-etiqueta { font-size: 12px; color: var(--muted); line-height: 1.35; }
+.kpi-alerta .kpi-valor::before, .kpi-ok .kpi-valor::before { content: ""; width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.kpi-alerta .kpi-valor::before { background: var(--down); }
+.kpi-ok .kpi-valor::before { background: var(--up); }
+
+/* --- Consumo por tonelada producida: gráfico de líneas mensuales (una o
+   dos series, un solo eje) con grilla y promedio punteado. --- */
+.chart-lineas .grilla-lineas { stroke: var(--line); stroke-width: 1; }
+.chart-lineas .linea-serie { fill: none; stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-lineas .linea-serie.serie-0, .chart-lineas .referencia-lineas.serie-0 { stroke: var(--accent); }
+.chart-lineas .linea-serie.serie-1, .chart-lineas .referencia-lineas.serie-1 { stroke: var(--table-header); }
+.chart-lineas .punto-serie.serie-0 { fill: var(--accent); }
+.chart-lineas .punto-serie.serie-1 { fill: var(--table-header); }
+.chart-lineas .referencia-lineas { stroke-width: 1.3; stroke-dasharray: 5 4; opacity: .75; }
+.chart-lineas .etiqueta-serie-0 { color: var(--accent); }
+.chart-lineas .etiqueta-serie-1 { color: var(--table-header); }
+.chart-lineas .etiqueta-valor.etiqueta-derecha { transform: translate(7px, -50%); }
+.etiqueta-grilla {
+  position: absolute; left: 0; transform: translateY(-50%);
+  font-family: "IBM Plex Mono", monospace; font-size: 9.5px; color: var(--muted); pointer-events: none;
+}
+.leyenda-marca.leyenda-linea.serie-0 { background: var(--accent); }
+.leyenda-marca.leyenda-linea.serie-1 { background: var(--table-header); }
+.leyenda-marca.leyenda-referencia.serie-0 { background: repeating-linear-gradient(90deg, var(--accent) 0 4px, transparent 4px 7px); }
+.leyenda-marca.leyenda-referencia.serie-1 { background: repeating-linear-gradient(90deg, var(--table-header) 0 4px, transparent 4px 7px); }
+
+/* --- Asistente de IA de Planificación: botón fijo abajo a la derecha y
+   panel lateral de chat. Pedido por el usuario. --- */
+.solo-lector {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+.asistente-lanzador {
+  position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 55;
+  display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px 10px 13px; border: 0; border-radius: 999px;
+  background: var(--accent); color: var(--accent-ink); font: 600 13.5px "IBM Plex Sans", sans-serif;
+  box-shadow: var(--shadow), 0 4px 14px -4px color-mix(in srgb, var(--accent) 55%, transparent); cursor: pointer;
+  transition: transform .15s ease;
+}
+.asistente-lanzador:hover { transform: translateY(-1px); }
+.asistente-lanzador:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+body.asistente-abierto .asistente-lanzador { display: none; }
+.asistente-panel {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 60; width: min(440px, 100vw);
+  display: flex; flex-direction: column; background: var(--surface); color: var(--ink);
+  border-left: 1px solid var(--line); box-shadow: -14px 0 36px -14px rgba(0, 0, 0, .28);
+  padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.asistente-panel[hidden] { display: none; }
+.asistente-cabecera {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+  padding: 14px 14px 12px 18px; border-bottom: 1px solid var(--line);
+}
+.asistente-titulos { display: flex; flex-direction: column; gap: 2px; }
+.asistente-titulos strong { font: 700 19px "Big Shoulders Display", sans-serif; letter-spacing: .01em; }
+.asistente-sub { font-size: 11.5px; color: var(--muted); }
+.asistente-acciones { display: flex; align-items: center; gap: 10px; }
+.asistente-acciones .btn-link { font-size: 12px; }
+.asistente-cerrar {
+  width: 30px; height: 30px; border: 0; border-radius: 6px; background: transparent; color: var(--muted);
+  font-size: 22px; line-height: 1; cursor: pointer;
+}
+.asistente-cerrar:hover { background: var(--surface-2); color: var(--ink); }
+.asistente-mensajes {
+  flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px;
+  overscroll-behavior: contain;
+}
+.asistente-aviso {
+  background: var(--alerta-bg); border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); border-radius: 8px;
+  padding: 10px 12px; font-size: 12.5px; line-height: 1.45;
+}
+.asistente-aviso strong { display: block; margin-bottom: 2px; }
+.asistente-bienvenida { display: flex; flex-direction: column; gap: 10px; }
+.asistente-bienvenida[hidden] { display: none; }
+.asistente-bienvenida p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
+.asistente-sugerencias { display: flex; flex-direction: column; gap: 6px; }
+.asistente-sugerencia {
+  text-align: left; padding: 8px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2);
+  color: var(--ink); font: 12.5px/1.4 "IBM Plex Sans", sans-serif; cursor: pointer;
+}
+.asistente-sugerencia:hover:not(:disabled) { border-color: var(--accent); }
+.asistente-sugerencia:disabled { opacity: .5; cursor: default; }
+.asistente-mensaje { font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.asistente-usuario {
+  align-self: flex-end; max-width: 86%; padding: 8px 12px; white-space: pre-wrap;
+  background: color-mix(in srgb, var(--accent) 11%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--surface)); border-radius: 12px 12px 3px 12px;
+}
+.asistente-ia { align-self: stretch; }
+.asistente-ia p { margin: 0 0 8px; }
+.asistente-ia ul, .asistente-ia ol { margin: 0 0 8px; padding-left: 20px; }
+.asistente-ia li { margin-bottom: 3px; }
+.asistente-ia code { font: 12px "IBM Plex Mono", monospace; background: var(--surface-2); padding: 0 3px; border-radius: 3px; }
+.asistente-subtitulo { font-weight: 600; }
+.asistente-tabla { overflow-x: auto; margin: 2px 0 10px; }
+.asistente-tabla table { border-collapse: collapse; font-size: 12px; min-width: 100%; }
+.asistente-tabla th {
+  background: transparent; position: static;
+  text-align: left; padding: 5px 7px; border-bottom: 1px solid var(--table-line); white-space: nowrap;
+  font: 600 10px "IBM Plex Mono", monospace; letter-spacing: .04em; text-transform: uppercase; color: var(--muted);
+}
+.asistente-tabla td { padding: 5px 7px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.asistente-tabla td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.asistente-fuentes { margin-top: 4px; font: 10.5px/1.4 "IBM Plex Mono", monospace; color: var(--muted); }
+.asistente-error { color: var(--down); border-left: 3px solid var(--down); padding-left: 10px; }
+.asistente-pensando { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12.5px; }
+.asistente-puntos { display: inline-flex; gap: 4px; }
+.asistente-puntos i {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--accent); opacity: .3;
+  animation: asistente-punto 1.2s infinite ease-in-out;
+}
+.asistente-puntos i:nth-child(2) { animation-delay: .2s; }
+.asistente-puntos i:nth-child(3) { animation-delay: .4s; }
+@keyframes asistente-punto { 0%, 80%, 100% { opacity: .3; } 40% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .asistente-puntos i { animation: none; opacity: .7; }
+  .asistente-lanzador { transition: none; }
+}
+.asistente-formulario {
+  display: flex; gap: 8px; align-items: flex-end; padding: 10px 14px 8px; border-top: 1px solid var(--line);
+}
+.asistente-formulario textarea {
+  flex: 1; min-width: 0; resize: none; max-height: 140px; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--surface); color: var(--ink); font: 13px/1.45 "IBM Plex Sans", sans-serif;
+}
+.asistente-formulario textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent); }
+.asistente-formulario textarea:disabled { background: var(--surface-2); cursor: not-allowed; }
+.asistente-enviar {
+  height: 38px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-ink);
+  font: 600 13px "IBM Plex Sans", sans-serif; cursor: pointer;
+}
+.asistente-enviar:disabled { opacity: .45; cursor: default; }
+.asistente-enviar:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.asistente-pie { margin: 0; padding: 0 16px 12px; font-size: 10.5px; color: var(--muted); line-height: 1.4; }
+@media print { .asistente-lanzador, .asistente-panel { display: none !important; } }

@@ -1,0 +1,202 @@
+{% load static dashboard_extras %}
+{% with en=planificacion_energia %}
+{% if en %}
+<section class="bloque" id="sec-energia">
+  <div class="bloque-cabecera">
+    <h2>Costo por energía (carbones)</h2>
+    <span class="acciones-cabecera">
+      <a class="btn-link" id="link-exportar-energia" href="{% url 'exportar_energia' %}?{{ qs_seccion }}">Descargar reporte Excel</a>
+      <button type="button" class="btn-link" data-imprimir="sec-energia">Imprimir</button>
+    </span>
+  </div>
+  <p class="nota">
+    Un carbón con más poder calorífico (PCS) entrega más energía por tonelada, así que se compara lo que cuesta cada
+    Gcal (un millón de kcal): energía = toneladas secas × PCS ÷ 1,000; costo por Gcal = importe pagado (con premio o
+    castigo) ÷ energía. Supone que el PCS del ticket (ZMM056) está en la misma base seca que las toneladas que se pagan.
+    Cada proveedor se compara con el promedio de su material; con varios materiales, cada material con el promedio de
+    la selección.
+  </p>
+  <form class="filtros" method="get" data-target="sec-energia">
+    <div class="campo">
+      <label for="periodo_energia">Período</label>
+      <select name="periodo_energia" id="periodo_energia">
+        {% for o in en.periodos %}
+          <option value="{{ o.valor }}" {% if o.valor == en.periodo_sel %}selected{% endif %}>{{ o.texto }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="centro_energia">Centro</label>
+      <select name="centro_energia" id="centro_energia">
+        {% for c in en.centros %}
+          <option value="{{ c }}" {% if c == en.centro_sel %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% include "gestion/planificacion/_filtro_material.html" with nombre="material_energia" opciones=en.materiales seleccion=en.material_sel %}
+    <div class="campo">
+      <label for="proveedor_energia">Proveedor</label>
+      <select name="proveedor_energia" id="proveedor_energia">
+        {% for p in en.proveedores %}
+          <option value="{{ p }}" {% if p == en.proveedor_sel %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+
+  {% with r=en.resumen %}
+  {% if not r %}
+    <p class="aviso">Sin ingresos de carbón con PCS analizado para los filtros seleccionados.</p>
+  {% else %}
+    <div class="metricas">
+      <div class="metrica"><span class="valor">S/ {{ r.costo_gcal|numero:2 }}</span><span class="etiqueta">Costo por Gcal pagado (a precio base S/ {{ r.costo_gcal_base|numero:2 }} {% if r.premio_gcal >= 0 %}+{% else %}−{% endif %} {{ r.premio_gcal|numero:2|cut:"-" }} por calidad)</span></div>
+      <div class="metrica"><span class="valor">{{ r.gcal|numero:0 }}</span><span class="etiqueta">Gcal recibidas · {{ r.toneladas|numero:0 }} T secas · {{ r.documentos|numero:0 }} ingresos</span></div>
+      <div class="metrica"><span class="valor">{{ r.pcs|numero:0 }}</span><span class="etiqueta">PCS promedio (kcal/kg){% if r.cenizas is not None %} · cenizas {{ r.cenizas|numero:2 }}%{% endif %}</span></div>
+      <div class="metrica"><span class="valor">S/ {{ r.precio_efectivo|numero:2 }}</span><span class="etiqueta">Precio efectivo por T (base S/ {{ r.precio_base|numero:2 }})</span></div>
+    </div>
+
+    {% with g=en.grafico %}
+    {% if g %}
+      <h3 class="subtitulo">PCS vs precio {% if en.un_material %}por proveedor{% else %}por material{% endif %}</h3>
+      <div class="chart-wrap chart-energia">
+        <span class="titulo-eje-y">Precio efectivo (S/ por T)</span>
+        <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="PCS contra precio efectivo, con la línea de costo promedio por Gcal">
+          <defs><clipPath id="area-energia"><rect x="{{ g.area.x }}" y="{{ g.area.y }}" width="{{ g.area.ancho }}" height="{{ g.area.alto }}"></rect></clipPath></defs>
+          {% for t in g.grilla_y %}<line class="grilla" x1="{{ g.izq }}" y1="{{ t.y }}" x2="{{ g.ancho }}" y2="{{ t.y }}"></line>{% endfor %}
+          {% for t in g.grilla_x %}<line class="grilla" x1="{{ t.x }}" y1="{{ g.area.y }}" x2="{{ t.x }}" y2="{{ g.base }}"></line>{% endfor %}
+          <line class="eje" x1="{{ g.izq }}" y1="{{ g.base }}" x2="{{ g.ancho }}" y2="{{ g.base }}"></line>
+          <path class="linea-iso" d="{{ g.linea }}" clip-path="url(#area-energia)"></path>
+          {% for b in g.burbujas %}
+            <circle class="burbuja burbuja-{{ b.sentido }}" cx="{{ b.x }}" cy="{{ b.y }}" r="{{ b.r }}"><title>{{ b.titulo }}</title></circle>
+          {% endfor %}
+        </svg>
+        {% for t in g.grilla_y %}<span class="etiqueta-eje-y" style="top:{{ t.y_pct }}%; width:{{ g.izq_pct }}%;">{{ t.texto }}</span>{% endfor %}
+        {% for t in g.grilla_x %}<span class="etiqueta-mes" style="left:{{ t.x_pct }}%;">{{ t.texto }}</span>{% endfor %}
+        {% for b in g.burbujas %}
+          <span class="etiqueta-burbuja{% if b.alineacion %} alinear-{{ b.alineacion }}{% endif %}" style="left:{{ b.x_pct }}%; top:{{ b.y_pct }}%; --desplazamiento:{{ b.desplazamiento }}px;">{{ b.nombre }}</span>
+        {% endfor %}
+      </div>
+      <div class="leyenda-curva">
+        <span class="leyenda-item"><span class="leyenda-marca burbuja-barato"></span>Energía más barata que el promedio (debajo de la línea)</span>
+        <span class="leyenda-item"><span class="leyenda-marca burbuja-caro"></span>Energía más cara que el promedio (encima de la línea)</span>
+        <span class="leyenda-item"><span class="leyenda-marca leyenda-meta"></span>Mismo costo por Gcal que el promedio (S/ {{ r.costo_gcal|numero:2 }})</span>
+        <span class="leyenda-item texto-tenue">Eje x: PCS (kcal/kg) · tamaño de la burbuja: toneladas</span>
+      </div>
+    {% endif %}
+    {% endwith %}
+
+    {% if en.por_material %}
+      <h3 class="subtitulo">Por material</h3>
+      <div class="tabla-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Material</th><th>Descripción</th><th>Centro</th><th class="num">Toneladas secas</th>
+              <th class="num">PCS (kcal/kg)</th><th class="num">Cenizas (%)</th><th class="num">Precio efectivo (S/ por T)</th>
+              <th class="num">Gcal</th><th class="num" data-orden="asc">S/ por Gcal</th>
+              <th class="col-barra">vs promedio</th><th class="num">Diferencia (S/)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in en.por_material %}
+              <tr>
+                <td class="celda-codigo">{{ f.material_codigo }}</td><td>{{ f.texto_breve }}</td><td>{{ f.centro }}</td>
+                <td class="num">{{ f.toneladas|numero:0 }}</td>
+                <td class="num">{{ f.pcs|numero:0 }}</td>
+                <td class="num">{% if f.cenizas is not None %}{{ f.cenizas|numero:2 }}{% else %}—{% endif %}</td>
+                <td class="num">{{ f.precio_efectivo|numero:2 }}</td>
+                <td class="num">{{ f.gcal|numero:0 }}</td>
+                <td class="num"><strong>{{ f.costo_gcal|numero:2 }}</strong></td>
+                <td class="col-barra">
+                  <span class="barra-divergente">
+                    {% if f.barra_sentido %}<span class="barra-{{ f.barra_sentido }}" style="width:{{ f.barra_pct }}%;"></span>{% endif %}
+                    <span class="barra-divergente-valor">{% if f.dif_pct > 0 %}+{% endif %}{{ f.dif_pct|numero:1 }}%</span>
+                  </span>
+                </td>
+                <td class="num">{{ f.dif_soles|numero:0 }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+
+    <h3 class="subtitulo">Por proveedor</h3>
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Proveedor</th>{% if not en.un_material %}<th>Material</th>{% endif %}
+            <th class="num">Toneladas secas</th><th class="num">PCS (kcal/kg)</th><th class="num">Cenizas (%)</th>
+            <th class="num">Precio base (S/ por T)</th><th class="num">Precio efectivo (S/ por T)</th>
+            <th class="num">S/ por Gcal a precio base</th><th class="num">S/ por Gcal pagado</th>
+            <th class="col-barra">vs promedio del material</th><th class="num">Diferencia (S/)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in en.por_proveedor %}
+            <tr>
+              <td>{{ f.proveedor }}</td>
+              {% if not en.un_material %}<td>{{ f.texto_breve }} <span class="celda-codigo texto-tenue">{{ f.centro }}</span></td>{% endif %}
+              <td class="num">{{ f.toneladas|numero:0 }}</td>
+              <td class="num">{{ f.pcs|numero:0 }}</td>
+              <td class="num">{% if f.cenizas is not None %}{{ f.cenizas|numero:2 }}{% else %}—{% endif %}</td>
+              <td class="num">{{ f.precio_base|numero:2 }}</td>
+              <td class="num">{{ f.precio_efectivo|numero:2 }}</td>
+              <td class="num">{{ f.costo_gcal_base|numero:2 }}</td>
+              <td class="num"><strong>{{ f.costo_gcal|numero:2 }}</strong></td>
+              <td class="col-barra">
+                <span class="barra-divergente">
+                  {% if f.barra_sentido %}<span class="barra-{{ f.barra_sentido }}" style="width:{{ f.barra_pct }}%;"></span>{% endif %}
+                  <span class="barra-divergente-valor">{% if f.dif_pct > 0 %}+{% endif %}{{ f.dif_pct|numero:1 }}%</span>
+                </span>
+              </td>
+              <td class="num">{{ f.dif_soles|numero:0 }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="nota">
+      Diferencia (S/) = (costo por Gcal del proveedor − promedio) × sus Gcal: lo que se pagó de más (+) o de menos (−)
+      por esa energía frente a comprarla al costo promedio.
+    </p>
+
+    {% with m=en.mensual %}
+    {% if m and m.meses %}
+      <h3 class="subtitulo">Evolución mensual (S/ por Gcal pagado)</h3>
+      <div class="tabla-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>{% if en.un_material %}Proveedor{% else %}Material{% endif %}</th>
+              {% for mes in m.meses %}<th class="num">{{ mes }}</th>{% endfor %}
+              <th class="num">Período</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in m.filas %}
+              <tr>
+                <td>{{ f.nombre }}</td>
+                {% for v in f.valores %}<td class="num">{% if v is not None %}{{ v|numero:2 }}{% else %}—{% endif %}</td>{% endfor %}
+                <td class="num"><strong>{{ f.total|numero:2 }}</strong></td>
+              </tr>
+            {% endfor %}
+            {% if m.filas|length > 1 %}
+              <tr class="fila-total">
+                <td>Promedio</td>
+                {% for v in m.total %}<td class="num">{% if v is not None %}{{ v|numero:2 }}{% else %}—{% endif %}</td>{% endfor %}
+                <td class="num">{{ m.total_periodo|numero:2 }}</td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+    {% endwith %}
+  {% endif %}
+  {% endwith %}
+</section>
+{% endif %}
+{% endwith %}

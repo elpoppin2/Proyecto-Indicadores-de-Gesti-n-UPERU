@@ -1,0 +1,78 @@
+{% load static dashboard_extras %}
+<section class="bloque" id="sec-cobertura">
+  <h2>Cobertura de stock</h2>
+  <p class="nota">
+    Solo materiales que están en el Plan de Abastecimiento SOP (los demás, aunque sean Materias Primas o
+    Combustibles, no se planifican y no interesan acá). Cobertura (días) = Stock de cierre del mes elegido ÷
+    Consumo diario promedio de los 6 meses que terminan en ese mes. El consumo se toma de MB51: salidas del
+    material hacia el proceso (clases de movimiento que empiezan con "2" — costo, orden de producción, red — más
+    Z01/Z04/353).
+    {% if planificacion_cobertura.fecha_stock %}Datos de inventario al {{ planificacion_cobertura.fecha_stock|date:"d/m/Y" }}.{% endif %}
+  </p>
+  <form class="filtros" method="get" data-target="sec-cobertura">
+    <div class="campo">
+      <label for="mes_cobertura">Mes</label>
+      <select name="mes_cobertura" id="mes_cobertura">
+        {% for f in planificacion_cobertura.opciones_mes %}
+          <option value="{{ f|fechaiso }}" {% if f == planificacion_cobertura.mes %}selected{% endif %}>{{ f|mesanio }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="categoria_cobertura">Categoría</label>
+      <select name="categoria_cobertura" id="categoria_cobertura">
+        {% for cat in planificacion_cobertura.categorias %}
+          <option value="{{ cat }}" {% if cat == planificacion_cobertura.categoria_sel %}selected{% endif %}>{{ cat }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="centro_cobertura">Centro</label>
+      <select name="centro_cobertura" id="centro_cobertura">
+        {% for c in planificacion_cobertura.centros %}
+          <option value="{{ c }}" {% if c == planificacion_cobertura.centro_sel %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% include "gestion/planificacion/_filtro_material.html" with nombre="material_cobertura" opciones=planificacion_cobertura.materiales seleccion=planificacion_cobertura.material_sel %}
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+
+  {% if planificacion_cobertura.filas %}
+    <div class="metricas">
+      <div class="metrica"><span class="valor dato-negativo">{{ planificacion_cobertura.en_riesgo }}</span><span class="etiqueta">Materiales en riesgo (&lt; 30 días)</span></div>
+    </div>
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Material</th><th>Descripción</th><th>Centro</th><th>Categoría</th><th>Familia</th>
+            <th class="num">Stock actual</th>
+            <th class="num">Consumo diario</th>
+            <th class="num">Consumo mensual</th>
+            <th class="num" data-orden="asc">Cobertura (días)</th>
+            <th class="num">Cobertura (meses)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in planificacion_cobertura.filas %}
+            <tr>
+              <td>{{ r.material_codigo }}</td>
+              <td>{{ r.texto_breve }}</td>
+              <td>{{ r.centro }}</td>
+              <td>{{ r.categoria }}</td>
+              <td>{{ r.familia }}</td>
+              <td class="num">{{ r.stock_cierre|numero:0 }}</td>
+              <td class="num">{{ r.consumo_diario|numero:1 }}</td>
+              <td class="num">{{ r.consumo_mensual|numero:0 }}</td>
+              <td class="num {% if r.cobertura_dias < 30 %}dato-negativo{% elif r.cobertura_dias >= 60 %}dato-positivo{% endif %}">{{ r.cobertura_dias|numero:1|default:"—" }}</td>
+              <td class="num {% if r.cobertura_meses < 1 %}dato-negativo{% elif r.cobertura_meses >= 2 %}dato-positivo{% endif %}">{{ r.cobertura_meses|numero:2|default:"—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="aviso">Sin datos de stock/consumo para los filtros seleccionados.</p>
+  {% endif %}
+</section>

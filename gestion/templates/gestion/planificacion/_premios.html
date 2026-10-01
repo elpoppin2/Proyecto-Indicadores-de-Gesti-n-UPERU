@@ -1,0 +1,176 @@
+{% load static dashboard_extras %}
+{% with pm=planificacion_premios %}
+{% if pm %}
+<section class="bloque" id="sec-premios">
+  <div class="bloque-cabecera">
+    <h2>Premios y castigos por calidad</h2>
+    <span class="acciones-cabecera">
+      <a class="btn-link" id="link-exportar" href="{% url 'exportar_premios' %}?{{ qs_seccion }}">Descargar reporte Excel</a>
+      <button type="button" class="btn-link" data-imprimir="sec-premios">Imprimir</button>
+    </span>
+  </div>
+  <p class="nota">
+    Cada ingreso de un tercero se paga al precio base del contrato más un premio (calidad mejor que lo pactado) o
+    menos un castigo (calidad peor), que el ticket de báscula (ZMM056) trae en soles y que la entrada de MB51 ya incluye
+    en su importe. Precio base = (importe − premio) ÷ toneladas secas; precio efectivo = importe ÷ toneladas secas.
+    Las toneladas son secas (las que paga el contrato). Los materiales sin premios ni castigos en el período no se
+    ajustan por calidad.
+  </p>
+  <form class="filtros" method="get" data-target="sec-premios">
+    <div class="campo">
+      <label for="periodo_premios">Período</label>
+      <select name="periodo_premios" id="periodo_premios">
+        {% for o in pm.periodos %}
+          <option value="{{ o.valor }}" {% if o.valor == pm.periodo_sel %}selected{% endif %}>{{ o.texto }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="centro_premios">Centro</label>
+      <select name="centro_premios" id="centro_premios">
+        {% for c in pm.centros %}
+          <option value="{{ c }}" {% if c == pm.centro_sel %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% include "gestion/planificacion/_filtro_material.html" with nombre="material_premios" opciones=pm.materiales seleccion=pm.material_sel %}
+    <div class="campo">
+      <label for="proveedor_premios">Proveedor</label>
+      <select name="proveedor_premios" id="proveedor_premios">
+        {% for p in pm.proveedores %}
+          <option value="{{ p }}" {% if p == pm.proveedor_sel %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+
+  {% with r=pm.resumen %}
+  {% if not r %}
+    <p class="aviso">Sin ingresos de terceros para los filtros seleccionados.</p>
+  {% else %}
+    <div class="metricas">
+      <div class="metrica"><span class="valor {% if r.neto > 0 %}dato-alerta{% elif r.neto < 0 %}dato-positivo{% endif %}">{{ r.neto|soles }}</span><span class="etiqueta">Neto pagado por calidad ({% if r.pct_sobre_base > 0 %}+{% endif %}{{ r.pct_sobre_base|numero:2 }}% sobre el precio base)</span></div>
+      <div class="metrica"><span class="valor">{{ r.premios|soles }}</span><span class="etiqueta">Premios · {{ r.pct_con_premio|numero:0 }}% de los ingresos</span></div>
+      <div class="metrica"><span class="valor">{{ r.castigos|soles }}</span><span class="etiqueta">Castigos · {{ r.pct_con_castigo|numero:0 }}% de los ingresos</span></div>
+      <div class="metrica"><span class="valor">S/ {{ r.precio_efectivo|numero:2 }}</span><span class="etiqueta">Precio efectivo por T (base S/ {{ r.precio_base|numero:2 }} {% if r.neto_por_t >= 0 %}+{% else %}−{% endif %} {{ r.neto_por_t|numero:2|cut:"-" }} por calidad) · {{ r.toneladas|numero:0 }} T secas</span></div>
+    </div>
+
+    {% if pm.por_material %}
+      <h3 class="subtitulo">Por material</h3>
+      <div class="tabla-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Material</th><th>Descripción</th><th>Centro</th><th class="num">Toneladas secas</th>
+              <th class="num">Precio base (S/ por T)</th><th class="num">Premios (S/)</th><th class="num">Castigos (S/)</th>
+              <th class="num" data-orden="desc">Neto (S/)</th><th class="num">Neto (S/ por T)</th>
+              <th class="col-barra">% sobre base</th><th class="num">Precio efectivo (S/ por T)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in pm.por_material %}
+              <tr>
+                <td class="celda-codigo">{{ f.material_codigo }}</td><td>{{ f.texto_breve }}</td><td>{{ f.centro }}</td>
+                <td class="num">{{ f.toneladas|numero:0 }}</td>
+                <td class="num">{{ f.precio_base|numero:2 }}</td>
+                <td class="num">{% if f.premios %}{{ f.premios|numero:0 }}{% else %}—{% endif %}</td>
+                <td class="num">{% if f.castigos %}{{ f.castigos|numero:0 }}{% else %}—{% endif %}</td>
+                <td class="num">{{ f.neto|numero:0 }}</td>
+                <td class="num">{{ f.neto_por_t|numero:2 }}</td>
+                <td class="col-barra">
+                  <span class="barra-divergente" title="{{ f.pct_sobre_base|numero:2 }}% sobre el precio base">
+                    {% if f.barra_sentido %}<span class="barra-{{ f.barra_sentido }}" style="width:{{ f.barra_pct }}%;"></span>{% endif %}
+                    <span class="barra-divergente-valor">{% if f.pct_sobre_base > 0 %}+{% endif %}{{ f.pct_sobre_base|numero:2 }}%</span>
+                  </span>
+                </td>
+                <td class="num">{{ f.precio_efectivo|numero:2 }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+
+    <h3 class="subtitulo">Por proveedor</h3>
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Proveedor</th>{% if not pm.un_material %}<th>Material</th>{% endif %}
+            <th class="num">Documentos</th><th class="num">Toneladas secas</th><th class="num">Precio base (S/ por T)</th>
+            <th class="col-barra">Premio / castigo (S/ por T)</th><th class="num">Precio efectivo (S/ por T)</th>
+            <th class="num">Neto (S/)</th><th class="num">% con castigo</th>
+            {% for c in pm.columnas_calidad %}<th class="num">{{ c.etiqueta }}{% if c.unidad %} ({{ c.unidad }}){% endif %}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in pm.por_proveedor %}
+            <tr>
+              <td>{{ f.proveedor }}</td>
+              {% if not pm.un_material %}<td>{{ f.texto_breve }} <span class="celda-codigo texto-tenue">{{ f.centro }}</span></td>{% endif %}
+              <td class="num">{{ f.documentos }}</td>
+              <td class="num">{{ f.toneladas|numero:0 }}</td>
+              <td class="num">{{ f.precio_base|numero:2 }}</td>
+              <td class="col-barra">
+                <span class="barra-divergente">
+                  {% if f.barra_sentido %}<span class="barra-{{ f.barra_sentido }}" style="width:{{ f.barra_pct }}%;"></span>{% endif %}
+                  <span class="barra-divergente-valor">{% if f.neto_por_t > 0 %}+{% endif %}{{ f.neto_por_t|numero:2 }}</span>
+                </span>
+              </td>
+              <td class="num">{{ f.precio_efectivo|numero:2 }}</td>
+              <td class="num">{{ f.neto|numero:0 }}</td>
+              <td class="num">{{ f.pct_con_castigo|numero:0 }}%</td>
+              {% for v in f.calidad %}<td class="num">{{ v }}</td>{% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="leyenda-curva">
+      <span class="leyenda-item"><span class="leyenda-marca barra-premio"></span>Premio: calidad mejor que el contrato, se paga más</span>
+      <span class="leyenda-item"><span class="leyenda-marca barra-castigo"></span>Castigo: calidad peor que el contrato, se descuenta</span>
+    </div>
+
+    {% if pm.documentos %}
+      <h3 class="subtitulo">Por documento de ingreso</h3>
+      <p class="nota">
+        {% if pm.total_documentos > pm.limite_documentos %}Los {{ pm.limite_documentos }} más recientes de {{ pm.total_documentos|numero:0 }};
+        el detalle completo está en el reporte Excel.{% else %}{{ pm.total_documentos }} documentos.{% endif %}
+      </p>
+      <div class="tabla-scroll tabla-alto-fijo">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th><th>Proveedor</th><th>Ticket</th><th>Documento material</th><th class="num">Toneladas secas</th>
+              <th class="num">Precio base</th><th class="num">Premio / castigo (S/)</th><th class="num">(S/ por T)</th>
+              <th class="num">Precio efectivo</th>
+              {% for c in pm.columnas_calidad %}<th class="num">{{ c.etiqueta }}</th>{% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in pm.documentos %}
+              <tr>
+                <td>{{ d.fecha|date:"d/m/Y" }}</td>
+                <td>{{ d.proveedor }}</td>
+                <td class="celda-codigo">{{ d.ticket }}</td>
+                <td class="celda-codigo">{{ d.documento }}</td>
+                <td class="num">{{ d.toneladas|numero:2 }}</td>
+                <td class="num">{{ d.precio_base|numero:2 }}</td>
+                <td class="num {% if d.premio > 0 %}dato-positivo{% elif d.premio < 0 %}dato-negativo{% endif %}">{% if d.premio %}{{ d.premio|numero:2 }}{% else %}—{% endif %}</td>
+                <td class="num">{% if d.premio %}{{ d.premio_por_t|numero:2 }}{% else %}—{% endif %}</td>
+                <td class="num">{{ d.precio_efectivo|numero:2 }}</td>
+                {% for v in d.calidad %}<td class="num">{{ v }}</td>{% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% elif not pm.un_material %}
+      <p class="nota">Elige un material para ver el detalle por documento de ingreso con su calidad.</p>
+    {% endif %}
+  {% endif %}
+  {% endwith %}
+</section>
+{% endif %}
+{% endwith %}

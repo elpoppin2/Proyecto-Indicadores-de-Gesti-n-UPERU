@@ -1,0 +1,69 @@
+{% load static dashboard_extras %}
+<section class="bloque" id="sec-plan-mensual">
+  <h2>Evaluación mensual</h2>
+  <p class="nota">
+    Proceso S&amp;OP, solo Materias Primas y Energía/Combustibles. El Plan viene del archivo mensual de Abastecimiento SOP;
+    los Ingresos Físicos son los tickets de báscula (ZMM056) ya contabilizados en SAP — no se toma de MB51 para estos
+    materiales, la báscula es la fuente de verdad de lo que realmente ingresó a planta.
+  </p>
+  <form class="filtros" method="get" data-target="sec-plan-mensual">
+    <div class="campo">
+      <label for="mes_plan">Mes</label>
+      <select name="mes_plan" id="mes_plan">
+        {% for f in planificacion.opciones_mes %}
+          <option value="{{ f|fechaiso }}" {% if f == planificacion.mes %}selected{% endif %}>{{ f|mesanio }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="categoria_plan">Categoría</label>
+      <select name="categoria_plan" id="categoria_plan">
+        {% for cat in planificacion.categorias %}
+          <option value="{{ cat }}" {% if cat == planificacion.categoria_sel %}selected{% endif %}>{{ cat }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="centro_plan">Centro</label>
+      <select name="centro_plan" id="centro_plan">
+        {% for c in planificacion.centros %}
+          <option value="{{ c }}" {% if c == planificacion.centro_sel %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+
+  {% if planificacion.resumen %}
+    <div class="metricas">
+      <div class="metrica"><span class="valor">{{ planificacion.total_plan|numero:0 }} T</span><span class="etiqueta">Plan total</span></div>
+      <div class="metrica"><span class="valor">{{ planificacion.total_real|numero:0 }} T</span><span class="etiqueta">Real total</span></div>
+    </div>
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Categoría</th>
+            <th class="num">Plan (T)</th>
+            <th class="num">Real (T)</th>
+            <th class="num">Diferencia (T)</th>
+            <th class="num">% Cumplimiento</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in planificacion.resumen %}
+            <tr>
+              <td>{{ r.categoria }}</td>
+              <td class="num">{{ r.cantidad_plan|numero:0 }}</td>
+              <td class="num">{{ r.cantidad_real|numero:0 }}</td>
+              <td class="num {% if r.diferencia > 0 %}dato-positivo{% elif r.diferencia < 0 %}dato-negativo{% endif %}">{{ r.diferencia|numero:0 }}</td>
+              <td class="num {% if r.cumplimiento_pct >= 100 %}dato-positivo{% elif r.cumplimiento_pct < 80 %}dato-negativo{% endif %}">{{ r.cumplimiento_pct|numero:1|default:"—" }}%</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="aviso">Sin datos de Plan/Ingresos para el mes seleccionado.</p>
+  {% endif %}
+</section>

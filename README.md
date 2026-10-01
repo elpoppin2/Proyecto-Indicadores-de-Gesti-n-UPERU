@@ -92,6 +92,60 @@ navegar a la página "Administración".
 .\venv\Scripts\python.exe -m streamlit run dashboard\app.py
 ```
 
+## Operación diaria (dashboard web para gerencia)
+
+### Levantar el dashboard
+
+```powershell
+powershell -ExecutionPolicy Bypass -File iniciar_servidor.ps1
+# abrir http://127.0.0.1:8000/
+```
+
+Corre en modo producción: `waitress` (servidor WSGI con varios hilos) y
+`DJANGO_DEBUG=False` (un error no muestra código). `runserver` queda solo para
+desarrollo.
+
+No hace falta levantarlo a mano. La tarea programada `UPERU_Dashboard` corre
+`iniciar_servidor.ps1` al iniciar sesión (con 1 minuto de retraso, sin límite de
+tiempo y hasta 3 reintentos si se cae). Para reiniciarlo después de cambiar
+código: detener los procesos `python.exe` de waitress y correr
+`Start-ScheduledTask UPERU_Dashboard`.
+
+### Carga diaria automática
+
+La tarea programada `UPERU_ActualizarTablasMM` (al iniciar sesión y a las 4 AM)
+ejecuta `C:\Users\BLAZO\Scripts\actualizar_tablas_mm.ps1`:
+
+1. Copia las tablas SAP desde OneDrive.
+2. `import_todo`: importa solo lo nuevo o modificado, con el tiempo de cada paso
+   en el log (`C:\Users\BLAZO\Scripts\logs\actualizar_tablas_mm.log`).
+   - MB51, MB5B y ZMM056 solo recargan el mes en curso, más el anterior hasta el
+     día 10 (cierre contable). Los meses cerrados no se tocan salvo con `--forzar`.
+   - ME2N se recarga completo cuando cambia.
+   - Cada importador corre en una sola transacción: si falla, no deja datos a medias.
+3. `exportar_planificacion_html`: regenera el HTML compartido de Planificación.
+4. `calentar_cache`: abre todas las páginas para dejarlas calculadas.
+
+### Por qué es rápido
+
+- **Caché de consultas en disco** (`.cache_consultas/`, ver `dashboard/queries.py`).
+  - La comparten el servidor, la tarea programada y Streamlit.
+  - No vence por tiempo: cada importación que carga datos cambia la versión y
+    todo se recalcula con los datos nuevos, sin reiniciar el servidor.
+  - Se puede borrar sin riesgo: se regenera sola.
+- **Lectura de Excel con `python-calamine`**, 4 a 5 veces más rápida que
+  openpyxl. `UPERU_LECTOR_EXCEL=openpyxl` fuerza el lector anterior.
+- **SQLite en modo WAL**, con más memoria (ver `config/settings.py`). El
+  dashboard lee mientras la carga escribe.
+- **Índices y planes de consulta revisados.** Donde SQLite elegía mal el índice,
+  la consulta lo corrige con `+columna` (comentado en cada caso).
+
+| | Antes | Ahora |
+|---|---|---|
+| Primera apertura de Overview | ~136 s | ~0.3 s |
+| Primera apertura de las demás páginas | 2 a 10 s | 0.1 a 0.2 s |
+| Carga diaria (mes en curso y ME2N completo) | ~21 min | ~2 min |
+
 ## Despliegue en Azure
 
 La app ya está preparada para producción: `config/settings.py` lee `SECRET_KEY`, `DEBUG`,

@@ -1,0 +1,26 @@
+{% extends "gestion/base.html" %}
+{% block titulo %}Ingresar — Indicadores UPERU{% endblock %}
+{% block contenido %}
+<div class="login-shell">
+  <form class="login-card" method="post">
+    {% csrf_token %}
+    <div>
+      <span class="eyebrow">Indicadores de Gestión</span>
+      <h1>UPERU</h1>
+    </div>
+    {% if form.errors %}
+      <p class="error">Usuario o contraseña incorrectos.</p>
+    {% endif %}
+    <div class="campo">
+      <label for="id_username">Usuario</label>
+      <input type="text" name="username" id="id_username" autofocus required>
+    </div>
+    <div class="campo">
+      <label for="id_password">Contraseña</label>
+      <input type="password" name="password" id="id_password" required>
+    </div>
+    <input type="hidden" name="next" value="{{ next }}">
+    <button type="submit">Ingresar</button>
+  </form>
+</div>
+{% endblock %}

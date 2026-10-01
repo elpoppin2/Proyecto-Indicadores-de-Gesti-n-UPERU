@@ -1,0 +1,226 @@
+{% load static dashboard_extras %}
+{% with p=planificacion_proyeccion %}
+{% if p %}
+<section class="bloque" id="sec-proyeccion">
+  <div class="bloque-cabecera">
+    <h2>Evolución de inventario (S&amp;OP)</h2>
+    <button type="button" class="btn-link" data-imprimir="sec-proyeccion">Descargar / Imprimir</button>
+  </div>
+  <p class="nota">
+    Stock final de cada mes = Stock inicial + Abastecimiento S&amp;OP − Consumo S&amp;OP − Traslados a otro centro
+    (el Carbón Importado llega a Atocongo y lo que se envía a Condorcocha sale de ese stock). El primer mes parte del
+    inventario real de cierre del mes anterior al S&amp;OP (MB5B{% if p.fecha_inicial %} al {{ p.fecha_inicial|date:"d/m/Y" }}{% endif %})
+    y cada mes siguiente arranca con el stock final del anterior. Un stock negativo es un quiebre proyectado:
+    el consumo planificado supera al stock más el abastecimiento. El mínimo y máximo vienen del archivo MinMax SOP
+    (un mes vacío repite el último valor definido).
+  </p>
+  <form class="filtros" method="get" data-target="sec-proyeccion">
+    <div class="campo">
+      <label for="sop_proyeccion">S&amp;OP</label>
+      <select name="sop_proyeccion" id="sop_proyeccion">
+        {% for f in p.opciones_snapshot %}
+          <option value="{{ f|fechaiso }}" {% if f == p.snapshot %}selected{% endif %}>{{ f|mesanio }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="categoria_proyeccion">Categoría</label>
+      <select name="categoria_proyeccion" id="categoria_proyeccion">
+        {% for cat in p.categorias %}
+          <option value="{{ cat }}" {% if cat == p.categoria_sel %}selected{% endif %}>{{ cat }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="centro_proyeccion">Centro</label>
+      <select name="centro_proyeccion" id="centro_proyeccion">
+        {% for c in p.centros %}
+          <option value="{{ c }}" {% if c == p.centro_sel %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% include "gestion/planificacion/_filtro_material.html" with nombre="material_proyeccion" opciones=p.materiales seleccion=p.material_sel %}
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+
+  {% if not p.fecha_inicial %}
+    <p class="aviso">Todavía no está cargado el inventario de cierre del mes anterior a este S&amp;OP: la proyección parte de stock 0.</p>
+  {% endif %}
+
+  {% if p.resumen %}
+    <div class="metricas">
+      <div class="metrica"><span class="valor">{{ p.stock_partida|numero:0 }} T</span><span class="etiqueta">Stock de partida{% if p.fecha_inicial %} (cierre {{ p.fecha_inicial|date:"d/m/Y" }}){% endif %}</span></div>
+      <div class="metrica"><span class="valor {% if p.stock_cierre < 0 %}dato-negativo{% endif %}">{{ p.stock_cierre|numero:0 }} T</span><span class="etiqueta">Stock proyectado a {{ p.mes_cierre|mesanio }}</span></div>
+      <div class="metrica"><span class="valor {% if p.n_bajo_minimo %}dato-negativo{% endif %}">{{ p.n_bajo_minimo }}</span><span class="etiqueta">Materiales que caen bajo el mínimo{% if p.faltante_total %} · faltan {{ p.faltante_total|numero:0 }} T a tiempo{% endif %}{% if p.deficit_plazo_total %} + {{ p.deficit_plazo_total|numero:0 }} T ya dentro del lead time{% endif %}</span></div>
+      <div class="metrica"><span class="valor {% if p.n_sobrecubiertos %}dato-alerta{% endif %}">{{ p.n_sobrecubiertos }}</span><span class="etiqueta">Materiales sobre el máximo objetivo{% if p.recorte_total %} · recorte posible {{ p.recorte_total|numero:0 }} T{% endif %}</span></div>
+    </div>
+
+    {% with g=p.grafico %}
+      {% if g %}
+        <div class="chart-scroll">
+        <div class="chart-wrap chart-proyeccion">
+          <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Evolución de inventario proyectada">
+            {% if g.banda %}
+              <path class="banda-minmax" d="{{ g.banda.area }}"></path>
+              <path class="linea-minimo" d="{{ g.banda.linea_min }}"></path>
+              <path class="linea-maximo" d="{{ g.banda.linea_max }}"></path>
+            {% endif %}
+            {% if not g.banda %}<path class="area" d="{{ g.area }}"></path>{% endif %}
+            <line class="linea-cero" x1="0" y1="{{ g.y_cero }}" x2="{{ g.ancho }}" y2="{{ g.y_cero }}"></line>
+            <path class="linea" d="{{ g.linea }}"></path>
+            <line class="base-barras" x1="0" y1="{{ g.base_barras }}" x2="{{ g.ancho }}" y2="{{ g.base_barras }}"></line>
+            {% for b in g.barras %}
+              <rect class="{{ b.clase }} con-detalle" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.ancho }}" height="{{ b.alto }}" rx="1.5" data-detalle="{{ b.titulo }}"></rect>
+            {% endfor %}
+            {% for pt in g.puntos %}
+              <circle class="punto{% if pt.negativo %} punto-negativo{% endif %}" cx="{{ pt.x }}" cy="{{ pt.y }}" r="3"></circle>
+              <circle class="zona-detalle con-detalle" cx="{{ pt.x }}" cy="{{ pt.y }}" r="10" data-detalle="{{ pt.detalle }}"></circle>
+            {% endfor %}
+          </svg>
+          {% for b in g.barras %}
+            {% if b.etiqueta %}<span class="etiqueta-barra {{ b.clase }}-texto {% if b.etiqueta_dentro %}etiqueta-barra-dentro{% else %}etiqueta-barra-encima{% endif %} con-detalle" style="left:{{ b.x_pct }}%; top:{{ b.y_pct }}%;" data-detalle="{{ b.titulo }}">{{ b.etiqueta }}</span>{% endif %}
+          {% endfor %}
+          {% for pt in g.puntos %}
+            <span class="etiqueta-valor{% if pt.negativo %} dato-negativo{% endif %} con-detalle" style="left:{{ pt.x_pct }}%; top:{{ pt.y_pct }}%;" data-detalle="{{ pt.detalle }}">{{ pt.etiqueta_valor }}</span>
+            <span class="etiqueta-mes" style="left:{{ pt.x_pct }}%;">{{ pt.etiqueta }}</span>
+          {% endfor %}
+        </div>
+        </div>
+        <div class="leyenda-curva">
+          <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>Stock proyectado al cierre de cada mes (T)</span>
+          {% if g.banda %}
+            <span class="leyenda-item"><span class="leyenda-marca banda-minmax"></span>Rango objetivo: mínimo {{ g.banda.texto_min }} – máximo {{ g.banda.texto_max }}</span>
+          {% else %}
+            <span class="leyenda-item leyenda-nota">Elige un material para ver su banda de mínimo y máximo</span>
+          {% endif %}              <span class="leyenda-item"><span class="leyenda-marca leyenda-meta"></span>Stock 0</span>
+          <span class="leyenda-item"><span class="leyenda-marca barra-ingreso"></span>Abastecimiento planificado</span>
+          <span class="leyenda-item"><span class="leyenda-marca barra-consumo"></span>Consumo planificado{% if p.hay_traslados %} + traslados a otro centro{% endif %}</span>
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% if p.diagnostico %}
+      <h3 class="subtitulo">Diagnóstico frente a mínimos y máximos</h3>
+      <p class="nota">
+        Considera el lead time de cada material (1 mes; Carbón Importado 3; Escoria japonesa 4): la cuota de los
+        meses dentro de ese plazo ya está comprometida. Faltante a tiempo: abastecimiento adicional que haría falta,
+        pidiéndolo a más tardar en el mes indicado, para no bajar del mínimo. Ya en lead time: lo que queda bajo el
+        mínimo en meses que ya no alcanza el plazo (requiere medidas extraordinarias). Recorte posible: abastecimiento
+        que se podría dejar de traer, fuera del lead time, sin bajar del mínimo. El máximo es un objetivo, no un
+        límite de almacén: estar sobre él es capital inmovilizado. Sobrecubierto: sobre el máximo en al menos la
+        mitad de los meses.
+      </p>
+      <div class="tabla-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Material</th><th>Descripción</th><th>Centro</th><th>Diagnóstico</th>
+              <th class="num">Mínimo</th><th class="num">Máximo</th><th class="num">Stock hoy</th>
+              <th class="num">Meses bajo mín.</th><th class="num">Meses en rango</th><th class="num">Meses sobre máx.</th>
+              <th>Primer mes bajo mín.</th><th class="num">Lead time (meses)</th><th>Pedir a más tardar</th>
+              <th class="num">Faltante a tiempo (T)</th><th class="num">Ya en lead time (T)</th>
+              <th class="num">Mayor exceso sobre máx. (T)</th><th class="num">Recorte posible (T)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in p.diagnostico %}
+              <tr>
+                <td class="celda-codigo">{{ d.material_codigo }}</td>
+                <td>{{ d.texto_breve }}</td>
+                <td>{{ d.centro }}</td>
+                <td><span class="pill-diagnostico diag-{{ d.diagnostico }}">{{ d.diagnostico_texto }}</span></td>
+                <td class="num">{{ d.stock_minimo|numero:0|default:"—" }}</td>
+                <td class="num">{{ d.stock_maximo|numero:0|default:"—" }}</td>
+                <td class="num">{{ d.stock_hoy|numero:0 }}</td>
+                <td class="num {% if d.meses_bajo_minimo %}dato-negativo{% endif %}">{{ d.meses_bajo_minimo }}</td>
+                <td class="num">{{ d.meses_en_rango }}</td>
+                <td class="num {% if d.meses_sobre_maximo %}dato-alerta{% endif %}">{{ d.meses_sobre_maximo }}</td>
+                <td>{{ d.primer_mes_corto|default:"—" }}</td>
+                <td class="num">{{ d.lead_time }}</td>
+                <td class="{% if d.pedir_corto %}dato-negativo{% endif %}">{{ d.pedir_corto|default:"—" }}</td>
+                <td class="num {% if d.faltante %}dato-negativo{% endif %}">{% if d.faltante %}{{ d.faltante|numero:0 }}{% else %}—{% endif %}</td>
+                <td class="num {% if d.deficit_en_plazo %}dato-negativo{% endif %}">{% if d.deficit_en_plazo %}{{ d.deficit_en_plazo|numero:0 }}{% else %}—{% endif %}</td>
+                <td class="num">{% if d.exceso_maximo %}{{ d.exceso_maximo|numero:0 }}{% else %}—{% endif %}</td>
+                <td class="num">{% if d.recorte_posible %}{{ d.recorte_posible|numero:0 }}{% else %}—{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+
+    <h3 class="subtitulo">Detalle mensual</h3>
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Mes</th>
+            <th class="num">Stock inicial (T)</th>
+            <th class="num">Abastecimiento (T)</th>
+            <th class="num">Consumo (T)</th>
+            {% if p.hay_traslados %}<th class="num">Traslados a otro centro (T)</th>{% endif %}
+            <th class="num">Stock final (T)</th>
+            {% if p.un_material %}<th class="num">Mínimo (T)</th><th class="num">Máximo (T)</th><th>Estado</th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in p.resumen %}
+            <tr>
+              <td>{{ r.mes|mesanio }}</td>
+              <td class="num">{{ r.stock_inicial|numero:0 }}</td>
+              <td class="num">{{ r.abastecimiento|numero:0 }}</td>
+              <td class="num">{{ r.consumo|numero:0 }}</td>
+              {% if p.hay_traslados %}<td class="num">{{ r.traslado|numero:0 }}</td>{% endif %}
+              <td class="num {% if r.estado %}estado-{{ r.estado }}{% elif r.stock_final < 0 %}dato-negativo{% endif %}">{{ r.stock_final|numero:0 }}</td>
+              {% if p.un_material %}
+                <td class="num">{{ r.stock_minimo|numero:0|default:"—" }}</td>
+                <td class="num">{{ r.stock_maximo|numero:0|default:"—" }}</td>
+                <td>{{ r.estado_texto }}</td>
+              {% endif %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="subtitulo">Stock final proyectado por material (T)</h3>
+    <div class="leyenda-curva">
+      <span class="leyenda-item"><span class="leyenda-marca estado-quiebre"></span>Quiebre (negativo)</span>
+      <span class="leyenda-item"><span class="leyenda-marca estado-bajo_minimo"></span>Bajo mínimo</span>
+      <span class="leyenda-item"><span class="leyenda-marca estado-en_rango"></span>En rango</span>
+      <span class="leyenda-item"><span class="leyenda-marca estado-sobre_maximo"></span>Sobre máximo</span>
+      <span class="leyenda-item leyenda-nota">Sin color: sin mínimo/máximo definido</span>
+    </div>
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Material</th><th>Descripción</th><th>Centro</th>
+            <th class="num">Mín.</th><th class="num">Máx.</th>
+            <th class="num">Inicial</th>
+            {% for m in p.meses %}<th class="num">{{ m.corto }}</th>{% endfor %}
+            <th>Quiebre</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in p.matriz %}
+            <tr>
+              <td class="celda-codigo">{{ f.material_codigo }}</td>
+              <td>{{ f.texto_breve }}</td>
+              <td>{{ f.centro }}</td>
+              <td class="num">{{ f.stock_minimo|numero:0|default:"—" }}</td>
+              <td class="num">{{ f.stock_maximo|numero:0|default:"—" }}</td>
+              <td class="num">{{ f.stock_inicial|numero:0 }}</td>
+              {% for c in f.celdas %}<td class="num estado-{{ c.estado }}">{{ c.valor|numero:0 }}</td>{% endfor %}
+              <td class="{% if f.quiebre %}dato-negativo{% endif %}">{{ f.quiebre_corto|default:"—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="aviso">Sin datos de S&amp;OP para los filtros seleccionados.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endwith %}

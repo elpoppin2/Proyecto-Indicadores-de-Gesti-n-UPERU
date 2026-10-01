@@ -1,0 +1,9 @@
+{# Números clave de una zona de Planificación, arriba de sus secciones (views._kpis_zona), con los filtros de cada sección. Pedido por el usuario: antes eran las tarjetas de la pestaña Indicadores. zonas.js la vuelve a pedir (?_kpis=zona) cuando cambia un filtro de la zona. #}
+<div class="franja-kpis" data-kpis-zona="{{ zona }}"{% if not kpis %} hidden{% endif %}>
+  {% for k in kpis %}
+    <div class="kpi-franja{% if k.tono %} kpi-{{ k.tono }}{% endif %}" style="--i: {{ forloop.counter0 }};">
+      <span class="kpi-valor">{{ k.valor }}</span>
+      <span class="kpi-etiqueta">{{ k.etiqueta }}</span>
+    </div>
+  {% endfor %}
+</div>

@@ -1,5 +1,6 @@
 import csv
 import datetime
+import os
 from decimal import Decimal, InvalidOperation
 
 
@@ -17,7 +18,14 @@ def abrir_csv(path):
 
 
 def leer_filas(path):
-    """Generador de dicts (DictReader) para un CSV, cerrando el archivo al terminar."""
+    """Generador de dicts (DictReader) para un CSV o, si la ruta termina en .xlsx,
+    para un Excel crudo de SAP (mismas fuentes, ahora sin el paso de conversión a
+    CSV). El resto de _importar_archivo no necesita saber cuál fue el origen."""
+    if os.path.splitext(path)[1].lower() == ".xlsx":
+        from ._excel_utils import leer_filas_excel_dict
+        yield from leer_filas_excel_dict(path)
+        return
+
     fh = abrir_csv(path)
     try:
         reader = csv.DictReader(fh)

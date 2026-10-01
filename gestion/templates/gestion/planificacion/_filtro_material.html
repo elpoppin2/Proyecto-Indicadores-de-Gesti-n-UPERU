@@ -1,0 +1,11 @@
+{# Filtro Material de Planificación: varios materiales y grupos (Calizas, Puzolanas...). El <select multiple> oculto guarda las opciones y lo elegido (sin name: no viaja); el campo oculto lleva los códigos separados por coma (views._selector_material). zonas.js arma el botón y el panel con casillas. Pedido por el usuario. #}
+<div class="campo campo-multi">
+  <label for="{{ nombre }}-boton">Material</label>
+  <div class="filtro-multi">
+    <input type="hidden" name="{{ nombre }}" value="{{ seleccion|join:',' }}" data-multi-valor>
+    <select id="{{ nombre }}" multiple hidden data-multi tabindex="-1" aria-hidden="true">
+      {% for m in opciones %}{% if m.codigo != "Todos" %}<option value="{{ m.codigo }}"{% if m.codigo in seleccion %} selected{% endif %}>{{ m.texto }}</option>{% endif %}{% endfor %}
+    </select>
+    <noscript>{{ seleccion|join:", "|default:"Todos" }}</noscript>
+  </div>
+</div>

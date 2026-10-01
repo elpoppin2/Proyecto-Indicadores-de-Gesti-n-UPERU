@@ -1,0 +1,135 @@
+{% load static dashboard_extras %}
+{% with pr=planificacion_precios %}
+{% if pr %}
+<section class="bloque" id="sec-precios">
+  <div class="bloque-cabecera">
+    <h2>Evolución de precios de entrada</h2>
+    <button type="button" class="btn-link" data-imprimir="sec-precios">Descargar / Imprimir</button>
+  </div>
+  <p class="nota">
+    Precio de compra por tonelada (S/ por T) de los materiales del S&amp;OP, desde MB51: entradas de mercancía por
+    pedido a un proveedor (101, neto de anulaciones 102), promedio ponderado por toneladas de cada mes. No incluye
+    traslados entre centros ni lo que sale de cantera propia o de producción (calizas propias, Clinker), que no tienen
+    precio de compra. Los importados (Carbón Importado, Escoria japonesa) se compran en el centro {{ pr.centro_importacion }}
+    (importación): un punto por barco. Un mes sin punto es un mes sin compras.
+  </p>
+  <form class="filtros" method="get" data-target="sec-precios">
+    <div class="campo">
+      <label for="periodo_precios">Período</label>
+      <select name="periodo_precios" id="periodo_precios">
+        {% for o in pr.periodos %}
+          <option value="{{ o.valor }}" {% if o.valor == pr.periodo_sel %}selected{% endif %}>{{ o.texto }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="categoria_precios">Categoría</label>
+      <select name="categoria_precios" id="categoria_precios">
+        {% for cat in pr.categorias %}
+          <option value="{{ cat }}" {% if cat == pr.categoria_sel %}selected{% endif %}>{{ cat }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="centro_precios">Centro</label>
+      <select name="centro_precios" id="centro_precios">
+        {% for c in pr.centros %}
+          <option value="{{ c }}" {% if c == pr.centro_sel %}selected{% endif %}>{{ c }}{% if c == pr.centro_importacion %} (importación){% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% include "gestion/planificacion/_filtro_material.html" with nombre="material_precios" opciones=pr.materiales seleccion=pr.material_sel %}
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+
+  {% if not pr.tarjetas %}
+    <p class="aviso">Sin compras en MB51 para los filtros seleccionados.</p>
+  {% elif pr.un_material %}
+    {% with t=pr.tarjetas.0 g=pr.grafico %}
+      <div class="metricas">
+        <div class="metrica"><span class="valor">S/ {{ t.precio_ultimo|numero:2 }}</span><span class="etiqueta">Último precio por T ({{ t.mes_ultimo_corto }})</span></div>
+        <div class="metrica"><span class="valor {% if t.variacion_anual_pct > 0 %}dato-negativo{% elif t.variacion_anual_pct < 0 %}dato-positivo{% endif %}">{% if t.variacion_anual_pct is not None %}{% if t.variacion_anual_pct > 0 %}+{% endif %}{{ t.variacion_anual_pct|numero:1 }}%{% else %}—{% endif %}</span><span class="etiqueta">Variación en 12 meses{% if t.mes_base_anual_corto %} (vs {{ t.mes_base_anual_corto }}){% endif %}</span></div>
+        <div class="metrica"><span class="valor">S/ {{ t.precio_promedio|numero:2 }}</span><span class="etiqueta">Promedio ponderado del período · mín. {{ t.precio_minimo|numero:1 }} – máx. {{ t.precio_maximo|numero:1 }}</span></div>
+        <div class="metrica"><span class="valor">{{ t.toneladas|numero:0 }} T</span><span class="etiqueta">Compradas en el período · {{ t.importe|soles }}</span></div>
+      </div>
+      {% if g %}
+        <div class="chart-scroll">
+        <div class="chart-wrap chart-precio">
+          <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Evolución del precio de entrada">
+            <line class="base-barras" x1="0" y1="{{ g.base_barras }}" x2="{{ g.ancho }}" y2="{{ g.base_barras }}"></line>
+            {% for b in g.barras %}
+              <rect class="barra-toneladas" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.ancho }}" height="{{ b.alto }}" rx="1.5"><title>{{ b.titulo }}</title></rect>
+            {% endfor %}
+            <path class="linea" d="{{ g.linea }}"></path>
+            {% for pt in g.puntos %}
+              <circle class="punto" cx="{{ pt.x }}" cy="{{ pt.y }}" r="3"><title>{{ pt.titulo }}</title></circle>
+            {% endfor %}
+          </svg>
+          {% for pt in g.puntos %}
+            {% if pt.etiqueta %}<span class="etiqueta-valor" style="left:{{ pt.x_pct }}%; top:{{ pt.y_pct }}%;">{{ pt.etiqueta }}</span>{% endif %}
+          {% endfor %}
+          {% for e in g.eje %}
+            <span class="etiqueta-mes" style="left:{{ e.x_pct }}%;">{{ e.texto }}</span>
+          {% endfor %}
+        </div>
+        </div>
+        <div class="leyenda-curva">
+          <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>Precio de entrada (S/ por T)</span>
+          <span class="leyenda-item"><span class="leyenda-marca barra-toneladas"></span>Toneladas compradas en el mes (máx. {{ g.tonelaje_maximo }})</span>
+        </div>
+      {% endif %}
+      <h3 class="subtitulo">Detalle mensual</h3>
+      <div class="tabla-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Mes</th><th class="num">Toneladas</th><th class="num">Importe (S/)</th>
+              <th class="num">Precio (S/ por T)</th><th class="num">Var. vs compra anterior</th>
+              <th class="num">Entradas</th><th class="num">Proveedores</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in pr.detalle %}
+              <tr>
+                <td>{{ d.mes|mesanio }}</td>
+                <td class="num">{{ d.toneladas|numero:0 }}</td>
+                <td class="num">{{ d.importe|numero:0 }}</td>
+                <td class="num">{{ d.precio|numero:2 }}</td>
+                <td class="num {% if d.variacion_pct > 0.05 %}dato-negativo{% elif d.variacion_pct < -0.05 %}dato-positivo{% endif %}">{% if d.variacion_pct is not None %}{% if d.variacion_pct > 0 %}+{% endif %}{{ d.variacion_pct|numero:1 }}%{% else %}—{% endif %}</td>
+                <td class="num">{{ d.entradas }}</td>
+                <td class="num">{{ d.proveedores }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endwith %}
+  {% else %}
+    <p class="nota">Ordenado por la variación en 12 meses, de mayor alza a mayor baja. Elige una tarjeta para ver el gráfico completo.</p>
+    <div class="grilla-precios">
+      {% for t in pr.tarjetas %}
+        <button type="button" class="tarjeta-precio" data-material-precios="{{ t.material_codigo }}" data-centro-precios="{{ t.centro }}">
+          <span class="tarjeta-precio-cabecera">
+            <span class="tarjeta-precio-nombre">{{ t.texto_breve }}</span>
+            <span class="tarjeta-precio-codigo">{{ t.material_codigo }} · {{ t.centro }}{% if t.importado %} (importación){% endif %}</span>
+          </span>
+          <span class="tarjeta-precio-valor">S/ {{ t.precio_ultimo|numero:2 }} <small>por T · {{ t.mes_ultimo_corto }}</small></span>
+          {% with m=t.minigrafico %}
+            {% if m %}
+              <svg class="minigrafico" viewBox="0 0 {{ m.ancho }} {{ m.alto }}" preserveAspectRatio="none" aria-hidden="true">
+                <path d="{{ m.linea }}"></path>
+                <circle cx="{{ m.fin_x }}" cy="{{ m.fin_y }}" r="2.6"></circle>
+              </svg>
+            {% endif %}
+          {% endwith %}
+          <span class="tarjeta-precio-variacion">
+            <span class="{% if t.variacion_anual_pct > 0 %}dato-negativo{% elif t.variacion_anual_pct < 0 %}dato-positivo{% endif %}">{% if t.variacion_anual_pct is not None %}{% if t.variacion_anual_pct > 0 %}▲ +{% elif t.variacion_anual_pct < 0 %}▼ {% endif %}{{ t.variacion_anual_pct|numero:1 }}% en 12 meses{% else %}Sin compra de hace 12 meses para comparar{% endif %}</span>
+            <span>{{ t.meses_con_compra }} mes{{ t.meses_con_compra|pluralize:"es" }} con compra</span>
+          </span>
+        </button>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
+{% endif %}
+{% endwith %}

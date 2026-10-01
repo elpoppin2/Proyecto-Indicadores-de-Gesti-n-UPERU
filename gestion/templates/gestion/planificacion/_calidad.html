@@ -1,0 +1,184 @@
+{% load static dashboard_extras %}
+{% with ca=planificacion_calidad %}
+{% if ca %}
+<section class="bloque" id="sec-calidad">
+  <div class="bloque-cabecera">
+    <h2>Calidad</h2>
+    <button type="button" class="btn-link" data-imprimir="sec-calidad">Descargar / Imprimir</button>
+  </div>
+  <p class="nota">
+    Análisis químico de lo que ingresa a planta, desde los tickets de báscula (ZMM056, recepciones de terceros y
+    propias). Cada material muestra solo los parámetros que el laboratorio le mide. Promedios ponderados por las
+    toneladas de los tickets analizados; mínimo, máximo y desviación, por muestra (un número de muestra cubre
+    varios tickets). No tienen análisis en ZMM056 el Carbón Importado, las calizas de cantera propia ni el Clinker.
+    {% if ca.desde %}Datos del {{ ca.desde|date:"d/m/Y" }} al {{ ca.hasta|date:"d/m/Y" }}.{% endif %}
+  </p>
+  <form class="filtros" method="get" data-target="sec-calidad">
+    <div class="campo">
+      <label for="periodo_calidad">Período</label>
+      <select name="periodo_calidad" id="periodo_calidad">
+        {% for o in ca.periodos %}
+          <option value="{{ o.valor }}" {% if o.valor == ca.periodo_sel %}selected{% endif %}>{{ o.texto }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="categoria_calidad">Categoría</label>
+      <select name="categoria_calidad" id="categoria_calidad">
+        {% for cat in ca.categorias %}
+          <option value="{{ cat }}" {% if cat == ca.categoria_sel %}selected{% endif %}>{{ cat }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="centro_calidad">Centro</label>
+      <select name="centro_calidad" id="centro_calidad">
+        {% for c in ca.centros %}
+          <option value="{{ c }}" {% if c == ca.centro_sel %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% include "gestion/planificacion/_filtro_material.html" with nombre="material_calidad" opciones=ca.materiales seleccion=ca.material_sel %}
+    <div class="campo">
+      <label for="proveedor_calidad">Proveedor</label>
+      <select name="proveedor_calidad" id="proveedor_calidad">
+        {% for p in ca.proveedores %}
+          <option value="{{ p }}" {% if p == ca.proveedor_sel %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+
+  {% if not ca.tarjetas %}
+    <p class="aviso">Sin análisis de calidad para los filtros seleccionados.</p>
+  {% elif ca.un_material %}
+    {% with t=ca.tarjetas.0 %}
+      <div class="metricas">
+        <div class="metrica"><span class="valor">{{ t.toneladas|numero:0 }} T</span><span class="etiqueta">Ingresos analizados</span></div>
+        <div class="metrica"><span class="valor">{{ t.muestras }}</span><span class="etiqueta">Muestras de laboratorio</span></div>
+        {% if ca.con_proveedor %}
+          <div class="metrica"><span class="valor">{{ ca.participacion|numero:1 }}%</span><span class="etiqueta">De las toneladas analizadas del material (todos los proveedores)</span></div>
+        {% else %}
+          <div class="metrica"><span class="valor">{{ t.proveedores }}</span><span class="etiqueta">Proveedor{{ t.proveedores|pluralize:"es" }}</span></div>
+        {% endif %}
+        <div class="metrica"><span class="valor">{{ t.ultima_fecha|date:"d/m/Y" }}</span><span class="etiqueta">Último ingreso analizado</span></div>
+      </div>
+    {% endwith %}
+    <div class="grilla-calidad">
+      {% for p in ca.graficos %}
+        <div class="panel-calidad">
+          <div class="panel-calidad-cabecera">
+            <span class="panel-calidad-nombre">{{ p.etiqueta }}{% if p.unidad %} <small>({{ p.unidad }})</small>{% endif %}</span>
+            <span class="panel-calidad-promedio">{{ p.promedio }}</span>
+          </div>
+          <span class="panel-calidad-rango">mín. {{ p.minimo }} · máx. {{ p.maximo }} · desv. {{ p.desviacion }} · {{ p.muestras }} muestra{{ p.muestras|pluralize }}</span>
+          {% if p.referencia %}
+            <span class="panel-calidad-rango panel-calidad-referencia">Todos los proveedores: <strong>{{ p.referencia }}</strong> · diferencia <strong>{{ p.diferencia }}</strong></span>
+          {% endif %}
+          {% with g=p.grafico %}
+            {% if g %}
+              <div class="chart-wrap chart-calidad">
+                <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Evolución semanal de {{ p.etiqueta }}">
+                  {% if g.y_referencia %}<line class="linea-referencia" x1="0" y1="{{ g.y_referencia }}" x2="{{ g.ancho }}" y2="{{ g.y_referencia }}"></line>{% endif %}
+                  <line class="linea-promedio" x1="0" y1="{{ g.y_promedio }}" x2="{{ g.ancho }}" y2="{{ g.y_promedio }}"></line>
+                  <path class="linea" d="{{ g.linea }}"></path>
+                  {% for pt in g.puntos %}
+                    <circle class="punto" cx="{{ pt.x }}" cy="{{ pt.y }}" r="2.4"><title>{{ pt.titulo }}</title></circle>
+                  {% endfor %}
+                </svg>
+                {% for pt in g.puntos %}
+                  {% if pt.etiqueta %}<span class="etiqueta-valor{% if pt.alineacion %} alinear-{{ pt.alineacion }}{% endif %}" style="left:{{ pt.x_pct }}%; top:{{ pt.y_pct }}%;">{{ pt.etiqueta }}</span>{% endif %}
+                {% endfor %}
+                {% for e in g.eje %}
+                  <span class="etiqueta-mes{% if e.alineacion %} alinear-{{ e.alineacion }}{% endif %}" style="left:{{ e.x_pct }}%;">{{ e.texto }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
+          {% endwith %}
+        </div>
+      {% endfor %}
+    </div>
+    <div class="leyenda-curva">
+      <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>Promedio semanal (ponderado por toneladas){% if ca.con_proveedor %} de {{ ca.proveedor_sel }}{% endif %}</span>
+      <span class="leyenda-item"><span class="leyenda-marca leyenda-meta"></span>Promedio del período{% if ca.con_proveedor %} de {{ ca.proveedor_sel }}{% endif %}</span>
+      {% if ca.con_proveedor %}<span class="leyenda-item"><span class="leyenda-marca leyenda-referencia"></span>Promedio de todos los proveedores del material</span>{% endif %}
+    </div>
+
+    <h3 class="subtitulo">Detalle mensual</h3>
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Mes</th><th class="num">Toneladas analizadas</th><th class="num">Muestras</th>
+            {% for c in ca.columnas %}<th class="num">{{ c.etiqueta }}{% if c.unidad %} ({{ c.unidad }}){% endif %}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in ca.mensual %}
+            <tr>
+              <td>{{ m.mes|mesanio }}</td>
+              <td class="num">{{ m.toneladas|numero:0 }}</td>
+              <td class="num">{{ m.muestras }}</td>
+              {% for v in m.valores %}<td class="num">{{ v }}</td>{% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if ca.por_proveedor|length > 1 %}
+      <h3 class="subtitulo">Por proveedor</h3>
+    {% else %}
+      <h3 class="subtitulo">Proveedor</h3>
+    {% endif %}
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Proveedor</th><th class="num" data-orden="desc">Toneladas analizadas</th><th class="num">Muestras</th>
+            {% for c in ca.columnas %}<th class="num">{{ c.etiqueta }}{% if c.unidad %} ({{ c.unidad }}){% endif %}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in ca.por_proveedor %}
+            <tr{% if p.seleccionado %} class="fila-seleccionada"{% endif %}>
+              <td>{{ p.proveedor }}</td>
+              <td class="num">{{ p.toneladas|numero:0 }}</td>
+              <td class="num">{{ p.muestras }}</td>
+              {% for v in p.valores %}<td class="num">{{ v }}</td>{% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="nota">{% if ca.con_proveedor %}Solo los ingresos de <strong>{{ ca.proveedor_sel }}</strong>. {% endif %}Promedio del período y del último mes con análisis (▲ / ▼: el último mes está más de 1% sobre o bajo el promedio). Elige una tarjeta para ver la evolución de cada parámetro.</p>
+    <div class="grilla-precios">
+      {% for t in ca.tarjetas %}
+        <button type="button" class="tarjeta-precio tarjeta-calidad" data-material-calidad="{{ t.material_codigo }}" data-centro-calidad="{{ t.centro }}">
+          <span class="tarjeta-precio-cabecera">
+            <span class="tarjeta-precio-nombre">{{ t.texto_breve }}</span>
+            <span class="tarjeta-precio-codigo">{{ t.material_codigo }} · {{ t.centro }}</span>
+          </span>
+          <span class="tabla-parametros">
+            <span class="fila-parametro fila-parametro-cabecera"><span></span><span>Período</span><span>{{ t.ultimo_mes }}</span></span>
+            {% for p in t.parametros %}
+              <span class="fila-parametro">
+                <span>{{ p.etiqueta }}{% if p.unidad and p.unidad != "%" %} <small>{{ p.unidad }}</small>{% endif %}</span>
+                <span>{{ p.promedio }}</span>
+                <span>{{ p.reciente }}{% if p.tendencia == "sube" %} <span class="tendencia">▲</span>{% elif p.tendencia == "baja" %} <span class="tendencia">▼</span>{% endif %}</span>
+              </span>
+            {% endfor %}
+          </span>
+          <span class="tarjeta-precio-variacion">
+            <span>{{ t.toneladas|numero:0 }} T analizadas</span>
+            <span>{{ t.muestras }} muestra{{ t.muestras|pluralize }}</span>
+          </span>
+        </button>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>
+{% endif %}
+{% endwith %}
