@@ -828,6 +828,12 @@ _SECCIONES_INDICADORES = {
     "planificacion_inflacion": "sec-inflacion", "planificacion_premios": "sec-premios",
     "planificacion_energia": "sec-energia",
 }
+# Los que dibuja la pestaña Indicadores. Premios/castigos y costo de energía
+# quedaron solo en su pestaña (Calidad y energía), pedido por el usuario.
+_PANELES_OVERVIEW = (
+    "planificacion", "planificacion_consumo", "planificacion_factor",
+    "planificacion_proyeccion", "planificacion_cobertura", "planificacion_inflacion",
+)
 # Contextos de los números clave de cada zona (ver _kpis_zona).
 _CONTEXTOS_KPIS = {
     "cumplimiento": ("planificacion", "planificacion_cumplimiento"),
@@ -896,18 +902,16 @@ _MES_INDICADORES = {
 }
 
 
-def _meses_indicadores(c, meses_premios):
+def _meses_indicadores(c):
     """Meses que ofrece el filtro de Indicadores: los que tiene al menos un
     indicador, hasta el mes en curso (el Plan llega meses adelante, sin real)."""
     hoy_mes = datetime.date.today().replace(day=1)
-    meses = set(meses_premios)
+    meses = set()
     for nombre, (_, clave) in _MES_INDICADORES.items():
         if c.get(nombre):
             meses.update(c[nombre].get(clave) or [])
     if c.get("planificacion_inflacion"):
         meses.update(c["planificacion_inflacion"].get("meses_fecha") or [])
-    if c.get("planificacion_energia") and c["planificacion_energia"].get("mensual"):
-        meses.update(c["planificacion_energia"]["mensual"]["meses_fecha"])
     return sorted((m for m in meses if m <= hoy_mes), reverse=True)
 
 
@@ -917,14 +921,13 @@ def _html_indicadores(request, mes_forzado=None):
     (?mes_indicadores=2026-08-01) cada indicador pasa a ese mes; sin él, el
     último mes cerrado. `mes_forzado`: lo usa el exportador del HTML estático
     para dibujar cada mes. Pedido por el usuario."""
-    sufijos = sorted({s for sid in _SECCIONES_INDICADORES.values() for s in _SECCIONES_PLANIFICACION[sid][3]} | {"indicadores"})
+    secciones = {nombre: _SECCIONES_INDICADORES[nombre] for nombre in _PANELES_OVERVIEW}
+    sufijos = sorted({s for sid in secciones.values() for s in _SECCIONES_PLANIFICACION[sid][3]} | {"indicadores"})
     valor_mes = request.GET.get("mes_indicadores", "") if mes_forzado is None else mes_forzado
 
     def dibujar():
-        contextos = {nombre: _contexto_seccion(request, sid) for nombre, sid in _SECCIONES_INDICADORES.items()}
-        df_premios, _ = _filtrar_premios(request)
-        meses_premios = sorted({f.replace(day=1) for f in df_premios["fecha"]}) if not df_premios.empty else []
-        meses = _meses_indicadores(contextos, meses_premios)
+        contextos = {nombre: _contexto_seccion(request, sid) for nombre, sid in secciones.items()}
+        meses = _meses_indicadores(contextos)
         # Por defecto, el último mes cerrado: el mes en curso recién empieza
         # (p.ej. el día 1 daba 0% de cumplimiento) y se elige a propósito.
         cerrado = q._sumar_meses(datetime.date.today().replace(day=1), -1)
@@ -1058,11 +1061,16 @@ def _paneles_indicadores(request, c, mes=None):
     del gráfico), leyenda, nota y si ocupa el ancho completo.
     `mes`: el del filtro Mes (None = el último de cada indicador). Los
     contextos con mes propio ya vienen calculados para ese mes (None si no
-    tienen datos de él); las series mes a mes (IPU, premios, energía) se
-    cortan en ese mes y su cifra es la de ese mes."""
+    tienen datos de él); la serie mes a mes del IPU se corta en ese mes y su
+    cifra es la de ese mes. Los centros se muestran por su nombre (ATOCONGO,
+    CONDORCOCHA), no por código, pedido por el usuario."""
     nombres_zona = {clave: nombre for clave, nombre, _, _ in _ZONAS_PLANIFICACION}
+    nombres_centro = q.descripcion_centros_planificacion()
     hoy_mes = datetime.date.today().replace(day=1)
     paneles = []
+
+    def centro(codigo):
+        return nombres_centro.get(codigo) or codigo
 
     def panel(zona, titulo, cifra, sub, tipo, g, tono="", estado="", leyenda=(), nota="", ancho=False):
         paneles.append({
@@ -1098,9 +1106,9 @@ def _paneles_indicadores(request, c, mes=None):
         for r in base.head(_PANEL_FILAS).itertuples():
             v = r.cantidad_real / r.cantidad_plan * 100
             filas.append({
-                "nombre": _nombre_material(r.texto_breve), "sub": r.centro, "valor": v, "texto": f"{v:,.0f}%",
+                "nombre": _nombre_material(r.texto_breve), "sub": centro(r.centro), "valor": v, "texto": f"{v:,.0f}%",
                 "clase": "bien" if v >= _CUMPLIMIENTO_BIEN else "mal" if v < _CUMPLIMIENTO_MAL else "regular",
-                "detalle": f"{r.texto_breve} ({r.centro}) · {mes_txt}\nPlan {r.cantidad_plan:,.0f} T · Real {r.cantidad_real:,.0f} T · {v:,.1f}%",
+                "detalle": f"{r.texto_breve} ({centro(r.centro)}) · {mes_txt}\nPlan {r.cantidad_plan:,.0f} T · Real {r.cantidad_real:,.0f} T · {v:,.1f}%",
             })
         if not filas:
             vacio("cumplimiento", titulo)
@@ -1131,9 +1139,9 @@ def _paneles_indicadores(request, c, mes=None):
                 continue
             plan = f["plan_fecha"] if en_curso else f["plan"]
             filas.append({
-                "nombre": _nombre_material(f["texto_breve"]), "sub": f["centro"], "valor": v, "texto": f"{v:,.0f}%",
+                "nombre": _nombre_material(f["texto_breve"]), "sub": centro(f["centro"]), "valor": v, "texto": f"{v:,.0f}%",
                 "clase": {"en_linea": "bien", "sobre": "regular", "bajo": "mal"}.get(f["estado"], "neutra"),
-                "detalle": f"{f['texto_breve']} ({f['centro']}) · {q.formato_mes_anio(co['mes_sel'])}\n"
+                "detalle": f"{f['texto_breve']} ({centro(f['centro'])}) ·{q.formato_mes_anio(co['mes_sel'])}\n"
                            f"Plan{' a la fecha' if en_curso else ''} {plan:,.0f} T · Consumo real {f['real']:,.0f} T · {v:,.1f}%",
             })
     if not filas:
@@ -1163,10 +1171,10 @@ def _paneles_indicadores(request, c, mes=None):
         vacio("consumo", titulo)
     else:
         filas = [{
-            "nombre": _nombre_material(f["texto_breve"]), "sub": f"{f['centro']} · {f['producto_texto'].lower()}",
+            "nombre": _nombre_material(f["texto_breve"]), "sub": f"{centro(f['centro'])} · {f['producto_texto'].lower()}",
             "valor": f["var_3_vs_12"], "texto": f"{f['var_3_vs_12']:+,.0f}%",
             "clase": {"alto": "regular", "bajo": "mal", "normal": "bien"}.get(f["estado"], "neutra"),
-            "detalle": f"{f['texto_breve']} ({f['centro']}) · kg por T de {f['producto_texto'].lower()}\n"
+            "detalle": f"{f['texto_breve']} ({centro(f['centro'])}) ·kg por T de {f['producto_texto'].lower()}\n"
                        f"Últimos 3 meses {f['factor_3']:,.0f} kg/T · {fa['meses_factor']} meses {f['factor_12']:,.0f} kg/T "
                        f"({f['var_3_vs_12']:+,.1f}%)",
         } for f in con_var[:_PANEL_FILAS + 2]]
@@ -1189,10 +1197,10 @@ def _paneles_indicadores(request, c, mes=None):
         vacio("inventario", titulo)
     else:
         filas = [{
-            "nombre": _nombre_material(f["texto_breve"]), "sub": f["centro"], "valor": f["cobertura_dias"],
+            "nombre": _nombre_material(f["texto_breve"]), "sub": centro(f["centro"]), "valor": f["cobertura_dias"],
             "texto": f"{f['cobertura_dias']:,.0f} d",
             "clase": "mal" if f["cobertura_dias"] < _COBERTURA_RIESGO else "regular" if f["cobertura_dias"] < _COBERTURA_AJUSTADA else "neutra",
-            "detalle": f"{f['texto_breve']} ({f['centro']})\nStock {f['stock_cierre']:,.0f} T · consumo {f['consumo_mensual']:,.0f} T/mes\n"
+            "detalle": f"{f['texto_breve']} ({centro(f['centro'])})\nStock {f['stock_cierre']:,.0f} T · consumo {f['consumo_mensual']:,.0f} T/mes\n"
                        f"Cobertura {f['cobertura_dias']:,.0f} días ({f['cobertura_meses']:,.1f} meses)",
         } for f in con_dias[:_PANEL_FILAS]]
         panel("inventario", titulo, str(cob["en_riesgo"]),
@@ -1277,70 +1285,6 @@ def _paneles_indicadores(request, c, mes=None):
                        ("linea-ipu", "IPU acumulado del año")],
               nota="Canasta de materiales comprados cada mes, ponderada por lo comprado.", ancho=True)
 
-    # 7. Premios y castigos por calidad, mes a mes (con un mes elegido, hasta
-    # ese mes y la cifra es la del mes).
-    pm = c.get("planificacion_premios")
-    titulo = "Premios y castigos por calidad"
-    df_premios, _ = _filtrar_premios(request)
-    if not df_premios.empty:
-        df_premios = df_premios.assign(mes=df_premios["fecha"].map(lambda f: f.replace(day=1)))
-    meses = sorted(m for m in (df_premios["mes"].unique() if not df_premios.empty else []) if not mes or m <= mes)[-18:]
-    if not (pm and pm.get("resumen")) or not meses or (mes and meses[-1] != mes):
-        vacio("calidad", titulo)
-    else:
-        pilas, netos, detalles = [], [], []
-        for m in meses:
-            g = df_premios[df_premios["mes"] == m]
-            premios, castigos = float(g.loc[g["premio"] > 0, "premio"].sum()), float(g.loc[g["premio"] < 0, "premio"].sum())
-            detalle = (f"{_mes_corto(m)} · neto {charts.soles_corto(premios + castigos)}\n"
-                       f"Premios {charts.soles_corto(premios)} · castigos {charts.soles_corto(castigos)}\n"
-                       f"{len(g):,} documentos · {g['toneladas'].sum():,.0f} T")
-            pilas.append([{"valor": premios, "clase": "col-premio", "detalle": detalle},
-                          {"valor": castigos, "clase": "col-castigo"}])
-            netos.append(premios + castigos)
-            detalles.append(detalle)
-        if mes:
-            del_mes = q.resumen_premios(df_premios[df_premios["mes"] == mes])
-            cifra = charts.soles_corto(del_mes["neto"])
-            sub = f"Neto de {q.formato_mes_anio(mes)} · {_pct_texto(del_mes['pct_sobre_base'], True)} sobre el precio base"
-        else:
-            periodo = dict((x["valor"], x["texto"]) for x in pm["periodos"])[pm["periodo_sel"]].lower()
-            cifra = charts.soles_corto(pm["resumen"]["neto"])
-            sub = f"Neto {periodo} · {_pct_texto(pm['resumen']['pct_sobre_base'], True)} sobre el precio base"
-        panel("calidad", titulo, cifra, sub, "columnas",
-              charts.columnas([_mes_corto(m) for m in meses], pilas, charts.soles_corto,
-                              linea={"valores": netos, "clase": "linea-neto", "detalles": detalles,
-                                     "etiqueta_final": charts.soles_corto(netos[-1])}, ancho=520, alto=230),
-              leyenda=[("col-premio", "Premios"), ("col-castigo", "Castigos"), ("linea-neto", "Neto")],
-              nota="Premio: calidad mejor que el contrato, se paga más. Castigo: peor, se descuenta.")
-
-    # 8. Costo de la energía de los carbones, mes a mes (con un mes elegido,
-    # hasta ese mes y la cifra es la del mes).
-    en = c.get("planificacion_energia")
-    titulo = "Costo de la energía de los carbones"
-    mensual = en.get("mensual") if en else None
-    puntos = [(m, v, f"{_mes_corto(m)}: S/ {v:,.2f} por Gcal") for m, v in zip(mensual["meses_fecha"], mensual["total"])
-              if v is not None and (not mes or m <= mes)] if mensual else []
-    if not puntos or (mes and puntos[-1][0] != mes):
-        vacio("calidad", titulo)
-    else:
-        promedio = mensual["total_periodo"]
-        tono, estado = "", ""
-        if promedio:
-            dif = (puntos[-1][1] / promedio - 1) * 100
-            if abs(dif) >= 2:
-                tono = "ok" if dif < 0 else "aviso"
-                estado = f"{'El mes' if mes else 'Último mes'} {'+' if dif > 0 else '−'}{abs(dif):,.1f}% vs promedio"
-        cifra = f"S/ {puntos[-1][1]:,.1f}" if mes else f"S/ {en['resumen']['costo_gcal']:,.1f}"
-        sub = (f"Por Gcal en {q.formato_mes_anio(mes)}, a precio efectivo (con premios y castigos)" if mes else
-               "Por Gcal, a precio efectivo (con premios y castigos)")
-        panel("calidad", titulo, cifra, sub, "lineas",
-              charts.lineas_mensuales([{"nombre": "S/ por Gcal", "clase": "serie-0", "puntos": puntos}], _mes_corto,
-                                      lambda v: f"{v:,.1f}",
-                                      referencias=[{"valor": promedio, "texto": f"Promedio {promedio:,.1f}", "clase": "serie-1"}],
-                                      ancho=520, alto=230, pad_izq=40, pad_der=40),
-              tono, estado, leyenda=[("serie-0", "S/ por Gcal del mes"), ("serie-1", "Promedio del período")],
-              nota="Precio efectivo ÷ poder calorífico (PCS) de lo que ingresó cada mes.")
     return paneles
 
 
