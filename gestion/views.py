@@ -1088,8 +1088,10 @@ def _paneles_indicadores(request, c, mes=None):
     def tope(filas, minimo=120, maximo=200):
         return min(max(minimo, max(f["valor"] for f in filas) * 1.08), maximo)
 
-    # 1. Cumplimiento del plan de abastecimiento, por material (mes, categoría
-    # y centro de la Evaluación mensual).
+    # 1. Cumplimiento del plan de abastecimiento por centro (mes, categoría
+    # y centro de la Evaluación mensual): una barra por planta, pedido por el
+    # usuario (antes eran los materiales con más plan). Suma real ÷ suma plan
+    # de las mismas filas que el total, así las barras cuadran con la cifra.
     pl = c.get("planificacion")
     titulo = "Cumplimiento del plan de abastecimiento"
     if not pl:
@@ -1101,14 +1103,16 @@ def _paneles_indicadores(request, c, mes=None):
             base = base[base["categoria"] == pl["categoria_sel"]]
         if pl["centro_sel"] != "Todos":
             base = base[base["centro"] == pl["centro_sel"]]
-        base = base[base["cantidad_plan"] > 0].sort_values("cantidad_plan", ascending=False)
+        por_centro = base.groupby("centro").agg(plan=("cantidad_plan", "sum"), real=("cantidad_real", "sum"),
+                                                materiales=("cantidad_plan", lambda s: int((s > 0).sum())))
         filas = []
-        for r in base.head(_PANEL_FILAS).itertuples():
-            v = r.cantidad_real / r.cantidad_plan * 100
+        for cod, r in por_centro[por_centro["plan"] > 0].sort_values("plan", ascending=False).iterrows():
+            v, n = r.real / r.plan * 100, int(r.materiales)
             filas.append({
-                "nombre": _nombre_material(r.texto_breve), "sub": centro(r.centro), "valor": v, "texto": f"{v:,.0f}%",
+                "nombre": centro(cod).title(), "sub": f"{n} materiales", "valor": v, "texto": f"{v:,.1f}%",
                 "clase": "bien" if v >= _CUMPLIMIENTO_BIEN else "mal" if v < _CUMPLIMIENTO_MAL else "regular",
-                "detalle": f"{r.texto_breve} ({centro(r.centro)}) · {mes_txt}\nPlan {r.cantidad_plan:,.0f} T · Real {r.cantidad_real:,.0f} T · {v:,.1f}%",
+                "detalle": f"{centro(cod)} · {mes_txt}\nPlan {r.plan:,.0f} T · Real {r.real:,.0f} T · {v:,.1f}%\n"
+                           f"{n} materiales con plan",
             })
         if not filas:
             vacio("cumplimiento", titulo)
@@ -1125,30 +1129,37 @@ def _paneles_indicadores(request, c, mes=None):
                   charts.barras_escala(filas, 0, tope(filas), referencias=[(100, "Plan")]), tono, estado,
                   leyenda=[("bien", f"≥ {_CUMPLIMIENTO_BIEN}%"), ("regular", f"{_CUMPLIMIENTO_MAL}–{_CUMPLIMIENTO_BIEN}%"),
                            ("mal", f"< {_CUMPLIMIENTO_MAL}%")],
-                  nota=f"Real ÷ plan de los {len(filas)} materiales con más toneladas planificadas (de {len(base)}).")
+                  nota="Ingresos físicos (báscula) ÷ plan de abastecimiento de cada centro, todos sus materiales.")
 
-    # 2. Consumo real vs plan S&OP del mes, por material.
+    # 2. Consumo real vs plan S&OP del mes, por centro (igual que el 1).
     co = c.get("planificacion_consumo")
     titulo = "Consumo real vs plan S&OP"
     filas = []
     if co and co["filas"]:
         en_curso = co["en_curso"]
-        for f in sorted(co["filas"], key=lambda f: -f["plan"])[:_PANEL_FILAS]:
-            v = f["cumplimiento_fecha"] if en_curso else f["cumplimiento"]
-            if v is None:
-                continue
+        tol = co["tolerancia_mes"]
+        por_centro = {}
+        for f in co["filas"]:
             plan = f["plan_fecha"] if en_curso else f["plan"]
+            acum = por_centro.setdefault(f["centro"], {"plan": 0.0, "real": 0.0, "materiales": 0})
+            acum["plan"] += plan or 0.0
+            acum["real"] += f["real"] or 0.0
+            acum["materiales"] += 1
+        for cod, a in sorted(por_centro.items(), key=lambda x: -x[1]["plan"]):
+            if a["plan"] <= 0:
+                continue
+            v = a["real"] / a["plan"] * 100
             filas.append({
-                "nombre": _nombre_material(f["texto_breve"]), "sub": centro(f["centro"]), "valor": v, "texto": f"{v:,.0f}%",
-                "clase": {"en_linea": "bien", "sobre": "regular", "bajo": "mal"}.get(f["estado"], "neutra"),
-                "detalle": f"{f['texto_breve']} ({centro(f['centro'])}) ·{q.formato_mes_anio(co['mes_sel'])}\n"
-                           f"Plan{' a la fecha' if en_curso else ''} {plan:,.0f} T · Consumo real {f['real']:,.0f} T · {v:,.1f}%",
+                "nombre": centro(cod).title(), "sub": f"{a['materiales']} materiales", "valor": v, "texto": f"{v:,.1f}%",
+                "clase": "bien" if abs(v - 100) <= tol else "regular" if v > 100 else "mal",
+                "detalle": f"{centro(cod)} · {q.formato_mes_anio(co['mes_sel'])}\n"
+                           f"Plan{' a la fecha' if en_curso else ''} {a['plan']:,.0f} T · Consumo real {a['real']:,.0f} T · {v:,.1f}%\n"
+                           f"{a['materiales']} materiales con plan",
             })
     if not filas:
         vacio("consumo", titulo)
     else:
         total = co["total_cumplimiento_fecha"] if en_curso else co["total_cumplimiento"]
-        tol = co["tolerancia_mes"]
         tono, estado = ("", "")
         if total is not None:
             tono, estado = (("ok", "En línea") if abs(total - 100) <= tol else
@@ -1161,7 +1172,7 @@ def _paneles_indicadores(request, c, mes=None):
               charts.barras_escala(filas, 0, tope(filas), referencias=[(100, "Plan")], banda=(100 - tol, 100 + tol)),
               tono, estado,
               leyenda=[("bien", f"En línea (±{tol}%)"), ("regular", "Sobre el plan"), ("mal", "Bajo el plan")],
-              nota=f"Consumo real (MB51) ÷ plan de consumos de los {len(filas)} materiales con más plan (de {len(co['filas'])}).")
+              nota="Consumo real (MB51) ÷ plan de consumos S&OP de cada centro, todos sus materiales.")
 
     # 3. Consumo por tonelada producida: últimos 3 meses vs 12 meses.
     fa = c.get("planificacion_factor")
