@@ -655,22 +655,43 @@ def lineas_mensuales(series, etiqueta_mes, formato, referencias=None, desde_cero
     series = [s for s in series if s["puntos"]]
     if not series:
         return None
-    referencias = referencias or []
     todos = [m for s in series for m, _, _ in s["puntos"]]
     meses = _meses_continuos(min(todos), max(todos))
     if len(meses) < 2:
         meses = [meses[0], meses[0].replace(year=meses[0].year + (meses[0].month == 12), month=meses[0].month % 12 + 1)]
     indice = {m: i for i, m in enumerate(meses)}
+    series = [{**s, "puntos": [(indice[m], v, d) for m, v, d in s["puntos"]]} for s in series]
+    return lineas_indice(series, [etiqueta_mes(m) for m in meses], formato, referencias=referencias,
+                         desde_cero=desde_cero, ancho=ancho, alto=alto, pad_izq=pad_izq, pad_der=pad_der,
+                         pad_arr=pad_arr, pad_abj=pad_abj, max_etiquetas_eje=18)
+
+
+def lineas_indice(series, etiquetas, formato, referencias=None, desde_cero=False, ancho=960, alto=280,
+                  pad_izq=52, pad_der=46, pad_arr=22, pad_abj=24, max_etiquetas_eje=18, piso=None, techo=None):
+    """Lo mismo que lineas_mensuales sobre un eje de posiciones 0..n-1 con
+    `etiquetas[i]` como texto de cada una (meses, días del mes...). Los
+    puntos de cada serie son (posición, valor, detalle); la línea se corta
+    donde falta una posición, salvo en las series con "continua": True (p.ej.
+    el plan lineal de la curva S, de solo dos puntos). `piso`/`techo`:
+    escala fija opcional. Usado también por la curva S de la pestaña
+    Indicadores."""
+    series = [s for s in series if s["puntos"]]
+    if not series:
+        return None
+    referencias = referencias or []
+    n_pos = max(len(etiquetas), 2)
     valores = [v for s in series for _, v, _ in s["puntos"]] + [r["valor"] for r in referencias]
     minimo, maximo = min(valores), max(valores)
     margen = (maximo - minimo) * 0.12 or abs(maximo) * 0.1 or 1.0
-    piso = 0.0 if desde_cero else minimo - margen
-    techo = maximo + margen
+    if piso is None:
+        piso = 0.0 if desde_cero else minimo - margen
+    if techo is None:
+        techo = maximo + margen
     base = alto - pad_abj
-    paso = (ancho - pad_izq - pad_der) / (len(meses) - 1)
+    paso = (ancho - pad_izq - pad_der) / (n_pos - 1)
 
-    def x_de(mes):
-        return pad_izq + indice[mes] * paso
+    def x_de(posicion):
+        return pad_izq + posicion * paso
 
     def y_de(valor):
         return pad_arr + (base - pad_arr) * (1 - (valor - piso) / (techo - piso))
@@ -678,12 +699,12 @@ def lineas_mensuales(series, etiqueta_mes, formato, referencias=None, desde_cero
     salida = []
     for s in series:
         tramos, actual, previo = [], [], None
-        for mes, valor, _ in s["puntos"]:
-            if previo is not None and indice[mes] - indice[previo] > 1:
+        for posicion, valor, _ in s["puntos"]:
+            if previo is not None and posicion - previo > 1 and not s.get("continua"):
                 tramos.append(actual)
                 actual = []
-            actual.append(f"{'M' if not actual else 'L'}{x_de(mes):.1f} {y_de(valor):.1f}")
-            previo = mes
+            actual.append(f"{'M' if not actual else 'L'}{x_de(posicion):.1f} {y_de(valor):.1f}")
+            previo = posicion
         tramos.append(actual)
         n = len(s["puntos"])
         if len(series) == 1:
@@ -715,16 +736,34 @@ def lineas_mensuales(series, etiqueta_mes, formato, referencias=None, desde_cero
             p["derecha"] = True
             previo = y
     marcas = [v for v in _marcas_eje(piso, techo, 4) if piso <= v <= techo]
-    paso_eje = max(1, math.ceil(len(meses) / 18))
+    paso_eje = max(1, math.ceil(len(etiquetas) / max_etiquetas_eje))
     return {
         "ancho": ancho, "alto": alto, "base": f"{base:.1f}", "x0": pad_izq, "x1": ancho - pad_der,
         "series": salida,
         "grilla": [{"y": f"{y_de(v):.1f}", "y_pct": f"{y_de(v) / alto * 100:.2f}", "texto": formato(v)} for v in marcas],
         "referencias": [{"y": f"{y_de(r['valor']):.1f}", "y_pct": f"{(y_de(r['valor']) - 12) / alto * 100:.2f}",
                          "texto": r["texto"], "clase": r.get("clase", "")} for r in referencias],
-        "eje": [{"x_pct": f"{x_de(m) / ancho * 100:.2f}", "texto": etiqueta_mes(m)}
-                for i, m in enumerate(meses) if i % paso_eje == 0 or i == len(meses) - 1],
+        "eje": [{"x_pct": f"{x_de(i) / ancho * 100:.2f}", "texto": e}
+                for i, e in enumerate(etiquetas) if i % paso_eje == 0 or i == len(etiquetas) - 1],
     }
+
+
+def pilas_horizontales(filas):
+    """Barras horizontales apiladas al 100% (HTML/CSS), una por fila: cada
+    segmento ocupa su parte del total de la fila. `filas`: dicts con
+    "segmentos" ({"valor", "clase", "detalle"}); se agrega "ancho" (% como
+    texto con punto) y "texto" (el valor, solo si el segmento es lo bastante
+    ancho para que se lea). Usado por Salud del inventario (Indicadores)."""
+    if not filas:
+        return None
+    salida = []
+    for f in filas:
+        total = sum(s["valor"] for s in f["segmentos"]) or 1
+        segmentos = [{**s, "ancho": f"{s['valor'] / total * 100:.2f}",
+                      "texto": f"{s['valor']:,.0f}" if s["valor"] / total >= 0.07 else ""}
+                     for s in f["segmentos"] if s["valor"] > 0]
+        salida.append({**f, "segmentos": segmentos})
+    return {"filas": salida}
 
 
 def barras_escala(filas, minimo, maximo, referencias=(), banda=None):

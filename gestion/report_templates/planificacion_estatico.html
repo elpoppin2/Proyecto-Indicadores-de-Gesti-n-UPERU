@@ -56,7 +56,7 @@
 <!--__INDICADORES_HTML__-->
   </div>
 
-  <div class="zona-panel" id="zona-cumplimiento" role="tabpanel" aria-labelledby="zona-tab-cumplimiento" data-secciones="sec-plan-mensual sec-plan-detalle sec-cumplimiento-mensual" data-pendiente hidden>
+  <div class="zona-panel" id="zona-cumplimiento" role="tabpanel" aria-labelledby="zona-tab-cumplimiento" data-secciones="sec-plan-mensual sec-plan-detalle sec-cumplimiento-mensual sec-entregas" data-pendiente hidden>
   <div class="franja-kpis" data-kpis-zona="cumplimiento" hidden></div>
   <section class="bloque" id="sec-plan-mensual">
     <h2>Evaluación mensual</h2>
@@ -112,6 +112,23 @@
       <div class="campo"><label for="centro_cumplmes">Centro</label><select id="centro_cumplmes"></select></div>
     </form>
     <div id="cumplimiento-contenido"></div>
+  </section>
+  <section class="bloque" id="sec-entregas">
+    <div class="bloque-cabecera">
+      <h2>Evolución de entregas por proveedor</h2>
+      <button type="button" class="btn-link" data-imprimir="sec-entregas">Imprimir</button>
+    </div>
+    <p class="nota">
+      Lo que entregó cada proveedor mes a mes, desde los tickets de báscula (ZMM056, recepciones de terceros y propias). En
+      las propias (cantera o traslado entre plantas) el proveedor es la planta de origen. Los 7 proveedores
+      con más toneladas tienen color propio; el resto va junto como Otros. Últimos 12 meses con entregas.
+    </p>
+    <form class="filtros">
+      <div class="campo"><label for="centro_entregas">Centro</label><select id="centro_entregas"></select></div>
+      <div class="campo campo-multi"><label for="material_entregas-boton">Material</label><div class="filtro-multi"><select id="material_entregas" multiple hidden data-multi tabindex="-1" aria-hidden="true"></select></div></div>
+      <div class="campo"><label for="ver_entregas">Ver</label><select id="ver_entregas"></select></div>
+    </form>
+    <div id="entregas-contenido"></div>
   </section>
   </div>
 
@@ -2738,6 +2755,168 @@ if(PREMIOS.length){
   document.getElementById("sec-premios").hidden = true;
 }
 
+/* ---------- Columnas apiladas (replica charts.columnas, sin la línea) y su
+   dibujo (replica planificacion/_grafico_columnas.html). ---------- */
+function columnasGrafico(etiquetas, pilas, formato, {textos=null, ancho=960, alto=250, padIzq=44, padDer=16, padArr=20, padAbj=24} = {}){
+  const n = etiquetas.length;
+  if(!n) return null;
+  const suma = (p, signo) => p.filter(s => signo > 0 ? s.valor > 0 : s.valor < 0).reduce((a, s) => a + s.valor, 0);
+  let techo = Math.max(...pilas.map(p => suma(p, 1)), 0), piso = Math.min(...pilas.map(p => suma(p, -1)), 0);
+  const margen = (techo - piso)*0.12 || 1;
+  techo = techo > 0 ? techo + margen : 0; piso = piso < 0 ? piso - margen : 0;
+  const base = alto - padAbj, paso = (ancho - padIzq - padDer)/n, anchoCol = Math.max(Math.min(paso*0.62, 34), 3);
+  const yDe = v => padArr + (base - padArr)*(techo - v)/(techo - piso), xDe = i => padIzq + paso*(i + 0.5);
+  const columnas = pilas.map((pila, i) => {
+    const x = xDe(i), segmentos = [];
+    let sube = 0, baja = 0;
+    for(const s of pila){
+      if(!s.valor) continue;
+      let y0, y1;
+      if(s.valor > 0){ y0 = yDe(sube + s.valor); y1 = yDe(sube); sube += s.valor; }
+      else { y0 = yDe(baja); y1 = yDe(baja + s.valor); baja += s.valor; }
+      segmentos.push({x:(x - anchoCol/2).toFixed(1), y:y0.toFixed(1), ancho:anchoCol.toFixed(1), alto:Math.max(y1 - y0, 0.8).toFixed(1), clase:s.clase});
+    }
+    const negativa = sube === 0 && baja < 0;
+    return {segmentos, detalle: pila.length ? (pila[0].detalle || "") : "", zona_x:(x - paso/2).toFixed(1), zona_ancho:paso.toFixed(1),
+            texto:(textos ? textos[i] : "") || "", texto_abajo:negativa, x_pct:(x/ancho*100).toFixed(2),
+            y_pct:((negativa ? yDe(baja) : yDe(sube))/alto*100).toFixed(2)};
+  });
+  const pasoEje = Math.max(1, Math.ceil(52/paso));
+  return {ancho, alto, x0:padIzq, x1:ancho - padDer, y_cero:yDe(0).toFixed(1), columnas, arriba:padArr.toFixed(1), alto_util:(base - padArr).toFixed(1),
+          grilla: marcasEje(piso, techo, 4).filter(v => v >= piso && v <= techo).map(v => ({y:yDe(v).toFixed(1), y_pct:(yDe(v)/alto*100).toFixed(2), texto:formato(v)})),
+          eje: etiquetas.map((e, i) => ({e, i})).filter(o => (n - 1 - o.i) % pasoEje === 0).map(o => ({x_pct:(xDe(o.i)/ancho*100).toFixed(2), texto:o.e}))};
+}
+function svgColumnas(g, titulo){
+  const e = escaparAttr;
+  return `<div class="chart-scroll"><div class="chart-wrap chart-columnas">
+    <svg class="chart-svg" viewBox="0 0 ${g.ancho} ${g.alto}" role="img" aria-label="${e(titulo)}">
+      ${g.grilla.map(m => `<line class="grilla-lineas" x1="${g.x0}" y1="${m.y}" x2="${g.x1}" y2="${m.y}"></line>`).join("")}
+      ${g.columnas.map(c => c.segmentos.map(s => `<rect class="${s.clase}" x="${s.x}" y="${s.y}" width="${s.ancho}" height="${s.alto}"></rect>`).join("")).join("")}
+      <line class="linea-cero" x1="${g.x0}" y1="${g.y_cero}" x2="${g.x1}" y2="${g.y_cero}"></line>
+      ${g.columnas.map(c => `<rect class="zona-detalle con-detalle" x="${c.zona_x}" y="${g.arriba}" width="${c.zona_ancho}" height="${g.alto_util}" data-detalle="${e(c.detalle)}"></rect>`).join("")}
+    </svg>
+    ${g.grilla.map(m => `<span class="etiqueta-grilla" style="top:${m.y_pct}%;">${m.texto}</span>`).join("")}
+    ${g.columnas.filter(c => c.texto).map(c => `<span class="etiqueta-valor${c.texto_abajo ? " etiqueta-abajo" : ""}" style="left:${c.x_pct}%; top:${c.y_pct}%;">${c.texto}</span>`).join("")}
+    ${g.eje.map(x => `<span class="etiqueta-mes" style="left:${x.x_pct}%;">${x.texto}</span>`).join("")}
+  </div></div>`;
+}
+
+/* ---------- Evolución de entregas por proveedor: replica views._contexto_entregas ---------- */
+const ENTREGAS = DATA.entregas_rows || [];
+const ENTREGAS_PROVEEDORES_COLOR = 7;
+const VER_ENTREGAS = [["toneladas", "Toneladas"], ["carros", "Carros"], ["participacion", "Participación (%)"]];
+const fEcentro = document.getElementById("centro_entregas"), fEmaterial = document.getElementById("material_entregas");
+const fEver = document.getElementById("ver_entregas");
+const comparar = (a, b) => a < b ? -1 : (a > b ? 1 : 0);
+
+// Igual que views._clave_proveedor: "CALIZA ANDINA E.I.R.L." == "CALIZA ANDINA EIRL".
+function claveProveedor(nombre){
+  const original = nombre;
+  let anterior = null;
+  while(anterior !== nombre){ anterior = nombre; nombre = nombre.trim().replace(RAZON_SOCIAL, ""); }
+  return nombre.toUpperCase().replace(/[^A-Z0-9Ñ]/g, "") || original.toUpperCase();
+}
+function textoEntrega(ver, t, c, totalT){
+  if(ver === "toneladas") return t ? numero(t) : "—";
+  if(ver === "carros") return c ? numero(c) : "—";
+  return t && totalT ? numero(t/totalT*100, 1) + "%" : "—";
+}
+function poblarFiltrosEntregas(mantenerCentro, mantenerMaterial, mantenerVer){
+  const centros = [...new Set(ENTREGAS.map(r => r.centro))].sort();
+  const centroSel = llenarSelect(fEcentro, [{value:"", label:"Todos"}, ...centros.map(c => ({value:c, label:CENTROS_DESC[c] || c}))], mantenerCentro ?? "");
+  llenarSelect(fEmaterial, opcionesMaterialDe(ENTREGAS.filter(r => !centroSel || r.centro === centroSel)), mantenerMaterial ?? "");
+  llenarSelect(fEver, VER_ENTREGAS.map(([v, t]) => ({value:v, label:t})), mantenerVer ?? "toneladas");
+}
+function renderEntregas(){
+  const cont = document.getElementById("entregas-contenido");
+  const centro = fEcentro.value, material = fEmaterial.value, ver = fEver.value || "toneladas";
+  const df = ENTREGAS.filter(r => (!centro || r.centro === centro) && enSel(material, r.material_codigo))
+                     .map(r => ({...r, clave: claveProveedor(r.proveedor)}));
+  if(!df.length){ cont.innerHTML = `<p class="aviso">Sin entregas para los filtros seleccionados.</p>`; return; }
+
+  // Proveedores: nombre con más toneladas, orden por toneladas del período.
+  const tot = new Map(), porNombre = new Map();
+  for(const r of df){
+    const a = tot.get(r.clave) || {tipo:"", t:0};
+    a.t += r.toneladas; if(r.tipo > a.tipo) a.tipo = r.tipo; tot.set(r.clave, a);
+    const k = r.clave + "|" + r.proveedor; porNombre.set(k, (porNombre.get(k) || 0) + r.toneladas);
+  }
+  for(const [clave, a] of tot){
+    a.proveedor = [...porNombre.entries()].filter(([k]) => k.slice(0, clave.length + 1) === clave + "|")
+      .map(([k, t]) => [k.slice(clave.length + 1), t]).sort((x, y) => y[1] - x[1] || comparar(x[0], y[0]))[0][0];
+  }
+  const orden = [...tot.keys()].sort((a, b) => tot.get(b).t - tot.get(a).t || comparar(tot.get(a).proveedor, tot.get(b).proveedor));
+  const color = new Map(orden.map((k, i) => [k, i < ENTREGAS_PROVEEDORES_COLOR ? `col-prov-${i}` : "col-prov-otros"]));
+  const conColor = orden.slice(0, ENTREGAS_PROVEEDORES_COLOR), otros = orden.slice(ENTREGAS_PROVEEDORES_COLOR);
+  const etiqueta = k => nombreCorto(tot.get(k).proveedor, 30) + (tot.get(k).tipo === "Propio" ? " (propio)" : "");
+
+  const meses = [...new Set(df.map(r => r.mes))].sort();
+  const porMes = new Map(), totalMes = new Map();
+  for(const r of df){
+    const k = r.mes + "|" + r.clave, a = porMes.get(k) || [0, 0]; a[0] += r.toneladas; a[1] += r.carros; porMes.set(k, a);
+    const b = totalMes.get(r.mes) || [0, 0]; b[0] += r.toneladas; b[1] += r.carros; totalMes.set(r.mes, b);
+  }
+  const valor = (t, c, totalT) => ver === "toneladas" ? t : (ver === "carros" ? c : (totalT ? t/totalT*100 : 0));
+  const pilas = [], textos = [];
+  for(const m of meses){
+    const [tm, cm] = totalMes.get(m);
+    const deMes = orden.filter(k => porMes.has(m + "|" + k)).map(k => [k, ...porMes.get(m + "|" + k)]);
+    const lineas = [`${mesCorto(m)} · ${numero(tm)} T · ${numero(cm)} carros`];
+    for(const [k, t, c] of deMes.slice().sort((x, y) => y[1] - x[1]).slice(0, 6))
+      lineas.push(`${etiqueta(k)}: ${numero(t)} T (${numero(tm ? t/tm*100 : 0, 1)}%) · ${numero(c)} carros`);
+    if(deMes.length > 6) lineas.push(`y ${deMes.length - 6} proveedores más`);
+    const de = k => porMes.get(m + "|" + k) || [0, 0];
+    const segmentos = conColor.map(k => ({valor: valor(...de(k), tm), clase: color.get(k)}));
+    if(otros.length){
+      const to = otros.reduce((s, k) => s + de(k)[0], 0), co = otros.reduce((s, k) => s + de(k)[1], 0);
+      segmentos.push({valor: valor(to, co, tm), clase: "col-prov-otros"});
+    }
+    segmentos[0].detalle = lineas.join("\n");
+    pilas.push(segmentos);
+    textos.push(ver === "toneladas" ? toneladasCorto(tm) : (ver === "carros" ? numero(cm) : ""));
+  }
+  const formato = ver === "toneladas" ? toneladasCorto : (ver === "carros" ? (v => numero(v)) : (v => numero(v) + "%"));
+  const g = columnasGrafico(meses.map(mesCorto), pilas, formato, {textos, ancho:960, alto:260});
+
+  const grupos = new Map();
+  for(const r of df){ const k = r.clave + "|" + r.material_codigo; if(!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(r); }
+  const totalT = df.reduce((s, r) => s + r.toneladas, 0), totalC = df.reduce((s, r) => s + r.carros, 0);
+  const filas = [...grupos.values()].map(g => {
+    const clave = g[0].clave, delMes = new Map();
+    for(const r of g){ const a = delMes.get(r.mes) || [0, 0]; a[0] += r.toneladas; a[1] += r.carros; delMes.set(r.mes, a); }
+    const t = g.reduce((s, r) => s + r.toneladas, 0), c = g.reduce((s, r) => s + r.carros, 0);
+    return {proveedor: tot.get(clave).proveedor, tipo: tot.get(clave).tipo, clase: color.get(clave),
+            material_codigo: g[0].material_codigo, texto_breve: g[0].texto_breve,
+            centro: [...new Set(g.map(r => r.centro))].sort().map(x => CENTROS_DESC[x] || x).join(", "),
+            celdas: meses.map(m => textoEntrega(ver, ...(delMes.get(m) || [0, 0]), totalMes.get(m)[0])),
+            total: textoEntrega(ver, t, c, totalT), t};
+  }).sort((a, b) => b.t - a.t || comparar(a.proveedor, b.proveedor) || comparar(a.material_codigo, b.material_codigo));
+  const unidad = VER_ENTREGAS.find(([v]) => v === ver)[1];
+  const leyenda = conColor.map(k => [color.get(k), etiqueta(k)]).concat(otros.length ? [["col-prov-otros", `Otros (${otros.length})`]] : []);
+
+  cont.innerHTML = `
+    <h3 class="titulo-bloque">${unidad} por proveedor y mes${meses[meses.length-1] === hoyMes ? ` <span class="texto-tenue">(el último mes está en curso)</span>` : ""}</h3>
+    ${svgColumnas(g, "Entregas por proveedor y mes")}
+    <div class="leyenda-curva">${leyenda.map(([clase, texto]) => `<span class="leyenda-item"><span class="leyenda-marca marca-${clase}"></span>${texto}</span>`).join("")}</div>
+    <div class="tabla-scroll">
+      <table>
+        <thead><tr><th>Proveedor</th><th>Tipo</th><th>Material</th><th>Centro</th>${meses.map(m => `<th class="num">${mesCorto(m)}</th>`).join("")}<th class="num">Total</th></tr></thead>
+        <tbody>
+          ${filas.map(f => `<tr>
+            <td><span class="celda-proveedor"><span class="leyenda-marca marca-${f.clase}"></span>${f.proveedor}</span></td>
+            <td>${f.tipo}</td><td>${f.material_codigo} — ${f.texto_breve}</td><td>${f.centro}</td>
+            ${f.celdas.map(v => `<td class="num">${v}</td>`).join("")}<td class="num"><strong>${f.total}</strong></td></tr>`).join("")}
+          <tr class="fila-total"><td>Total</td><td></td><td></td><td></td>
+            ${meses.map(m => `<td class="num">${textoEntrega(ver, totalMes.get(m)[0], totalMes.get(m)[1], totalMes.get(m)[0])}</td>`).join("")}
+            <td class="num">${textoEntrega(ver, totalT, totalC, totalT)}</td></tr>
+        </tbody>
+      </table>
+    </div>`;
+}
+fEcentro.addEventListener("change", () => { poblarFiltrosEntregas(fEcentro.value, null, fEver.value); renderEntregas(); });
+fEmaterial.addEventListener("change", renderEntregas);
+fEver.addEventListener("change", renderEntregas);
+
 /* ---------- Zonas: cada una se dibuja la primera vez que se abre (o antes,
    en segundo plano, ver zonas.js), no todas al abrir el archivo. ---------- */
 const INICIO_ZONA = {
@@ -2746,6 +2925,8 @@ const INICIO_ZONA = {
     f1mes.value = MES_DEFECTO; poblarFiltros1(null, null); renderSeccion1();
     f2mes.value = MES_DEFECTO; poblarFiltros2(null, null); renderSeccion2();
     poblarFiltros4(); renderSeccion4();
+    if(ENTREGAS.length){ poblarFiltrosEntregas(null, null, null); renderEntregas(); }
+    else document.getElementById("sec-entregas").hidden = true;
   },
   consumo: () => {
     if(MESES_CONSUMO.length){ poblarFiltros7(null, null, null); renderSeccion7(); }

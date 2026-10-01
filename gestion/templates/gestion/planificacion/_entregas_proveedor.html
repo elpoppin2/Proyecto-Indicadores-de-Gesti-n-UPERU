@@ -1,0 +1,77 @@
+{% load static dashboard_extras %}
+{# Evolución de entregas por proveedor (views._contexto_entregas). El HTML estático la replica en renderEntregas. Pedido por el usuario. #}
+{% if en %}
+<section class="bloque" id="sec-entregas">
+  <div class="bloque-cabecera">
+    <h2>Evolución de entregas por proveedor</h2>
+    <button type="button" class="btn-link" data-imprimir="sec-entregas">Imprimir</button>
+  </div>
+  <p class="nota">
+    Lo que entregó cada proveedor mes a mes, desde los tickets de báscula (ZMM056, recepciones de terceros y propias). En
+    las propias (cantera o traslado entre plantas) el proveedor es la planta de origen. Los 7 proveedores
+    con más toneladas tienen color propio; el resto va junto como Otros. Últimos 12 meses con entregas.
+  </p>
+  <form class="filtros" method="get" data-target="sec-entregas">
+    <div class="campo">
+      <label for="centro_entregas">Centro</label>
+      <select name="centro_entregas" id="centro_entregas">
+        {% for c in en.centros %}
+          <option value="{{ c.codigo }}" {% if c.codigo == en.centro_sel %}selected{% endif %}>{{ c.texto }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% include "gestion/planificacion/_filtro_material.html" with nombre="material_entregas" opciones=en.materiales seleccion=en.material_sel %}
+    <div class="campo">
+      <label for="ver_entregas">Ver</label>
+      <select name="ver_entregas" id="ver_entregas">
+        {% for valor, texto in en.opciones_ver %}
+          <option value="{{ valor }}" {% if valor == en.ver %}selected{% endif %}>{{ texto }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+
+  {% if not en.filas %}
+    <p class="aviso">Sin entregas para los filtros seleccionados.</p>
+  {% else %}
+    <h3 class="titulo-bloque">{{ en.unidad }} por proveedor y mes{% if en.en_curso %} <span class="texto-tenue">(el último mes está en curso)</span>{% endif %}</h3>
+    {% include "gestion/planificacion/_grafico_columnas.html" with g=en.grafico titulo="Entregas por proveedor y mes" %}
+    <div class="leyenda-curva">
+      {% for clase, texto in en.leyenda %}<span class="leyenda-item"><span class="leyenda-marca marca-{{ clase }}"></span>{{ texto }}</span>{% endfor %}
+    </div>
+
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Proveedor</th>
+            <th>Tipo</th>
+            <th>Material</th>
+            <th>Centro</th>
+            {% for m in en.meses %}<th class="num">{{ m }}</th>{% endfor %}
+            <th class="num">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in en.filas %}
+            <tr>
+              <td><span class="celda-proveedor"><span class="leyenda-marca marca-{{ f.clase }}"></span>{{ f.proveedor }}</span></td>
+              <td>{{ f.tipo }}</td>
+              <td>{{ f.material_codigo }} — {{ f.texto_breve }}</td>
+              <td>{{ f.centro }}</td>
+              {% for v in f.celdas %}<td class="num">{{ v }}</td>{% endfor %}
+              <td class="num"><strong>{{ f.total }}</strong></td>
+            </tr>
+          {% endfor %}
+          <tr class="fila-total">
+            <td>Total</td><td></td><td></td><td></td>
+            {% for v in en.totales_mes %}<td class="num">{{ v }}</td>{% endfor %}
+            <td class="num">{{ en.total }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</section>
+{% endif %}

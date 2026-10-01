@@ -59,6 +59,19 @@ class Command(BaseCommand):
                     "real": round(float(r.cantidad_real), 3), "carros": int(r.carros),
                 })
 
+        # Evolución de entregas por proveedor (replica views._contexto_entregas):
+        # entregas por mes/material/centro/proveedor de los últimos meses.
+        from gestion.views import _ENTREGAS_MESES
+        entregas = q.entregas_por_proveedor_sop()
+        if not entregas.empty:
+            entregas = entregas[entregas["mes"].isin(sorted(entregas["mes"].unique())[-_ENTREGAS_MESES:])]
+        entregas_rows = [
+            {"mes": r.mes.isoformat(), "material_codigo": r.material_codigo, "texto_breve": r.texto_breve,
+             "centro": r.centro, "proveedor": r.proveedor, "tipo": r.tipo,
+             "toneladas": round(float(r.toneladas), 3), "carros": int(r.carros)}
+            for r in entregas.itertuples()
+        ]
+
         catalogo = q.catalogo_materiales()[["material_codigo", "categoria"]]
         daily_rows = []
         for m in meses:
@@ -207,7 +220,7 @@ class Command(BaseCommand):
             "meses_inventario": {k.isoformat(): v.isoformat() for k, v in sorted(meses_inv.items())},
             "centros_desc": q.descripcion_centros_planificacion(),
             "plan_rows": plan_rows, "daily_rows": daily_rows, "cobertura_rows": cobertura_rows,
-            "proveedor_rows": proveedor_rows,
+            "proveedor_rows": proveedor_rows, "entregas_rows": entregas_rows,
         }
 
         with open(PLANTILLA, encoding="utf-8") as f:

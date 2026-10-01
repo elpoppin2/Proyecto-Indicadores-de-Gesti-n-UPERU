@@ -19,6 +19,10 @@
   --alerta-bg: #fbe9e3;
   --warn: #9a6400;
   --shadow: 0 1px 2px rgba(0, 0, 0, .05), 0 6px 20px -8px rgba(0, 0, 0, .12);
+  /* Proveedores (Evolución de entregas): orden fijo por peso, nunca ciclado;
+     el 8.º en adelante va a "Otros" (gris). */
+  --prov-0: #2f6db4; --prov-1: #d1900f; --prov-2: #2a9a86; --prov-3: #8a5fb4;
+  --prov-4: #c9577f; --prov-5: #6f8a24; --prov-6: #5aa6d6; --prov-otros: #b4b4b4;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -30,6 +34,8 @@
     --up: #74c090; --down: #e0864c;
     --alerta-bg: #3a2620; --warn: #e3ad4f;
     --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 28px -10px rgba(0, 0, 0, .5);
+    --prov-0: #6f9fe0; --prov-1: #eab34a; --prov-2: #4fc2ac; --prov-3: #b08ddc;
+    --prov-4: #e88bb0; --prov-5: #a8bf55; --prov-6: #8fcaf0; --prov-otros: #6a6a6a;
   }
 }
 :root[data-theme="dark"] {
@@ -40,6 +46,8 @@
   --up: #74c090; --down: #e0864c;
   --alerta-bg: #3a2620; --warn: #e3ad4f;
   --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 28px -10px rgba(0, 0, 0, .5);
+  --prov-0: #6f9fe0; --prov-1: #eab34a; --prov-2: #4fc2ac; --prov-3: #b08ddc;
+  --prov-4: #e88bb0; --prov-5: #a8bf55; --prov-6: #8fcaf0; --prov-otros: #6a6a6a;
 }
 
 * { box-sizing: border-box; }
@@ -892,6 +900,35 @@ tbody.tabla-ordenada { animation: filas-asentar .25s ease-out; }
 .marca-linea-ipu, .marca-linea-neto { background: var(--ink); }
 .marca-serie-0 { background: var(--accent); }
 .marca-serie-1 { background: repeating-linear-gradient(90deg, var(--table-header) 0 4px, transparent 4px 7px); }
+/* Curva S por centro (Ritmo del abastecimiento): Atocongo, Condorcocha y el
+   plan lineal punteado. */
+.marca-linea-0, .marca-linea-1, .marca-linea-plan { width: 16px; height: 3px; border-radius: 2px; }
+.marca-linea-0 { background: var(--accent); }
+.marca-linea-1 { background: var(--table-header); }
+.marca-linea-plan { background: repeating-linear-gradient(90deg, var(--muted) 0 4px, transparent 4px 7px); }
+.chart-lineas .linea-serie.serie-plan { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.chart-lineas .punto-serie.serie-plan { fill: var(--muted); }
+.chart-lineas .etiqueta-serie-plan { color: var(--muted); }
+/* Barras apiladas al 100% (Salud del inventario): un segmento por estado. */
+.pila-pista { display: flex; height: 18px; border-radius: 3px; overflow: hidden; background: var(--surface-2); gap: 2px; }
+.pila-segmento {
+  display: flex; align-items: center; justify-content: center; min-width: 0; overflow: hidden;
+  font-family: "IBM Plex Mono", monospace; font-size: 10px; font-weight: 600; color: var(--ink);
+  transform-origin: left center;
+}
+.pila-segmento.con-detalle:hover { filter: brightness(1.08); box-shadow: inset 0 0 0 1px var(--ink); }
+.zona-panel[class*="entrando"] .pila-pista { animation: barra-crecer .55s cubic-bezier(.2, .8, .2, 1) both; animation-delay: 140ms; transform-origin: left center; }
+/* Proveedores (Evolución de entregas por proveedor). */
+.col-prov-0, .marca-col-prov-0 { fill: var(--prov-0); background: var(--prov-0); }
+.col-prov-1, .marca-col-prov-1 { fill: var(--prov-1); background: var(--prov-1); }
+.col-prov-2, .marca-col-prov-2 { fill: var(--prov-2); background: var(--prov-2); }
+.col-prov-3, .marca-col-prov-3 { fill: var(--prov-3); background: var(--prov-3); }
+.col-prov-4, .marca-col-prov-4 { fill: var(--prov-4); background: var(--prov-4); }
+.col-prov-5, .marca-col-prov-5 { fill: var(--prov-5); background: var(--prov-5); }
+.col-prov-6, .marca-col-prov-6 { fill: var(--prov-6); background: var(--prov-6); }
+.col-prov-otros, .marca-col-prov-otros { fill: var(--prov-otros); background: var(--prov-otros); }
+.celda-proveedor { display: inline-flex; align-items: center; gap: 7px; }
+.celda-proveedor .leyenda-marca { flex: none; }
 
 /* Filtro Material con varios materiales y grupos (zonas.js): botón con el
    resumen, como un <select>, y un panel con buscador, grupos y casillas. */

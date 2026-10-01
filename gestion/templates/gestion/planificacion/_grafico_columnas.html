@@ -1,0 +1,20 @@
+{# Columnas apiladas/con signo de charts.columnas (g) con su línea opcional. Lo usan la pestaña Indicadores y Evolución de entregas por proveedor; el HTML estático lo replica en svgColumnas. #}
+<div class="chart-scroll">
+<div class="chart-wrap chart-columnas">
+  <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="{{ titulo }}">
+    {% for m in g.grilla %}<line class="grilla-lineas" x1="{{ g.x0 }}" y1="{{ m.y }}" x2="{{ g.x1 }}" y2="{{ m.y }}"></line>{% endfor %}
+    {% for col in g.columnas %}{% for s in col.segmentos %}<rect class="{{ s.clase }}" x="{{ s.x }}" y="{{ s.y }}" width="{{ s.ancho }}" height="{{ s.alto }}"></rect>{% endfor %}{% endfor %}
+    <line class="linea-cero" x1="{{ g.x0 }}" y1="{{ g.y_cero }}" x2="{{ g.x1 }}" y2="{{ g.y_cero }}"></line>
+    {% if g.linea %}
+      {% for t in g.linea.tramos %}<path class="linea-col {{ g.linea.clase }}" d="{{ t }}"></path>{% endfor %}
+      {% for pt in g.linea.puntos %}<circle class="punto-col {{ g.linea.clase }}" cx="{{ pt.x }}" cy="{{ pt.y }}" r="3.2"></circle>{% endfor %}
+    {% endif %}
+    {% for col in g.columnas %}<rect class="zona-detalle con-detalle" x="{{ col.zona_x }}" y="{{ g.arriba }}" width="{{ col.zona_ancho }}" height="{{ g.alto_util }}" data-detalle="{{ col.detalle }}"></rect>{% endfor %}
+    {% if g.linea %}{% for pt in g.linea.puntos %}{% if pt.detalle %}<circle class="zona-detalle con-detalle" cx="{{ pt.x }}" cy="{{ pt.y }}" r="8" data-detalle="{{ pt.detalle }}"></circle>{% endif %}{% endfor %}{% endif %}
+  </svg>
+  {% for m in g.grilla %}<span class="etiqueta-grilla" style="top:{{ m.y_pct }}%;">{{ m.texto }}</span>{% endfor %}
+  {% for col in g.columnas %}{% if col.texto %}<span class="etiqueta-valor{% if col.texto_abajo %} etiqueta-abajo{% endif %}" style="left:{{ col.x_pct }}%; top:{{ col.y_pct }}%;">{{ col.texto }}</span>{% endif %}{% endfor %}
+  {% if g.linea.etiqueta_final %}<span class="etiqueta-valor etiqueta-final {{ g.linea.clase }}" style="left:{{ g.linea.x_pct }}%; top:{{ g.linea.y_pct }}%;">{{ g.linea.etiqueta_final }}</span>{% endif %}
+  {% for e in g.eje %}<span class="etiqueta-mes" style="left:{{ e.x_pct }}%;">{{ e.texto }}</span>{% endfor %}
+</div>
+</div>

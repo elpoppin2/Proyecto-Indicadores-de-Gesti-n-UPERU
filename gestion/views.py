@@ -784,6 +784,142 @@ def _contexto_cobertura(request):
     }
 
 
+# Evolución de entregas por proveedor: proveedores con color propio (los de
+# más toneladas; el resto va junto como "Otros"), meses que se muestran y
+# qué se grafica.
+_ENTREGAS_PROVEEDORES_COLOR = 7
+_ENTREGAS_MESES = 12
+_VER_ENTREGAS = [("toneladas", "Toneladas"), ("carros", "Carros"), ("participacion", "Participación (%)")]
+
+
+def _contexto_entregas(request):
+    """Evolución de entregas por proveedor (pestaña Cumplimiento): toneladas,
+    carros o participación de cada proveedor mes a mes (ZMM056 Tipo 1/5, ver
+    queries.entregas_por_proveedor_sop), con filtros Centro/Material/Ver
+    propios. Gráfico de columnas apiladas por proveedor y tabla
+    proveedor × material. Pedido por el usuario."""
+    base = q.entregas_por_proveedor_sop()
+    if base.empty:
+        return None
+    meses = sorted(base["mes"].unique())[-_ENTREGAS_MESES:]
+    base = base[base["mes"].isin(meses)]
+    nombres_centro = q.descripcion_centros_planificacion()
+    centros = sorted(base["centro"].unique())
+    centro_sel = request.GET.get("centro_entregas", "Todos")
+    if centro_sel not in centros:
+        centro_sel = "Todos"
+    por_centro = base if centro_sel == "Todos" else base[base["centro"] == centro_sel]
+    materiales_op = _opciones_material(por_centro)
+    material_sel = _selector_material(request, "entregas", materiales_op)
+    df = _por_materiales(por_centro, material_sel)
+    ver = request.GET.get("ver_entregas", "toneladas")
+    if ver not in dict(_VER_ENTREGAS):
+        ver = "toneladas"
+    contexto = {
+        "centros": [{"codigo": "Todos", "texto": "Todos"}] + [
+            {"codigo": c, "texto": nombres_centro.get(c) or c} for c in centros],
+        "centro_sel": centro_sel, "materiales": materiales_op, "material_sel": material_sel,
+        "opciones_ver": _VER_ENTREGAS, "ver": ver, "grafico": None, "filas": [],
+    }
+    if df.empty:
+        return contexto
+
+    # Un mismo proveedor puede venir con dos razones sociales (p.ej. "CALIZA
+    # ANDINA EIRL" y "CALIZA ANDINA E.I.R.L."): se agrupa por el nombre sin
+    # razón social ni puntuación, y se muestra el nombre con más toneladas.
+    # Orden por toneladas del período (desempate por nombre): los primeros
+    # tienen color propio, en el mismo orden en gráfico y tabla.
+    df = df.assign(clave=df["proveedor"].map(_clave_proveedor))
+    por_nombre = df.groupby(["clave", "proveedor"])["toneladas"].sum().reset_index()
+    nombre_principal = (por_nombre.sort_values(["toneladas", "proveedor"], ascending=[False, True])
+                        .drop_duplicates("clave").set_index("clave")["proveedor"])
+    totales = df.groupby("clave").agg(tipo=("tipo", "max"), toneladas=("toneladas", "sum"))
+    totales["proveedor"] = nombre_principal
+    orden = sorted(totales.index, key=lambda k: (-totales.at[k, "toneladas"], totales.at[k, "proveedor"]))
+    color = {k: (f"col-prov-{i}" if i < _ENTREGAS_PROVEEDORES_COLOR else "col-prov-otros") for i, k in enumerate(orden)}
+    con_color = orden[:_ENTREGAS_PROVEEDORES_COLOR]
+    otros = orden[_ENTREGAS_PROVEEDORES_COLOR:]
+
+    def etiqueta(clave):
+        return _nombre_corto(totales.at[clave, "proveedor"], 30) + (" (propio)" if totales.at[clave, "tipo"] == "Propio" else "")
+
+    meses_df = sorted(df["mes"].unique())
+    por_mes = df.groupby(["mes", "clave"])[["toneladas", "carros"]].sum()
+    total_mes = df.groupby("mes")[["toneladas", "carros"]].sum()
+
+    def valor(t, c, total_t):
+        return t if ver == "toneladas" else c if ver == "carros" else (t / total_t * 100 if total_t else 0.0)
+
+    pilas, textos = [], []
+    for m in meses_df:
+        tm, cm = float(total_mes.at[m, "toneladas"]), int(total_mes.at[m, "carros"])
+        de_mes = {k: (float(r.toneladas), int(r.carros)) for k, r in por_mes.loc[m].iterrows()}
+        lineas = [f"{_mes_corto(m)} · {tm:,.0f} T · {cm:,} carros"]
+        for k in sorted(de_mes, key=lambda k: -de_mes[k][0])[:6]:
+            t, c = de_mes[k]
+            lineas.append(f"{etiqueta(k)}: {t:,.0f} T ({t / tm * 100 if tm else 0:,.1f}%) · {c:,} carros")
+        if len(de_mes) > 6:
+            lineas.append(f"y {len(de_mes) - 6} proveedores más")
+        segmentos = [{"valor": valor(*de_mes.get(k, (0.0, 0)), tm), "clase": color[k]} for k in con_color]
+        if otros:
+            t_o = sum(de_mes.get(k, (0.0, 0))[0] for k in otros)
+            c_o = sum(de_mes.get(k, (0.0, 0))[1] for k in otros)
+            segmentos.append({"valor": valor(t_o, c_o, tm), "clase": "col-prov-otros"})
+        segmentos[0]["detalle"] = "\n".join(lineas)
+        pilas.append(segmentos)
+        textos.append(charts._toneladas_corto(tm) if ver == "toneladas" else f"{cm:,}" if ver == "carros" else "")
+    formato = (charts._toneladas_corto if ver == "toneladas" else (lambda v: f"{v:,.0f}") if ver == "carros"
+               else (lambda v: f"{v:,.0f}%"))
+    grafico = charts.columnas([_mes_corto(m) for m in meses_df], pilas, formato, textos=textos, ancho=960, alto=260)
+
+    # Tabla: una fila por proveedor y material, de más a menos toneladas.
+    filas = []
+    total_t = float(df["toneladas"].sum())
+    for (clave, material), g in df.groupby(["clave", "material_codigo"]):
+        # Un mes puede traer varias filas (dos razones sociales o dos centros).
+        del_mes = {m: (float(r.toneladas), int(r.carros)) for m, r in g.groupby("mes")[["toneladas", "carros"]].sum().iterrows()}
+        t, c = float(g["toneladas"].sum()), int(g["carros"].sum())
+        celdas = []
+        for m in meses_df:
+            tm_, cm_ = del_mes.get(m, (0.0, 0))
+            celdas.append(_texto_entrega(ver, tm_, cm_, float(total_mes.at[m, "toneladas"])))
+        filas.append({
+            "proveedor": totales.at[clave, "proveedor"], "tipo": totales.at[clave, "tipo"], "clase": color[clave],
+            "material_codigo": material, "texto_breve": g["texto_breve"].iloc[0],
+            "centro": ", ".join(nombres_centro.get(x) or x for x in sorted(g["centro"].unique())),
+            "celdas": celdas, "total": _texto_entrega(ver, t, c, total_t), "_t": t,
+        })
+    filas.sort(key=lambda f: (-f["_t"], f["proveedor"], f["material_codigo"]))
+    contexto.update({
+        "grafico": grafico, "filas": filas, "meses": [_mes_corto(m) for m in meses_df],
+        "totales_mes": [_texto_entrega(ver, float(total_mes.at[m, "toneladas"]), int(total_mes.at[m, "carros"]),
+                                       float(total_mes.at[m, "toneladas"])) for m in meses_df],
+        "total": _texto_entrega(ver, total_t, int(df["carros"].sum()), total_t),
+        "leyenda": [(color[k], etiqueta(k)) for k in con_color] + ([("col-prov-otros", f"Otros ({len(otros)})")] if otros else []),
+        "en_curso": meses_df[-1] == datetime.date.today().replace(day=1),
+        "unidad": dict(_VER_ENTREGAS)[ver],
+    })
+    return contexto
+
+
+def _clave_proveedor(nombre):
+    """Nombre de proveedor comparable: sin razón social, mayúsculas, solo
+    letras y números ("CALIZA ANDINA E.I.R.L." == "CALIZA ANDINA EIRL")."""
+    original, anterior = nombre, None
+    while anterior != nombre:
+        anterior, nombre = nombre, _RAZON_SOCIAL.sub("", nombre.strip())
+    return re.sub(r"[^A-Z0-9Ñ]", "", nombre.upper()) or original.upper()
+
+
+def _texto_entrega(ver, toneladas, carros, total_toneladas):
+    """Celda de la tabla de Evolución de entregas según lo que se ve."""
+    if ver == "toneladas":
+        return f"{toneladas:,.0f}" if toneladas else "—"
+    if ver == "carros":
+        return f"{carros:,}" if carros else "—"
+    return f"{toneladas / total_toneladas * 100:,.1f}%" if toneladas and total_toneladas else "—"
+
+
 # Secciones de Planificación: id -> (plantilla, nombre de la variable en la
 # plantilla, función de contexto, sufijos de sus parámetros GET). Los sufijos
 # dicen de qué filtros depende cada sección (mes_plan, centro_consumo...):
@@ -793,6 +929,7 @@ _SECCIONES_PLANIFICACION = {
     "sec-plan-detalle": ("gestion/planificacion/_plan_detalle.html", "planificacion_detalle", _contexto_plan_detalle, ("detalle",)),
     "sec-cumplimiento-mensual": ("gestion/planificacion/_cumplimiento_mensual.html", "planificacion_cumplimiento",
                                  _contexto_cumplimiento_mensual, ("cumplmes", "plan")),
+    "sec-entregas": ("gestion/planificacion/_entregas_proveedor.html", "en", _contexto_entregas, ("entregas",)),
     "sec-consumo": ("gestion/planificacion/_consumo.html", "planificacion_consumo", lambda r: _contexto_consumo(r), ("consumo",)),
     "sec-consumo-especifico": ("gestion/planificacion/_consumo_especifico.html", "fa",
                                lambda r: _contexto_consumo_especifico(r), ("factor",)),
@@ -811,7 +948,7 @@ _SECCIONES_PLANIFICACION = {
 _ZONAS_PLANIFICACION = [
     ("indicadores", "Indicadores", "Resumen de todas las zonas", []),
     ("cumplimiento", "Cumplimiento", "Plan de abastecimiento vs ingresos",
-     ["sec-plan-mensual", "sec-plan-detalle", "sec-cumplimiento-mensual"]),
+     ["sec-plan-mensual", "sec-plan-detalle", "sec-cumplimiento-mensual", "sec-entregas"]),
     ("consumo", "Consumo", "Plan vs real y consumo por T", ["sec-consumo", "sec-consumo-especifico"]),
     ("inventario", "Inventario", "Cobertura y proyección S&OP", ["sec-cobertura", "sec-proyeccion"]),
     ("precios", "Precios e IPU", "Precios de entrada e inflación", ["sec-precios", "sec-inflacion", "sec-inflacion-mensual"]),
@@ -1051,6 +1188,334 @@ def _nombre_material(texto):
     return texto.strip().title()
 
 
+# Umbrales de los paneles por centro de la pestaña Indicadores (pedidos por el
+# usuario el 2026-10-01): brecha del ritmo de abastecimiento en días de plan,
+# precisión del plan de consumo y % de materiales en rango mín–máx.
+_RITMO_AVISO, _RITMO_ALERTA = 1, 3
+_PRECISION_BUENA, _PRECISION_REGULAR = 85, 70
+_SALUD_BUENA, _SALUD_REGULAR = 80, 60
+
+
+def _signo(valor, decimales=1):
+    """+1.5 / −3.4 (con el signo menos tipográfico)."""
+    valor = 0.0 if abs(valor) < 0.5 * 10 ** -decimales else valor
+    return f"{'+' if valor > 0 else '−' if valor < 0 else ''}{abs(valor):,.{decimales}f}"
+
+
+def _panel_traslados(panel, vacio, tope, pl, centro, hoy_mes):
+    """Traslados de Atocongo a Condorcocha: lo que Condorcocha recibió por
+    traslado desde Atocongo (ZMM056 Tipo 5, origen ATOCONGO) contra su plan de
+    abastecimiento, de los materiales que solo le llegan así
+    (queries.MATERIALES_TRASLADO_ATOCONGO_CONDORCOCHA). Mes de la Evaluación
+    mensual; no usa sus filtros de categoría/centro (el indicador ya es de
+    un centro a otro)."""
+    titulo = "Traslados de Atocongo a Condorcocha"
+    if not pl:
+        vacio("cumplimiento", titulo)
+        return
+    mes = pl["mes"]
+    mes_txt = q.formato_mes_anio(mes)
+    origen = centro(q.CENTRO_ATOCONGO)
+    plan = q.plan_abastecimiento_por_material(mes)
+    plan = plan[plan["centro"] == q.CENTRO_CONDORCOCHA].groupby("material_codigo")["cantidad_plan"].sum()
+    recibidos = q.traslados_recibidos(mes, q.CENTRO_CONDORCOCHA)
+    nombres = q.catalogo_materiales().drop_duplicates("material_codigo").set_index("material_codigo")["texto_breve"]
+
+    def nombre(codigo):
+        return _nombre_material(nombres.get(codigo) or codigo)
+
+    filas, total_plan, total_real = [], 0.0, 0.0
+    for material in q.MATERIALES_TRASLADO_ATOCONGO_CONDORCOCHA:
+        plan_mat = float(plan.get(material, 0.0))
+        del_material = recibidos[recibidos["material_codigo"] == material]
+        desde_origen = del_material[del_material["origen"] == origen]
+        real, carros = float(desde_origen["toneladas"].sum()), int(desde_origen["carros"].sum())
+        if plan_mat <= 0:
+            continue
+        total_plan += plan_mat
+        total_real += real
+        v = real / plan_mat * 100
+        detalle = (f"{nombre(material)} · {mes_txt}\nPlan para {centro(q.CENTRO_CONDORCOCHA)} {plan_mat:,.0f} T · "
+                   f"trasladado desde {origen} {real:,.0f} T ({carros:,} carros) · {v:,.1f}%")
+        for r in del_material[del_material["origen"] != origen].itertuples():
+            detalle += f"\nAdemás llegó directo desde {r.origen} {r.toneladas:,.0f} T"
+        filas.append({
+            "nombre": nombre(material), "sub": f"{carros:,} carros", "valor": v, "texto": f"{v:,.1f}%",
+            "clase": "bien" if v >= _CUMPLIMIENTO_BIEN else "mal" if v < _CUMPLIMIENTO_MAL else "regular",
+            "detalle": detalle,
+        })
+    if not filas:
+        vacio("cumplimiento", titulo)
+        return
+    otros = recibidos[(recibidos["origen"] == origen)
+                      & ~recibidos["material_codigo"].isin(q.MATERIALES_TRASLADO_ATOCONGO_CONDORCOCHA)]
+    nota = "Tickets de báscula de Condorcocha con origen Atocongo (ZMM056 Tipo 5) ÷ su plan de abastecimiento."
+    if not otros.empty:
+        nota += " También llegó de Atocongo: " + ", ".join(
+            f"{nombre(r.material_codigo)} {r.toneladas:,.0f} T" for r in otros.itertuples()) + " (su plan mezcla compras directas)."
+    cumpl = total_real / total_plan * 100
+    tono, estado = (("ok", "En meta") if cumpl >= _CUMPLIMIENTO_BIEN else
+                    ("alerta", "Crítico") if cumpl < _CUMPLIMIENTO_MAL else ("aviso", "Bajo la meta"))
+    sub = f"{mes_txt} · {total_real:,.0f} de {total_plan:,.0f} T planificadas para Condorcocha"
+    if mes == hoy_mes:
+        sub += " · mes en curso"
+    panel("cumplimiento", titulo, _pct_texto(cumpl), sub, "escala",
+          charts.barras_escala(filas, 0, tope(filas), referencias=[(100, "Plan")]), tono, estado,
+          leyenda=[("bien", f"≥ {_CUMPLIMIENTO_BIEN}%"), ("regular", f"{_CUMPLIMIENTO_MAL}–{_CUMPLIMIENTO_BIEN}%"),
+                   ("mal", f"< {_CUMPLIMIENTO_MAL}%")], nota=nota)
+
+
+def _panel_ritmo(panel, vacio, pl, centro, hoy_mes):
+    """Ritmo del abastecimiento en el mes (curva S) por centro: ingresos
+    físicos acumulados día a día como % del plan del mes de cada centro,
+    contra el plan lineal (el plan del mes repartido en partes iguales por
+    día, igual que la Evaluación diaria). La cifra es la brecha al último día
+    cerrado en días de plan: (real − plan a la fecha) ÷ plan diario. Mismo mes
+    y categoría/centro que la Evaluación mensual."""
+    titulo = "Ritmo del abastecimiento en el mes"
+    if not pl:
+        vacio("cumplimiento", titulo, ancho=True)
+        return
+    mes = pl["mes"]
+    dias = calendar.monthrange(mes.year, mes.month)[1]
+    hoy = datetime.date.today()
+    ultimo = dias if mes < hoy_mes else (hoy.day - 1 if mes == hoy_mes else 0)
+    categoria = None if pl["categoria_sel"] == "Todas" else pl["categoria_sel"]
+    base = q.plan_vs_real_abastecimiento_por_material(
+        mes, categoria=categoria, centro=None if pl["centro_sel"] == "Todos" else pl["centro_sel"])
+    plan_centro = base.groupby("centro")["cantidad_plan"].sum()
+    centros = [c for c in plan_centro.sort_values(ascending=False).index if plan_centro[c] > 0]
+    if not centros or ultimo < 1:
+        vacio("cumplimiento", titulo, ancho=True)
+        return
+
+    series, brechas = [], []
+    suma_real = suma_plan = suma_diario = 0.0
+    for i, cod in enumerate(centros):
+        filas = q.evaluacion_diaria_abastecimiento(mes, categoria=categoria, centro=cod)
+        plan_mes = filas[-1]["acumulado_plan"]
+        puntos = [(0, 0.0, f"{centro(cod)} · inicio del mes")]
+        for f in filas[:ultimo]:
+            pct = f["acumulado_real"] / plan_mes * 100
+            puntos.append((f["dia"], pct,
+                           f"{centro(cod)} · {f['fecha']:%d/%m}\nReal acumulado {f['acumulado_real']:,.0f} T "
+                           f"({pct:,.1f}% del plan del mes)\nPlan a la fecha {f['acumulado_plan']:,.0f} T "
+                           f"({f['dia'] / dias * 100:,.1f}%)\nIngresó ese día {f['real_diario']:,.0f} T · {f['carros']:,} carros"))
+        corte = filas[ultimo - 1]
+        brecha = (corte["acumulado_real"] - corte["acumulado_plan"]) / corte["plan_diario"]
+        brechas.append((cod, brecha))
+        suma_real += corte["acumulado_real"]
+        suma_plan += corte["acumulado_plan"]
+        suma_diario += corte["plan_diario"]
+        series.append({"nombre": centro(cod).title(), "clase": f"serie-{i}", "puntos": puntos})
+    series.append({"nombre": "Plan lineal", "clase": "serie-plan", "continua": True,
+                   "puntos": [(0, 0.0, "Plan lineal: 0% al empezar el mes"),
+                              (dias, 100.0, f"Plan lineal: 100% el día {dias}")]})
+    maximo = max(v for s in series for _, v, _ in s["puntos"])
+    g = charts.lineas_indice(series, [str(d) if d else "" for d in range(dias + 1)], lambda v: f"{v:,.0f}%",
+                             piso=0.0, techo=max(110.0, maximo * 1.06), ancho=1040, alto=240, pad_izq=44,
+                             pad_der=64, max_etiquetas_eje=16)
+    total = (suma_real - suma_plan) / suma_diario
+    tono, estado = (("ok", "Adelantado" if total > _RITMO_AVISO else "Al ritmo") if total >= -_RITMO_AVISO else
+                    ("aviso", "Atrasado") if total >= -_RITMO_ALERTA else ("alerta", "Muy atrasado"))
+    fecha_corte = datetime.date(mes.year, mes.month, ultimo)
+    sub = (f"Días de plan {'adelantados' if total > 0 else 'de atraso'} al {fecha_corte:%d/%m/%Y} · "
+           + " · ".join(f"{centro(c).title()} {_signo(b)} d" for c, b in brechas))
+    panel("cumplimiento", titulo, f"{_signo(total)} días", sub, "lineas", g, tono, estado,
+          leyenda=[(f"linea-{i}", centro(c).title()) for i, c in enumerate(centros)] + [("linea-plan", "Plan lineal")],
+          nota="Ingresos físicos acumulados como % del plan del mes de cada centro. Días de plan = (real − plan a la "
+               "fecha) ÷ plan diario: cuántos días de abastecimiento faltan (−) o sobran (+).", ancho=True)
+
+
+def _panel_precision_consumo(panel, vacio, co, centro):
+    """Precisión del plan de consumo por centro: 100% − error ponderado
+    (Σ|real − plan| ÷ Σ plan, material por material) con el plan S&OP
+    vigente del mes (el de la Evaluación de consumo, con sus filtros). El
+    sesgo (Σ real − Σ plan) ÷ Σ plan dice si el plan se quedó corto (+) o se
+    pasó (−). Mes en curso: contra el plan prorrateado a la fecha."""
+    titulo = "Precisión del plan de consumo"
+    if not (co and co["filas"]):
+        vacio("consumo", titulo)
+        return
+    if co["en_curso"]:
+        # A mitad de mes el error mide sobre todo lo que falta contabilizar en
+        # MB51, no la calidad del plan: se mide con el mes cerrado.
+        vacio("consumo", titulo, mensaje=f"{q.formato_mes_anio(co['mes_sel'])} está en curso: la precisión del plan se "
+                                         "mide con el mes cerrado. Elige un mes anterior en el filtro Mes.")
+        return
+    en_curso = co["en_curso"]
+    mes_txt = q.formato_mes_anio(co["mes_sel"])
+    por_centro = {}
+    for f in co["filas"]:
+        plan = f["plan_fecha"] if en_curso else f["plan"]
+        a = por_centro.setdefault(f["centro"], {"plan": 0.0, "real": 0.0, "error": 0.0, "n": 0, "peor": None})
+        a["plan"] += plan or 0.0
+        a["real"] += f["real"] or 0.0
+        a["error"] += abs((f["real"] or 0.0) - (plan or 0.0))
+        a["n"] += 1
+        desvio = (f["real"] or 0.0) - (plan or 0.0)
+        if a["peor"] is None or abs(desvio) > abs(a["peor"][1]):
+            a["peor"] = (f["texto_breve"], desvio)
+    filas = []
+    for cod, a in sorted(por_centro.items(), key=lambda x: -x[1]["plan"]):
+        if a["plan"] <= 0:
+            continue
+        error = a["error"] / a["plan"] * 100
+        precision = max(0.0, 100 - error)
+        sesgo = (a["real"] - a["plan"]) / a["plan"] * 100
+        nombre, desvio = a["peor"]
+        filas.append({
+            "nombre": centro(cod).title(), "sub": f"sesgo {_signo(sesgo)}%", "valor": precision, "texto": f"{precision:,.1f}%",
+            "clase": "bien" if precision >= _PRECISION_BUENA else "regular" if precision >= _PRECISION_REGULAR else "mal",
+            "detalle": f"{centro(cod)} · {mes_txt} · {a['n']} materiales\nPrecisión {precision:,.1f}% · error ponderado "
+                       f"{error:,.1f}%\nSesgo {_signo(sesgo)}% ({'se consumió más' if sesgo > 0 else 'se consumió menos'} "
+                       f"de lo planificado)\nMayor desvío: {_nombre_material(nombre)} {_signo(desvio, 0)} T",
+        })
+    if not filas:
+        vacio("consumo", titulo)
+        return
+    plan_t = sum(a["plan"] for a in por_centro.values())
+    error_t = sum(a["error"] for a in por_centro.values()) / plan_t * 100
+    sesgo_t = (sum(a["real"] for a in por_centro.values()) - plan_t) / plan_t * 100
+    precision_t = max(0.0, 100 - error_t)
+    tono, estado = (("ok", "Precisa") if precision_t >= _PRECISION_BUENA else
+                    ("aviso", "Mejorable") if precision_t >= _PRECISION_REGULAR else ("alerta", "Imprecisa"))
+    sub = (f"{mes_txt} · error ponderado {error_t:,.1f}% · sesgo {_signo(sesgo_t)}% "
+           f"({'se consumió más' if sesgo_t > 0 else 'se consumió menos'} de lo planificado)")
+    if en_curso:
+        sub += " · plan a la fecha"
+    panel("consumo", titulo, _pct_texto(precision_t), sub, "escala",
+          charts.barras_escala(filas, 0, 100, referencias=[(_PRECISION_BUENA, f"{_PRECISION_BUENA}%")]), tono, estado,
+          leyenda=[("bien", f"≥ {_PRECISION_BUENA}%"), ("regular", f"{_PRECISION_REGULAR}–{_PRECISION_BUENA}%"),
+                   ("mal", f"< {_PRECISION_REGULAR}%")],
+          nota=f"Precisión = 100% − Σ|real − plan| ÷ Σ plan, material por material, con el plan S&OP vigente "
+               f"del mes (S&OP {q.formato_mes_anio(co['snapshot'])}). La serie mes a mes se completa con cada S&OP nuevo.")
+
+
+def _panel_salud_inventario(panel, vacio, cob, centro):
+    """Salud del inventario por centro: cuántos materiales tienen su stock de
+    cierre (MB5B) bajo el mínimo, en rango o sobre el máximo S&OP de ese mes
+    (queries.minmax_sop), y la cobertura ponderada (stock total ÷ consumo
+    diario total). Mismo mes y filtros que Cobertura de stock."""
+    titulo = "Salud del inventario"
+    if not (cob and cob["filas"] and cob["fecha_stock"]):
+        vacio("inventario", titulo)
+        return
+    fecha = cob["fecha_stock"]
+    mes = fecha.replace(day=1)
+    minmax = q.minmax_sop(mes)
+    limites = {} if minmax.empty else {
+        (r.material_codigo, r.centro): (r.stock_minimo, r.stock_maximo)
+        for r in minmax[minmax["mes"] == mes].itertuples()
+    }
+    estados = [("quiebre", "Quiebre"), ("bajo_minimo", "Bajo mínimo"), ("en_rango", "En rango"),
+               ("sobre_maximo", "Sobre máximo"), ("sin_parametro", "Sin mín/máx")]
+    por_centro = {}
+    for f in cob["filas"]:
+        minimo, maximo = limites.get((f["material_codigo"], f["centro"]), (float("nan"), float("nan")))
+        estado = q._estado_stock(f["stock_cierre"], minimo, maximo)
+        a = por_centro.setdefault(f["centro"], {"estados": {e: [] for e, _ in estados}, "stock": 0.0, "diario": 0.0})
+        a["estados"][estado].append(_nombre_material(f["texto_breve"]))
+        a["stock"] += f["stock_cierre"]
+        a["diario"] += f["consumo_diario"] or 0.0
+    filas = []
+    for cod in sorted(por_centro, key=lambda c: centro(c)):
+        a = por_centro[cod]
+        n = sum(len(v) for v in a["estados"].values())
+        dias = a["stock"] / a["diario"] if a["diario"] > 0 else None
+        filas.append({
+            "nombre": centro(cod).title(), "sub": f"{n} materiales", "texto": f"{dias:,.0f} d" if dias is not None else "—",
+            "segmentos": [{
+                "valor": len(a["estados"][e]), "clase": f"col-{e}",
+                "detalle": f"{centro(cod)} · {t}: {len(a['estados'][e])} de {n} materiales\n"
+                           + ", ".join(a["estados"][e][:8]) + ("…" if len(a["estados"][e]) > 8 else ""),
+            } for e, t in estados],
+        })
+    conteo = {e: sum(len(a["estados"][e]) for a in por_centro.values()) for e, _ in estados}
+    con_parametro = sum(conteo.values()) - conteo["sin_parametro"]
+    stock_t, diario_t = sum(a["stock"] for a in por_centro.values()), sum(a["diario"] for a in por_centro.values())
+    cobertura_t = f" · cobertura {stock_t / diario_t:,.0f} días" if diario_t > 0 else ""
+    if con_parametro:
+        en_rango = conteo["en_rango"] / con_parametro * 100
+        cifra = _pct_texto(en_rango)
+        tono, estado = (("ok", "Saludable") if en_rango >= _SALUD_BUENA else
+                        ("aviso", "Revisar") if en_rango >= _SALUD_REGULAR else ("alerta", "Desbalanceado"))
+        sub = f"Materiales entre su mínimo y máximo · stock al {fecha:%d/%m/%Y}{cobertura_t}"
+    else:
+        cifra, tono, estado = (f"{stock_t / diario_t:,.0f} d" if diario_t > 0 else "—"), "", "Sin mín/máx"
+        sub = f"Cobertura ponderada · stock al {fecha:%d/%m/%Y} (sin mínimos/máximos S&OP para ese mes)"
+    panel("inventario", titulo, cifra, sub, "pilas", charts.pilas_horizontales(filas), tono, estado,
+          leyenda=[(f"col-{e}", t) for e, t in estados if conteo[e] or e in ("bajo_minimo", "en_rango", "sobre_maximo")],
+          nota="Materiales por estado de su stock de cierre (MB5B) frente al mínimo/máximo S&OP del mes. A la derecha, "
+               "cobertura ponderada: stock total ÷ consumo diario total de los últimos 6 meses.")
+
+
+def _panel_primer_quiebre(panel, vacio, p, centro):
+    """Meses hasta el primer quiebre por centro, según el S&OP elegido en
+    Evolución de inventario (con sus filtros): meses desde el mes del S&OP
+    hasta el primer mes en que un material del centro proyecta stock negativo
+    (quiebre) o cae bajo su mínimo."""
+    titulo = "Meses hasta el primer quiebre"
+    if not (p and p.get("matriz")):
+        vacio("inventario", titulo)
+        return
+    snapshot = p["snapshot"]
+    meses = [m["fecha"] for m in p["meses"]]
+    horizonte = (meses[-1].year - snapshot.year) * 12 + meses[-1].month - snapshot.month
+
+    def meses_hasta(mes):
+        return (mes.year - snapshot.year) * 12 + mes.month - snapshot.month
+
+    primero = {}
+    for f in p["matriz"]:
+        if len(f["celdas"]) != len(meses):
+            continue
+        cod = f["centro"]
+        quiebre = f["quiebre"]
+        bajo = next((m for m, celda in zip(meses, f["celdas"]) if celda["estado"] in ("bajo_minimo", "quiebre")), None)
+        a = primero.setdefault(cod, {"quiebre": None, "bajo_minimo": None})
+        for clave, mes in (("quiebre", quiebre), ("bajo_minimo", bajo)):
+            if mes and (a[clave] is None or mes < a[clave][0]):
+                a[clave] = (mes, _nombre_material(f["texto_breve"]))
+    if not primero:
+        vacio("inventario", titulo)
+        return
+    filas = []
+    for cod in sorted(primero, key=lambda c: centro(c)):
+        for clave, texto in (("quiebre", "quiebre"), ("bajo_minimo", "bajo mínimo")):
+            hallado = primero[cod][clave]
+            if hallado:
+                mes, material = hallado
+                n = meses_hasta(mes)
+                filas.append({
+                    "nombre": f"{centro(cod).title()} · {texto}", "sub": material, "valor": max(n, 0.15),
+                    "texto": f"{n} m", "clase": "mal" if n <= 1 else "regular" if n <= 3 else "bien",
+                    "detalle": f"{centro(cod)} · primer {texto}: {material} en {_mes_corto(mes)}\n"
+                               f"{n} meses desde el S&OP {_mes_corto(snapshot)}",
+                })
+            else:
+                filas.append({
+                    "nombre": f"{centro(cod).title()} · {texto}", "sub": "ninguno", "valor": horizonte, "texto": "No",
+                    "clase": "neutra",
+                    "detalle": f"{centro(cod)}: ningún material con {texto} hasta {_mes_corto(meses[-1])}",
+                })
+    quiebres = [(h[0], h[1], cod) for cod, a in primero.items() if (h := a["quiebre"])]
+    if quiebres:
+        mes, material, cod = min(quiebres)
+        n = meses_hasta(mes)
+        cifra = "Este mes" if n <= 0 else f"{n} {'mes' if n == 1 else 'meses'}"
+        tono, estado = ("alerta", "Urgente") if n <= 3 else ("aviso", "Anticipar") if n <= 6 else ("ok", "Con margen")
+        sub = f"Primer quiebre: {material} ({centro(cod)}) en {_mes_corto(mes)} · S&OP {_mes_corto(snapshot)}"
+    else:
+        cifra, tono, estado = "Sin quiebre", "ok", "Cubierto"
+        sub = f"Ningún material queda en negativo hasta {_mes_corto(meses[-1])} · S&OP {_mes_corto(snapshot)}"
+    panel("inventario", titulo, cifra, sub, "escala",
+          charts.barras_escala(filas, 0, max(horizonte, 1), referencias=[(3, "3 meses")]), tono, estado,
+          leyenda=[("mal", "≤ 1 mes"), ("regular", "2–3 meses"), ("bien", "> 3 meses"), ("neutra", "No ocurre")],
+          nota="Meses desde el mes del S&OP hasta el primer mes en que un material del centro proyecta stock "
+               "negativo (quiebre) o cae bajo su mínimo. 3 meses = lead time del Carbón Importado.")
+
+
 def _paneles_indicadores(request, c, mes=None):
     """Pestaña Indicadores: un gráfico por indicador con su resultado (la
     cifra clave, su estado y el gráfico que la explica), con los filtros que
@@ -1079,11 +1544,11 @@ def _paneles_indicadores(request, c, mes=None):
             "ancho": ancho, "vacio": "",
         })
 
-    def vacio(zona, titulo, ancho=False):
+    def vacio(zona, titulo, ancho=False, mensaje=None):
         """Panel sin datos (el mes elegido no tiene, o los filtros de la pestaña)."""
         panel(zona, titulo, "—", "", "", None, ancho=ancho)
-        paneles[-1]["vacio"] = (f"Sin datos de {q.formato_mes_anio(mes)}." if mes else
-                                "Sin datos para graficar con los filtros de esta pestaña.")
+        paneles[-1]["vacio"] = mensaje or (f"Sin datos de {q.formato_mes_anio(mes)}." if mes else
+                                           "Sin datos para graficar con los filtros de esta pestaña.")
 
     def tope(filas, minimo=120, maximo=200):
         return min(max(minimo, max(f["valor"] for f in filas) * 1.08), maximo)
@@ -1131,6 +1596,9 @@ def _paneles_indicadores(request, c, mes=None):
                            ("mal", f"< {_CUMPLIMIENTO_MAL}%")],
                   nota="Ingresos físicos (báscula) ÷ plan de abastecimiento de cada centro, todos sus materiales.")
 
+    _panel_traslados(panel, vacio, tope, pl, centro, hoy_mes)
+    _panel_ritmo(panel, vacio, pl, centro, hoy_mes)
+
     # 2. Consumo real vs plan S&OP del mes, por centro (igual que el 1).
     co = c.get("planificacion_consumo")
     titulo = "Consumo real vs plan S&OP"
@@ -1173,6 +1641,8 @@ def _paneles_indicadores(request, c, mes=None):
               tono, estado,
               leyenda=[("bien", f"En línea (±{tol}%)"), ("regular", "Sobre el plan"), ("mal", "Bajo el plan")],
               nota="Consumo real (MB51) ÷ plan de consumos S&OP de cada centro, todos sus materiales.")
+
+    _panel_precision_consumo(panel, vacio, co, centro)
 
     # 3. Consumo por tonelada producida: últimos 3 meses vs 12 meses.
     fa = c.get("planificacion_factor")
@@ -1222,6 +1692,9 @@ def _paneles_indicadores(request, c, mes=None):
               leyenda=[("mal", f"< {_COBERTURA_RIESGO} días"), ("regular", f"{_COBERTURA_RIESGO}–{_COBERTURA_AJUSTADA} días"),
                        ("neutra", f"≥ {_COBERTURA_AJUSTADA} días")],
               nota=f"Días que alcanza el stock al ritmo de consumo; los {len(filas)} más bajos (de {len(con_dias)}).")
+
+    _panel_salud_inventario(panel, vacio, cob, centro)
+    _panel_primer_quiebre(panel, vacio, c.get("planificacion_proyeccion"), centro)
 
     # 5. Stock proyectado S&OP: cuántos materiales quedan en cada estado, mes a mes.
     p = c.get("planificacion_proyeccion")

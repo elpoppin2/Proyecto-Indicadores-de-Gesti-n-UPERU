@@ -1655,6 +1655,66 @@ def ingresos_fisicos_por_proveedor(mes):
     """, [fecha_inicio, fecha_fin])
 
 
+@_cacheado
+def entregas_por_proveedor_sop():
+    """Entregas mes a mes por material/centro/proveedor (ZMM056, mismas reglas
+    de Recepción que ingresos_fisicos_por_material: Tipo 1/5), en toneladas y
+    carros, de los materiales de Planificación (misma categoría efectiva que
+    Plan vs Real). En los Tipo 5 el "proveedor" es la planta o cantera de
+    origen. Para Evolución de entregas por proveedor (pestaña Cumplimiento).
+    Pedido por el usuario."""
+    columnas = ["material_codigo", "texto_breve", "centro", "proveedor_codigo", "proveedor", "tipo",
+                "mes", "toneladas", "carros"]
+    df = _query(f"""
+        SELECT material_codigo AS material_codigo, centro AS centro, proveedor_codigo AS proveedor_codigo,
+               proveedor AS proveedor, MAX(tipo_operacion) AS tipo_operacion,
+               MAX(descripcion_material) AS descripcion,
+               substr(fecha_ingreso, 1, 7) || '-01' AS mes, SUM(cantidad) AS toneladas, COUNT(*) AS carros
+        FROM gestion_ingresofisicosop
+        WHERE fecha_ingreso IS NOT NULL AND tipo_operacion IN ({_IN_TIPOS_OPERACION_RECEPCION})
+        GROUP BY material_codigo, centro, proveedor_codigo, proveedor, mes
+    """)
+    if df.empty:
+        return pd.DataFrame(columns=columnas)
+    df["mes"] = pd.to_datetime(df["mes"]).dt.date
+    df["toneladas"] = df["toneladas"].fillna(0.0).astype(float)
+    df["carros"] = df["carros"].astype(int)
+    df["proveedor"] = df["proveedor"].fillna("").str.strip().replace("", "(sin proveedor)")
+    df["tipo"] = df["tipo_operacion"].map(lambda t: "Propio" if t == "5" else "Terceros")
+    catalogo = catalogo_materiales()[["material_codigo", "texto_breve", "categoria"]].drop_duplicates("material_codigo")
+    df = df.merge(catalogo, on="material_codigo", how="left")
+    df["texto_breve"] = df["texto_breve"].where(df["texto_breve"].notna() & (df["texto_breve"] != ""), df["descripcion"]).fillna("")
+    sin_categoria_en_plan = df["categoria"].isna() & df["material_codigo"].isin(materiales_planificados_sop())
+    df.loc[sin_categoria_en_plan, "categoria"] = "MATERIAS PRIMAS"
+    df = df[df["categoria"].isin(CATEGORIAS_PLANIFICACION_SOP)]
+    return df[columnas].sort_values(["mes", "material_codigo", "centro", "proveedor"]).reset_index(drop=True)
+
+
+# Materiales que Condorcocha recibe SOLO por traslado desde Atocongo: todo su
+# plan de abastecimiento en U002 es traslado (el clinker se produce en
+# Atocongo; el Carbón Importado llega por barco a Atocongo, ver
+# _TRASLADOS_SOP). El Carbón Trujillo también se traslada a veces, pero su plan
+# en U002 mezcla compras directas: no se puede medir como traslado. Para el
+# indicador de Traslados de la pestaña Indicadores. Visto en ZMM056 (Tipo 5,
+# "proveedor" = planta de origen).
+CENTRO_ATOCONGO, CENTRO_CONDORCOCHA = "U001", "U002"
+MATERIALES_TRASLADO_ATOCONGO_CONDORCOCHA = ("14-00000037", "06-00000003")
+
+
+def traslados_recibidos(mes, centro):
+    """Ingresos por traslado (ZMM056 Tipo 5) que recibió `centro` en el mes
+    `mes`, por material y planta de origen (el "proveedor" del ticket), con
+    toneladas y carros."""
+    fecha_inicio, fecha_fin = _limites_mes(mes)
+    return _query("""
+        SELECT material_codigo AS material_codigo, MAX(descripcion_material) AS descripcion,
+               proveedor AS origen, SUM(cantidad) AS toneladas, COUNT(*) AS carros
+        FROM gestion_ingresofisicosop
+        WHERE fecha_ingreso BETWEEN %s AND %s AND centro = %s AND tipo_operacion = '5'
+        GROUP BY material_codigo, proveedor
+    """, [fecha_inicio, fecha_fin, centro])
+
+
 def _con_categoria_efectiva_planificacion(df, plan):
     """Completa `categoria` (columna ya mergeada desde catalogo_materiales) en
     `df` para los materiales del Plan de Abastecimiento SOP que no tienen
