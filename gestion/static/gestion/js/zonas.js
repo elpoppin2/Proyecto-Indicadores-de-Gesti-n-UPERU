@@ -18,6 +18,64 @@
      cascada, las barras crecen, y al ordenar una tabla las filas
      se asientan. Todo se apaga con "reducir movimiento" del sistema. */
 
+/* Mes alineado en toda Planificación (web y HTML estático): al elegir un mes
+   en cualquier sección, todos los demás filtros de mes que tengan ese mes
+   pasan a él y su sección se vuelve a dibujar (mismo camino que si el
+   usuario lo cambiara). Pedido por el usuario: "al seleccionar un filtro de
+   fecha, todas deben alinearse, para hacerlo más fluido". Los Período
+   (últimos N meses) de Precios/Calidad/Premios/Energía no son un mes y no
+   se tocan; el S&OP de Evolución de inventario se alinea solo si hay un S&OP
+   emitido ese mes.
+   - Escucha en fase de captura: corre antes del recargador de secciones de
+     base.html, así la URL ya trae todos los meses cuando arma cada pedido
+     (si no, la respuesta de una sección podía dejar la URL sin los meses de
+     las demás). En la web, el mes queda en la URL también para las zonas que
+     todavía no se cargaron (el servidor las dibuja con él).
+   - Solo los cambios del usuario (isTrusted) se propagan: los que se
+     disparan acá no vuelven a disparar la alineación.
+   - Una zona que se carga después (o en el estático, que se dibuja al
+     abrirla) se alinea al mes vigente (window.uperuAlinearMes). */
+(function () {
+  var MESES = ['mes_indicadores', 'mes_plan', 'mes_detalle', 'mes_consumo', 'mes_factor', 'mes_cobertura', 'sop_proyeccion'];
+  var mesVigente = null;
+  var estatico = function () { return !!window.uperuCargarZona; };
+
+  function tieneOpcion(select, valor) {
+    return Array.prototype.some.call(select.options, function (o) { return o.value === valor; });
+  }
+
+  function alinear(raiz, valor, origen) {
+    MESES.forEach(function (id) {
+      var select = raiz.querySelector ? raiz.querySelector('select#' + id) : null;
+      if (!select || select === origen || select.value === valor || !tieneOpcion(select, valor)) return;
+      select.value = valor;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  }
+
+  document.addEventListener('change', function (evento) {
+    var select = evento.target;
+    if (!evento.isTrusted || !select || MESES.indexOf(select.id) === -1 || !select.value) return;
+    mesVigente = select.value;
+    if (!estatico()) {
+      // En la URL: el de cada sección ya cargada solo si tiene ese mes (si
+      // no, conserva el suyo); el de las que no se cargaron, siempre.
+      var params = new URLSearchParams(window.location.search);
+      MESES.forEach(function (id) {
+        var otro = document.getElementById(id);
+        if (!otro || otro === select || tieneOpcion(otro, mesVigente)) params.set(id, mesVigente);
+      });
+      var qs = params.toString();
+      window.history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : '') + window.location.hash);
+    }
+    alinear(document, mesVigente, select);
+  }, true);
+
+  window.uperuAlinearMes = function (raiz) {
+    if (mesVigente) alinear(raiz, mesVigente, null);
+  };
+})();
+
 /* Filtro Material con varios materiales y grupos (Calizas, Puzolanas...),
    en todas las secciones de Planificación (web y HTML estático). Pedido por
    el usuario. Cada filtro es un <div class="filtro-multi"> con un <select
@@ -363,6 +421,7 @@
     if (window.uperuCargarZona) {
       window.uperuCargarZona(zona);
       panel.removeAttribute('data-pendiente');
+      if (window.uperuAlinearMes) window.uperuAlinearMes(panel);
       return Promise.resolve();
     }
     panel.setAttribute('aria-busy', 'true');
@@ -376,6 +435,7 @@
         panel.innerHTML = html;
         panel.removeAttribute('data-pendiente');
         if (window.uperuInicializarContenido) window.uperuInicializarContenido(panel);
+        if (window.uperuAlinearMes) window.uperuAlinearMes(panel);
         if (!panel.hidden) animarEntrada(panel, 0);
       })
       .catch(function () {
