@@ -59,7 +59,7 @@
               <td><span class="celda-proveedor"><span class="leyenda-marca marca-{{ f.clase }}"></span>{{ f.proveedor }}</span></td>
               <td>{{ f.tipo }}</td>
               <td>{{ f.material_codigo }} — {{ f.texto_breve }}</td>
-              <td>{{ f.centro }}</td>
+              <td>{{ f.centro|centro }}</td>
               {% for v in f.celdas %}<td class="num">{{ v }}</td>{% endfor %}
               <td class="num"><strong>{{ f.total }}</strong></td>
             </tr>

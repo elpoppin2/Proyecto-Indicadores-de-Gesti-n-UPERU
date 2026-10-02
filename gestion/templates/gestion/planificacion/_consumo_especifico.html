@@ -25,7 +25,7 @@
       <label for="centro_factor">Centro</label>
       <select name="centro_factor" id="centro_factor">
         {% for c in fa.centros %}
-          <option value="{{ c }}" {% if c == fa.centro_sel %}selected{% endif %}>{{ c }}</option>
+          <option value="{{ c }}" {% if c == fa.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
         {% endfor %}
       </select>
     </div>
@@ -112,7 +112,7 @@
         <tbody>
           {% for f in fa.filas %}
             <tr>
-              <td class="celda-codigo">{{ f.material_codigo }}</td><td>{{ f.texto_breve }}</td><td>{{ f.centro }}</td>
+              <td class="celda-codigo">{{ f.material_codigo }}</td><td>{{ f.texto_breve }}</td><td>{{ f.centro|centro }}</td>
               <td>{{ f.producto_texto }}{% if f.participacion < 99.5 %} <span class="texto-tenue">({{ f.participacion|numero:0 }}%)</span>{% endif %}</td>
               <td class="num">{{ f.consumo|numero:0 }}</td>
               <td class="num">{{ f.produccion|numero:0 }}</td>
@@ -156,7 +156,7 @@
           <tbody>
             {% for f in fa.implicita %}
               <tr>
-                <td class="celda-codigo">{{ f.material_codigo }}</td><td>{{ f.texto_breve }}</td><td>{{ f.centro }}</td><td>{{ f.producto_texto }}</td>
+                <td class="celda-codigo">{{ f.material_codigo }}</td><td>{{ f.texto_breve }}</td><td>{{ f.centro|centro }}</td><td>{{ f.producto_texto }}</td>
                 <td class="num">{{ f.plan_promedio|numero:0 }}</td>
                 <td class="num">{{ f.factor_12|numero:0 }}</td>
                 <td class="num">{% if f.produccion_plan %}{{ f.produccion_plan|numero:0 }}{% else %}—{% endif %}</td>

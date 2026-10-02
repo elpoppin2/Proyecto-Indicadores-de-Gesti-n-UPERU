@@ -18,7 +18,7 @@
       <label for="centro_detalle">Centro</label>
       <select name="centro_detalle" id="centro_detalle">
         {% for c in planificacion_detalle.centros %}
-          <option value="{{ c }}" {% if c == planificacion_detalle.centro_sel %}selected{% endif %}>{{ c }}</option>
+          <option value="{{ c }}" {% if c == planificacion_detalle.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
         {% endfor %}
       </select>
     </div>
@@ -56,7 +56,7 @@
                 {{ r.texto_breve }}
                 {% if r.proveedores %}<button type="button" class="btn-proveedores" data-grupo="{{ r.grupo }}" aria-expanded="{% if planificacion_detalle.expandir %}true{% else %}false{% endif %}">{{ r.proveedores|length }} proveedor{{ r.proveedores|length|pluralize:"es" }}</button>{% endif %}
               </td>
-              <td>{{ r.centro }}</td>
+              <td>{{ r.centro|centro }}</td>
               <td>{{ r.categoria }}</td>
               <td>{{ r.familia }}</td>
               <td class="num">{{ r.cantidad_plan|numero:0 }}</td>
@@ -69,7 +69,7 @@
             {% for p in r.proveedores %}
               <tr class="fila-hija" data-grupo="{{ r.grupo }}"{% if not planificacion_detalle.expandir %} hidden{% endif %}>
                 <td></td>
-                <td class="celda-proveedor">{{ p.proveedor }} <span class="texto-tenue">{{ p.codigo }} · {{ p.tipo }}</span></td>
+                <td class="celda-proveedor">{{ p.proveedor }} <span class="texto-tenue">{% if p.codigo|centro == p.codigo %}{{ p.codigo }} · {% endif %}{{ p.tipo }}</span></td>
                 <td></td><td></td><td></td>
                 <td class="num texto-tenue">—</td>
                 <td class="num">{{ p.real|numero:0 }}</td>

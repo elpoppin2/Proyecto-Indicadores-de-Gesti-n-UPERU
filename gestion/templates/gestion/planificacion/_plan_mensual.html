@@ -27,7 +27,7 @@
       <label for="centro_plan">Centro</label>
       <select name="centro_plan" id="centro_plan">
         {% for c in planificacion.centros %}
-          <option value="{{ c }}" {% if c == planificacion.centro_sel %}selected{% endif %}>{{ c }}</option>
+          <option value="{{ c }}" {% if c == planificacion.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
         {% endfor %}
       </select>
     </div>

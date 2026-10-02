@@ -1597,6 +1597,17 @@ def meses_planificacion_disponibles():
     return sorted(set(meses_plan) | set(meses_ingresos))
 
 
+# Nombre con que se muestra cada centro en pantalla (filtros, tablas,
+# gráficos): el código SAP sigue siendo el valor interno de los filtros y de
+# los datos. Pedido por el usuario (2026-10-02). Otros centros (U004
+# importación...) se muestran con su código.
+NOMBRES_CENTRO = {"U001": "ATOCONGO", "U002": "CONDORCOCHA"}
+
+
+def nombre_centro(codigo):
+    return NOMBRES_CENTRO.get(codigo, codigo)
+
+
 def descripcion_centros_planificacion():
     """Mapea centro_destino -> nombre de planta (columna 'Destino' del Excel
     de Plan de Abastecimiento SOP, p.ej. U001 -> ATOCONGO), para mostrar un

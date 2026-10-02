@@ -30,7 +30,7 @@
       <label for="centro_cobertura">Centro</label>
       <select name="centro_cobertura" id="centro_cobertura">
         {% for c in planificacion_cobertura.centros %}
-          <option value="{{ c }}" {% if c == planificacion_cobertura.centro_sel %}selected{% endif %}>{{ c }}</option>
+          <option value="{{ c }}" {% if c == planificacion_cobertura.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
         {% endfor %}
       </select>
     </div>
@@ -59,7 +59,7 @@
             <tr>
               <td>{{ r.material_codigo }}</td>
               <td>{{ r.texto_breve }}</td>
-              <td>{{ r.centro }}</td>
+              <td>{{ r.centro|centro }}</td>
               <td>{{ r.categoria }}</td>
               <td>{{ r.familia }}</td>
               <td class="num">{{ r.stock_cierre|numero:0 }}</td>

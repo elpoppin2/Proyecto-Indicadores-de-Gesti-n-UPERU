@@ -35,7 +35,7 @@
       <label for="centro_proyeccion">Centro</label>
       <select name="centro_proyeccion" id="centro_proyeccion">
         {% for c in p.centros %}
-          <option value="{{ c }}" {% if c == p.centro_sel %}selected{% endif %}>{{ c }}</option>
+          <option value="{{ c }}" {% if c == p.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
         {% endfor %}
       </select>
     </div>
@@ -127,7 +127,7 @@
               <tr>
                 <td class="celda-codigo">{{ d.material_codigo }}</td>
                 <td>{{ d.texto_breve }}</td>
-                <td>{{ d.centro }}</td>
+                <td>{{ d.centro|centro }}</td>
                 <td><span class="pill-diagnostico diag-{{ d.diagnostico }}">{{ d.diagnostico_texto }}</span></td>
                 <td class="num">{{ d.stock_minimo|numero:0|default:"—" }}</td>
                 <td class="num">{{ d.stock_maximo|numero:0|default:"—" }}</td>
@@ -207,7 +207,7 @@
             <tr>
               <td class="celda-codigo">{{ f.material_codigo }}</td>
               <td>{{ f.texto_breve }}</td>
-              <td>{{ f.centro }}</td>
+              <td>{{ f.centro|centro }}</td>
               <td class="num">{{ f.stock_minimo|numero:0|default:"—" }}</td>
               <td class="num">{{ f.stock_maximo|numero:0|default:"—" }}</td>
               <td class="num">{{ f.stock_inicial|numero:0 }}</td>

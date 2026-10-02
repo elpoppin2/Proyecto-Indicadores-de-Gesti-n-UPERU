@@ -34,7 +34,7 @@
       <label for="centro_precios">Centro</label>
       <select name="centro_precios" id="centro_precios">
         {% for c in pr.centros %}
-          <option value="{{ c }}" {% if c == pr.centro_sel %}selected{% endif %}>{{ c }}{% if c == pr.centro_importacion %} (importación){% endif %}</option>
+          <option value="{{ c }}" {% if c == pr.centro_sel %}selected{% endif %}>{{ c|centro }}{% if c == pr.centro_importacion %} (importación){% endif %}</option>
         {% endfor %}
       </select>
     </div>
@@ -111,7 +111,7 @@
         <button type="button" class="tarjeta-precio" data-material-precios="{{ t.material_codigo }}" data-centro-precios="{{ t.centro }}">
           <span class="tarjeta-precio-cabecera">
             <span class="tarjeta-precio-nombre">{{ t.texto_breve }}</span>
-            <span class="tarjeta-precio-codigo">{{ t.material_codigo }} · {{ t.centro }}{% if t.importado %} (importación){% endif %}</span>
+            <span class="tarjeta-precio-codigo">{{ t.material_codigo }} · {{ t.centro|centro }}{% if t.importado %} (importación){% endif %}</span>
           </span>
           <span class="tarjeta-precio-valor">S/ {{ t.precio_ultimo|numero:2 }} <small>por T · {{ t.mes_ultimo_corto }}</small></span>
           {% with m=t.minigrafico %}

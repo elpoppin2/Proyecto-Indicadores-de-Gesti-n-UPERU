@@ -29,7 +29,7 @@
       <label for="centro_premios">Centro</label>
       <select name="centro_premios" id="centro_premios">
         {% for c in pm.centros %}
-          <option value="{{ c }}" {% if c == pm.centro_sel %}selected{% endif %}>{{ c }}</option>
+          <option value="{{ c }}" {% if c == pm.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
         {% endfor %}
       </select>
     </div>
@@ -71,7 +71,7 @@
           <tbody>
             {% for f in pm.por_material %}
               <tr>
-                <td class="celda-codigo">{{ f.material_codigo }}</td><td>{{ f.texto_breve }}</td><td>{{ f.centro }}</td>
+                <td class="celda-codigo">{{ f.material_codigo }}</td><td>{{ f.texto_breve }}</td><td>{{ f.centro|centro }}</td>
                 <td class="num">{{ f.toneladas|numero:0 }}</td>
                 <td class="num">{{ f.precio_base|numero:2 }}</td>
                 <td class="num">{% if f.premios %}{{ f.premios|numero:0 }}{% else %}—{% endif %}</td>
@@ -108,7 +108,7 @@
           {% for f in pm.por_proveedor %}
             <tr>
               <td>{{ f.proveedor }}</td>
-              {% if not pm.un_material %}<td>{{ f.texto_breve }} <span class="celda-codigo texto-tenue">{{ f.centro }}</span></td>{% endif %}
+              {% if not pm.un_material %}<td>{{ f.texto_breve }} <span class="celda-codigo texto-tenue">{{ f.centro|centro }}</span></td>{% endif %}
               <td class="num">{{ f.documentos }}</td>
               <td class="num">{{ f.toneladas|numero:0 }}</td>
               <td class="num">{{ f.precio_base|numero:2 }}</td>

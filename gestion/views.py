@@ -700,7 +700,7 @@ def _contexto_plan_detalle(request):
     if centro_det_sel == "Todos":
         centro_titulo = "Todos los centros"
     else:
-        centro_titulo = q.descripcion_centros_planificacion().get(centro_det_sel, centro_det_sel)
+        centro_titulo = q.nombre_centro(centro_det_sel)
 
     curva_s = None
     if diario:
@@ -803,7 +803,6 @@ def _contexto_entregas(request):
         return None
     meses = sorted(base["mes"].unique())[-_ENTREGAS_MESES:]
     base = base[base["mes"].isin(meses)]
-    nombres_centro = q.descripcion_centros_planificacion()
     centros = sorted(base["centro"].unique())
     centro_sel = request.GET.get("centro_entregas", "Todos")
     if centro_sel not in centros:
@@ -817,7 +816,7 @@ def _contexto_entregas(request):
         ver = "toneladas"
     contexto = {
         "centros": [{"codigo": "Todos", "texto": "Todos"}] + [
-            {"codigo": c, "texto": nombres_centro.get(c) or c} for c in centros],
+            {"codigo": c, "texto": q.nombre_centro(c)} for c in centros],
         "centro_sel": centro_sel, "materiales": materiales_op, "material_sel": material_sel,
         "opciones_ver": _VER_ENTREGAS, "ver": ver, "grafico": None, "filas": [],
     }
@@ -886,7 +885,7 @@ def _contexto_entregas(request):
         filas.append({
             "proveedor": totales.at[clave, "proveedor"], "tipo": totales.at[clave, "tipo"], "clase": color[clave],
             "material_codigo": material, "texto_breve": g["texto_breve"].iloc[0],
-            "centro": ", ".join(nombres_centro.get(x) or x for x in sorted(g["centro"].unique())),
+            "centro": ", ".join(q.nombre_centro(x) for x in sorted(g["centro"].unique())),
             "celdas": celdas, "total": _texto_entrega(ver, t, c, total_t), "_t": t,
         })
     filas.sort(key=lambda f: (-f["_t"], f["proveedor"], f["material_codigo"]))
@@ -1530,12 +1529,9 @@ def _paneles_indicadores(request, c, mes=None):
     cifra es la de ese mes. Los centros se muestran por su nombre (ATOCONGO,
     CONDORCOCHA), no por código, pedido por el usuario."""
     nombres_zona = {clave: nombre for clave, nombre, _, _ in _ZONAS_PLANIFICACION}
-    nombres_centro = q.descripcion_centros_planificacion()
     hoy_mes = datetime.date.today().replace(day=1)
     paneles = []
-
-    def centro(codigo):
-        return nombres_centro.get(codigo) or codigo
+    centro = q.nombre_centro
 
     def panel(zona, titulo, cifra, sub, tipo, g, tono="", estado="", leyenda=(), nota="", ancho=False):
         paneles.append({
@@ -2050,7 +2046,7 @@ def _contexto_energia(request):
         puntos = [{"nombre": _nombre_corto(f["proveedor"]), "pcs": f["pcs"], "precio": f["precio_efectivo"],
                    "toneladas": f["toneladas"], "costo_gcal": f["costo_gcal"]} for f in por_proveedor]
     else:
-        puntos = [{"nombre": f"{f['texto_breve'].title()} {f['centro']}", "pcs": f["pcs"],
+        puntos = [{"nombre": f"{f['texto_breve'].title()} {q.nombre_centro(f['centro'])}", "pcs": f["pcs"],
                    "precio": f["precio_efectivo"], "toneladas": f["toneladas"], "costo_gcal": f["costo_gcal"]}
                   for f in por_material]
     contexto["grafico"] = charts.dispersion_energia(puntos, resumen["costo_gcal"])
@@ -2063,7 +2059,7 @@ def _contexto_energia(request):
     for clave, g in df.groupby(claves):
         clave = clave if isinstance(clave, tuple) else (clave,)
         por_mes = {m: q.resumen_energia(gm)["costo_gcal"] for m, gm in g.groupby("mes")}
-        nombre = clave[0] if un_material else f"{g['texto_breve'].iloc[0]} ({clave[1]})"
+        nombre = clave[0] if un_material else f"{g['texto_breve'].iloc[0]} ({q.nombre_centro(clave[1])})"
         filas_mes.append({"nombre": nombre, "valores": [por_mes.get(m) for m in meses],
                           "total": q.resumen_energia(g)["costo_gcal"]})
     filas_mes.sort(key=lambda f: f["total"])
@@ -2483,7 +2479,7 @@ def _contexto_inflacion(request, sufijo="inflacion"):
         if r["base_sustituida"]:
             base_txt += f" (último registrado; {_mes_corto(r['mes_referencia'])} sin compra)"
         signo = "+" if r["bolsa"] >= 0 else "−"
-        texto = (f"{r['texto_breve']} ({r['centro']}) · {_mes_corto(r['mes'])}: {r['variacion'] * 100:+.1f}%\n"
+        texto = (f"{r['texto_breve']} ({q.nombre_centro(r['centro'])}) · {_mes_corto(r['mes'])}: {r['variacion'] * 100:+.1f}%\n"
                  f"{_mes_corto(r['mes'])}: S/ {r['precio']:,.2f} por T\n"
                  f"vs {base_txt}: S/ {r['precio_base']:,.2f} por T\n"
                  f"Bolsa: (S/ {r['precio']:,.2f} − S/ {r['precio_base']:,.2f}) × {r['toneladas']:,.0f} T = "
@@ -2525,7 +2521,7 @@ def _contexto_inflacion(request, sufijo="inflacion"):
                 celdas.append(celda(
                     d["acumulado"] * 100, d["bolsa_acumulada"],
                     {"sustituida": False, "atipica": False,
-                     "detalle": detalle_acumulado(m, d, ipu_material, f"{r['texto_breve']} ({centro}) · ")},
+                     "detalle": detalle_acumulado(m, d, ipu_material, f"{r['texto_breve']} ({q.nombre_centro(centro)}) · ")},
                     precio=d["importe_acumulado"] / d["toneladas_acumuladas"] if d["toneladas_acumuladas"] else None))
             else:
                 celdas.append(celda(
@@ -2886,13 +2882,13 @@ def _contexto_consumo_especifico(request):
             g = g[(g["mes"] >= desde_grafico) & (g["mes"] <= hoy_mes)].sort_values("mes")
             producto = _PRODUCTOS_TEXTO[g["producto"].iloc[0]].lower() if not g.empty else ""
             series.append({
-                "nombre": f"{centro} · kg por T de {producto}", "clase": f"serie-{i}",
+                "nombre": f"{q.nombre_centro(centro)} · kg por T de {producto}", "clase": f"serie-{i}",
                 "puntos": [(r.mes, r.factor * 1000,
-                            f"{_mes_corto(r.mes)} · {centro}: {_kg_por_t(r.factor)} de {producto}\n"
+                            f"{_mes_corto(r.mes)} · {q.nombre_centro(centro)}: {_kg_por_t(r.factor)} de {producto}\n"
                             f"Consumo {r.consumo:,.0f} T · Producción de {producto} {r.produccion:,.0f} T")
                            for r in g.itertuples()],
             })
-        referencias = [{"valor": f["factor_12"], "texto": f"Prom. 12 meses {f['centro']}: {f['factor_12']:,.0f} kg/T",
+        referencias = [{"valor": f["factor_12"], "texto": f"Prom. 12 meses {q.nombre_centro(f['centro'])}: {f['factor_12']:,.0f} kg/T",
                         "clase": f"serie-{i}"} for i, f in enumerate(filas) if f["factor_12"]]
         grafico = charts.lineas_mensuales(series, _mes_corto, lambda v: f"{v:,.0f}", referencias=referencias)
         titulo_grafico = "Consumo por tonelada producida, mes a mes (kg por T)"
@@ -2906,10 +2902,10 @@ def _contexto_consumo_especifico(request):
             series.append({
                 "nombre": f"{_PRODUCTOS_TEXTO[producto]} producido", "clase": f"serie-{i}",
                 "puntos": [(m, float(v), f"{_mes_corto(m)} · {_PRODUCTOS_TEXTO[producto]} producido "
-                                         f"({' + '.join(centros_sel)}): {v:,.0f} T") for m, v in serie.items()],
+                                         f"({' + '.join(map(q.nombre_centro, centros_sel))}): {v:,.0f} T") for m, v in serie.items()],
             })
         grafico = charts.lineas_mensuales(series, _mes_corto, charts._toneladas_corto, desde_cero=True)
-        titulo_grafico = f"Producción mensual de clinker y cemento · {' + '.join(centros_sel)} (T)"
+        titulo_grafico = f"Producción mensual de clinker y cemento · {' + '.join(map(q.nombre_centro, centros_sel))} (T)"
 
     # ¿Qué producción supone el plan? Plan de consumos de los próximos 6
     # meses ÷ consumo por T de los últimos 12 meses = producción de clinker o

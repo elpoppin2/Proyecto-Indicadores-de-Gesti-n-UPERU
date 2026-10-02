@@ -310,7 +310,7 @@
               <label for="centro_top">Centro</label>
               <select name="centro_top" id="centro_top">
                 {% for c in inventario.centros_top %}
-                  <option value="{{ c }}" {% if c == inventario.centro_top_sel %}selected{% endif %}>{{ c }}</option>
+                  <option value="{{ c }}" {% if c == inventario.centro_top_sel %}selected{% endif %}>{{ c|centro }}</option>
                 {% endfor %}
               </select>
             </div>
@@ -338,7 +338,7 @@
                       <td class="col-codigo">{{ m.material_codigo }}</td>
                       <td class="col-descripcion">{{ m.texto_breve }}</td>
                       <td>{{ m.familia }}</td>
-                      <td>{{ m.centro }}</td>
+                      <td>{{ m.centro|centro }}</td>
                       <td>{{ m.unidad_medida_base }}</td>
                       <td class="num">{{ m.stock_cierre|numero }}</td>
                       <td class="num">{{ m.valor_total|soles }}</td>
@@ -375,7 +375,7 @@
             <label for="centro_abc">Centro</label>
             <select name="centro_abc" id="centro_abc">
               {% for c in filtros_abc.centros %}
-                <option value="{{ c }}" {% if c == filtros_abc.centro_sel %}selected{% endif %}>{{ c }}</option>
+                <option value="{{ c }}" {% if c == filtros_abc.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
               {% endfor %}
             </select>
           </div>
@@ -416,7 +416,7 @@
             <label for="centro_obsoletos">Centro</label>
             <select name="centro_obsoletos" id="centro_obsoletos">
               {% for c in filtros_obsoletos.centros %}
-                <option value="{{ c }}" {% if c == filtros_obsoletos.centro_sel %}selected{% endif %}>{{ c }}</option>
+                <option value="{{ c }}" {% if c == filtros_obsoletos.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
               {% endfor %}
             </select>
           </div>
@@ -469,7 +469,7 @@
             <label for="centro_rotacion">Centro</label>
             <select name="centro_rotacion" id="centro_rotacion">
               {% for c in rotacion.centros %}
-                <option value="{{ c }}" {% if c == rotacion.centro_sel %}selected{% endif %}>{{ c }}</option>
+                <option value="{{ c }}" {% if c == rotacion.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
               {% endfor %}
             </select>
           </div>
@@ -544,7 +544,7 @@
             <label for="centro_criticos">Centro</label>
             <select name="centro_criticos" id="centro_criticos">
               {% for c in filtros_criticos.centros %}
-                <option value="{{ c }}" {% if c == filtros_criticos.centro_sel %}selected{% endif %}>{{ c }}</option>
+                <option value="{{ c }}" {% if c == filtros_criticos.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
               {% endfor %}
             </select>
           </div>
@@ -593,7 +593,7 @@
               <label for="centro_var">Centro</label>
               <select name="centro_var" id="centro_var">
                 {% for c in variacion.centros %}
-                  <option value="{{ c }}" {% if c == variacion.centro_sel %}selected{% endif %}>{{ c }}</option>
+                  <option value="{{ c }}" {% if c == variacion.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
                 {% endfor %}
               </select>
             </div>

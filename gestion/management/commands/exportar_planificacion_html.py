@@ -218,7 +218,7 @@ class Command(BaseCommand):
             "proyeccion_rows": proyeccion_rows, "proyeccion_inicial": proyeccion_inicial,
             "diagnostico_rows": diagnostico_rows, "estados_stock": q.ESTADOS_STOCK,            "meses": [m.isoformat() for m in meses],
             "meses_inventario": {k.isoformat(): v.isoformat() for k, v in sorted(meses_inv.items())},
-            "centros_desc": q.descripcion_centros_planificacion(),
+            "centros_desc": q.descripcion_centros_planificacion(), "nombres_centro": q.NOMBRES_CENTRO,
             "plan_rows": plan_rows, "daily_rows": daily_rows, "cobertura_rows": cobertura_rows,
             "proveedor_rows": proveedor_rows, "entregas_rows": entregas_rows,
         }

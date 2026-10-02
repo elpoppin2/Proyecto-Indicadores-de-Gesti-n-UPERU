@@ -45,7 +45,7 @@
       <label for="centro_{{ inf.sufijo }}">Centro</label>
       <select name="centro_{{ inf.sufijo }}" id="centro_{{ inf.sufijo }}">
         {% for c in inf.centros %}
-          <option value="{{ c }}" {% if c == inf.centro_sel %}selected{% endif %}>{{ c }}</option>
+          <option value="{{ c }}" {% if c == inf.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
         {% endfor %}
       </select>
     </div>
@@ -170,7 +170,7 @@
           {% for f in inf.filas %}
             <tr>
               <td>{{ f.texto_breve }} <span class="celda-codigo texto-tenue">{{ f.material_codigo }}</span></td>
-              <td>{{ f.centro }}</td>
+              <td>{{ f.centro|centro }}</td>
               {% for c in f.celdas %}
                 {% if c %}
                   <td class="num celda-inflacion {% if c.atipica %}celda-atipica{% elif c.sube %}celda-sube{% else %}celda-baja{% endif %}" style="--intensidad:{{ c.intensidad }};" data-detalle="{{ c.detalle }}">{{ c.texto }}{% if c.sustituida %}<span class="marca-sustituida">*</span>{% endif %}{% if c.atipica %}<span class="marca-atipica">!</span>{% endif %}{% if c.subtexto %}<span class="celda-subtexto">{{ c.subtexto }}</span>{% endif %}</td>

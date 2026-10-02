@@ -46,5 +46,12 @@ def numero(valor, decimales=0):
 
 
 @register.filter
+def centro(codigo):
+    """U001 -> ATOCONGO, U002 -> CONDORCOCHA (ver queries.NOMBRES_CENTRO); el
+    resto ("Todos", U004...) queda igual."""
+    return q.nombre_centro(codigo)
+
+
+@register.filter
 def fechaiso(fecha):
     return fecha.isoformat() if fecha else ""

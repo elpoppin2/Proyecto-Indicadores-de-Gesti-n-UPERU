@@ -33,7 +33,7 @@
       <label for="centro_consumo">Centro</label>
       <select name="centro_consumo" id="centro_consumo">
         {% for c in co.centros %}
-          <option value="{{ c }}" {% if c == co.centro_sel %}selected{% endif %}>{{ c }}</option>
+          <option value="{{ c }}" {% if c == co.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
         {% endfor %}
       </select>
     </div>
@@ -109,7 +109,7 @@
         <tbody>
           {% for f in co.filas %}
             <tr>
-              <td class="celda-codigo">{{ f.material_codigo }}</td><td>{{ f.texto_breve }}</td><td>{{ f.centro }}</td>
+              <td class="celda-codigo">{{ f.material_codigo }}</td><td>{{ f.texto_breve }}</td><td>{{ f.centro|centro }}</td>
               <td class="num">{{ f.plan|numero:0 }}</td>
               {% if co.en_curso %}<td class="num">{{ f.plan_fecha|numero:0 }}</td>{% endif %}
               <td class="num">{{ f.real|numero:0 }}</td>
@@ -156,7 +156,7 @@
           <tbody>
             {% for f in co.futuro %}
               <tr>
-                <td class="celda-codigo">{{ f.material_codigo }}</td><td>{{ f.texto_breve }}</td><td>{{ f.centro }}</td>
+                <td class="celda-codigo">{{ f.material_codigo }}</td><td>{{ f.texto_breve }}</td><td>{{ f.centro|centro }}</td>
                 <td class="num">{{ f.plan_promedio|numero:0 }}</td>
                 <td class="num">{% if f.sin_historia %}—{% else %}{{ f.real_reciente|numero:0 }}{% endif %}</td>
                 <td class="num {% if f.alerta %}dato-alerta{% endif %}">{% if f.vs_reciente is not None %}{% if f.alerta %}⚠ {% endif %}{% if f.vs_reciente > 0 %}+{% endif %}{{ f.vs_reciente|numero:1 }}%{% else %}<span class="texto-tenue">sin consumo reciente</span>{% endif %}</td>

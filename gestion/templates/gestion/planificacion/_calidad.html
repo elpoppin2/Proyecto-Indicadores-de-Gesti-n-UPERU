@@ -34,7 +34,7 @@
       <label for="centro_calidad">Centro</label>
       <select name="centro_calidad" id="centro_calidad">
         {% for c in ca.centros %}
-          <option value="{{ c }}" {% if c == ca.centro_sel %}selected{% endif %}>{{ c }}</option>
+          <option value="{{ c }}" {% if c == ca.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
         {% endfor %}
       </select>
     </div>
@@ -159,7 +159,7 @@
         <button type="button" class="tarjeta-precio tarjeta-calidad" data-material-calidad="{{ t.material_codigo }}" data-centro-calidad="{{ t.centro }}">
           <span class="tarjeta-precio-cabecera">
             <span class="tarjeta-precio-nombre">{{ t.texto_breve }}</span>
-            <span class="tarjeta-precio-codigo">{{ t.material_codigo }} · {{ t.centro }}</span>
+            <span class="tarjeta-precio-codigo">{{ t.material_codigo }} · {{ t.centro|centro }}</span>
           </span>
           <span class="tabla-parametros">
             <span class="fila-parametro fila-parametro-cabecera"><span></span><span>Período</span><span>{{ t.ultimo_mes }}</span></span>

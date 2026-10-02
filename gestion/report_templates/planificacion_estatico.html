@@ -392,6 +392,10 @@ function claseCumplimiento(v){ if(v==null) return ""; return v>=100? "dato-posit
 
 const HOY = DATA.generado;
 const CENTROS_DESC = DATA.centros_desc;
+// Nombre en pantalla de cada centro (U001 -> ATOCONGO, U002 -> CONDORCOCHA), igual que
+// queries.nombre_centro / el filtro |centro de la web. Pedido por el usuario.
+const NOMBRES_CENTRO = DATA.nombres_centro || {};
+function nombreCentro(c){ return NOMBRES_CENTRO[c] || c; }
 document.getElementById("fecha-generado").textContent = new Date(HOY+"T00:00:00").toLocaleDateString('es-PE',{day:'2-digit',month:'long',year:'numeric'});
 
 /* ---------- núcleo de cálculo (replica dashboard/queries.py) ---------- */
@@ -632,7 +636,7 @@ function poblarFiltros1(mantenerCat, mantenerCentro){
   llenarSelect(f1mes, mesesOpciones, f1mes.value || MES_DEFECTO);
   const {categorias, centros} = opcionesCategoriaCentro(f1mes.value);
   llenarSelect(f1cat, [{value:"", label:"Todas"}, ...categorias.map(c=>({value:c,label:titulo(c)}))], mantenerCat ?? "");
-  llenarSelect(f1centro, [{value:"", label:"Todos"}, ...centros.map(c=>({value:c,label:CENTROS_DESC[c]||c}))], mantenerCentro ?? "");
+  llenarSelect(f1centro, [{value:"", label:"Todos"}, ...centros.map(c=>({value:c,label:nombreCentro(c)}))], mantenerCentro ?? "");
 }
 
 function renderSeccion1(){
@@ -677,7 +681,7 @@ const f2material = document.getElementById("material_detalle");
 function poblarFiltros2(mantenerCentro, mantenerMaterial){
   llenarSelect(f2mes, mesesOpciones, f2mes.value || MES_DEFECTO);
   const {centros} = opcionesCategoriaCentro(f2mes.value);
-  const centroSel = llenarSelect(f2centro, [{value:"", label:"Todos"}, ...centros.map(c=>({value:c,label:CENTROS_DESC[c]||c}))], mantenerCentro ?? "");
+  const centroSel = llenarSelect(f2centro, [{value:"", label:"Todos"}, ...centros.map(c=>({value:c,label:nombreCentro(c)}))], mantenerCentro ?? "");
   const materiales = opcionesMaterial(f2mes.value, centroSel || null);
   llenarSelect(f2material, [{value:"", label:"Todos"}, ...materiales.map(([cod,desc])=>({value:cod, label:`${cod} — ${desc}`}))], mantenerMaterial ?? "");
 }
@@ -705,7 +709,7 @@ function renderSeccion2(){
         <tr>
           <td>${r.material_codigo}</td>
           <td>${r.texto_breve}${ps.length ? ` <button type="button" class="btn-proveedores" data-grupo="${i}" aria-expanded="${expandir}">${ps.length} proveedor${ps.length === 1 ? "" : "es"}</button>` : ""}</td>
-          <td>${CENTROS_DESC[r.centro]||r.centro}</td>
+          <td>${nombreCentro(r.centro)}</td>
           <td>${titulo(r.categoria)}</td><td>${titulo(r.familia)}</td>
           <td class="num">${numero(r.cantidad_plan)}</td><td class="num">${numero(r.cantidad_real)}</td>
           <td class="num">${numero(carros)}</td><td class="num"></td>
@@ -713,7 +717,7 @@ function renderSeccion2(){
           <td class="num ${claseCumplimiento(r.cumplimiento_pct)}">${r.cumplimiento_pct!=null?numero(r.cumplimiento_pct,1)+'%':'—'}</td>
         </tr>` + ps.map(p => `
         <tr class="fila-hija" data-grupo="${i}"${expandir ? "" : " hidden"}>
-          <td></td><td class="celda-proveedor">${p.proveedor} <span class="texto-tenue">${p.codigo} · ${p.tipo}</span></td>
+          <td></td><td class="celda-proveedor">${p.proveedor} <span class="texto-tenue">${nombreCentro(p.codigo) === p.codigo ? p.codigo + " · " : ""}${p.tipo}</span></td>
           <td></td><td></td><td></td><td class="num texto-tenue">—</td>
           <td class="num">${numero(p.real)}</td><td class="num">${numero(p.carros)}</td>
           <td class="num">${r.cantidad_real ? numero(p.real / r.cantidad_real * 100, 1)+"%" : ""}</td>
@@ -742,7 +746,7 @@ function renderSeccion2(){
   const diario = evaluacionDiaria(mes, {centro, material});
   const materialTitulo = !material ? "Todos los materiales" : (cuantosSel(material) > 1 ? `${cuantosSel(material)} materiales` :
     (detalle.find(d=>d.material_codigo===material)?.texto_breve || material));
-  const centroTitulo = centro ? (CENTROS_DESC[centro] || centro) : "Todos los centros";
+  const centroTitulo = centro ? (nombreCentro(centro)) : "Todos los centros";
   document.getElementById("titulo-curva").textContent = `${materialTitulo} - ${centroTitulo}`;
 
   const filaCurva = document.getElementById("curva-s-fila");
@@ -810,7 +814,7 @@ function poblarFiltros3(mantenerCat, mantenerCentro, mantenerMaterial){
   const {categorias} = opcionesCobertura(f3mes.value, null, null);
   const catSel = llenarSelect(f3cat, [{value:"", label:"Todas"}, ...categorias.map(c=>({value:c,label:titulo(c)}))], mantenerCat ?? "");
   const {centros} = opcionesCobertura(f3mes.value, catSel || null, null);
-  const centroSel = llenarSelect(f3centro, [{value:"", label:"Todos"}, ...centros.map(c=>({value:c,label:CENTROS_DESC[c]||c}))], mantenerCentro ?? "");
+  const centroSel = llenarSelect(f3centro, [{value:"", label:"Todos"}, ...centros.map(c=>({value:c,label:nombreCentro(c)}))], mantenerCentro ?? "");
   const {materiales} = opcionesCobertura(f3mes.value, catSel || null, centroSel || null);
   llenarSelect(f3material, [{value:"", label:"Todos"}, ...materiales.map(([cod,desc])=>({value:cod, label:`${cod} — ${desc}`}))], mantenerMaterial ?? "");
 }
@@ -850,7 +854,7 @@ function renderSeccion3(){
         <tbody>
           ${filas.map(r => `
             <tr>
-              <td>${r.material_codigo}</td><td>${r.texto_breve}</td><td>${CENTROS_DESC[r.centro]||r.centro}</td>
+              <td>${r.material_codigo}</td><td>${r.texto_breve}</td><td>${nombreCentro(r.centro)}</td>
               <td>${titulo(r.categoria)}</td><td>${titulo(r.familia)}</td>
               <td class="num">${numero(r.stock_cierre)}</td>
               <td class="num">${numero(r.consumo_diario,1)}</td>
@@ -878,7 +882,7 @@ function poblarFiltros4(){
   const categorias = [...new Set(DATA.plan_rows.map(f=>f.categoria))].sort();
   const centros = [...new Set(DATA.plan_rows.map(f=>f.centro))].sort();
   llenarSelect(f4cat, [{value:"", label:"Todas"}, ...categorias.map(c=>({value:c,label:titulo(c)}))], f4cat.value ?? "");
-  llenarSelect(f4centro, [{value:"", label:"Todos"}, ...centros.map(c=>({value:c,label:CENTROS_DESC[c]||c}))], f4centro.value ?? "");
+  llenarSelect(f4centro, [{value:"", label:"Todos"}, ...centros.map(c=>({value:c,label:nombreCentro(c)}))], f4centro.value ?? "");
 }
 
 function cumplimientoMensual({categoria, centro} = {}){
@@ -1031,7 +1035,7 @@ function poblarFiltros5(mantenerCat, mantenerCentro, mantenerMaterial){
   const {categorias} = opcionesProyeccion(f5sop.value, null, null);
   const catSel = llenarSelect(f5cat, [{value:"", label:"Todas"}, ...categorias.map(c=>({value:c,label:titulo(c)}))], mantenerCat ?? "");
   const {centros} = opcionesProyeccion(f5sop.value, catSel || null, null);
-  const centroSel = llenarSelect(f5centro, [{value:"", label:"Todos"}, ...centros.map(c=>({value:c,label:CENTROS_DESC[c]||c}))], mantenerCentro ?? "");
+  const centroSel = llenarSelect(f5centro, [{value:"", label:"Todos"}, ...centros.map(c=>({value:c,label:nombreCentro(c)}))], mantenerCentro ?? "");
   const {materiales} = opcionesProyeccion(f5sop.value, catSel || null, centroSel || null);
   llenarSelect(f5material, [{value:"", label:"Todos"}, ...materiales.map(([cod,desc])=>({value:cod, label:`${cod} — ${desc}`}))], mantenerMaterial ?? "");
 }
@@ -1140,7 +1144,7 @@ function renderSeccion5(){
           <th class="num">Stock hoy</th><th class="num">Meses bajo mín.</th><th class="num">Meses en rango</th><th class="num">Meses sobre máx.</th>
           <th>Primer mes bajo mín.</th><th class="num">Lead time (meses)</th><th>Pedir a más tardar</th><th class="num">Faltante a tiempo (T)</th>
           <th class="num">Ya en lead time (T)</th><th class="num">Mayor exceso sobre máx. (T)</th><th class="num">Recorte posible (T)</th></tr></thead>
-        <tbody>${diag.map(d=>`<tr><td class="celda-codigo">${d.material_codigo}</td><td>${d.texto_breve}</td><td>${CENTROS_DESC[d.centro]||d.centro}</td>
+        <tbody>${diag.map(d=>`<tr><td class="celda-codigo">${d.material_codigo}</td><td>${d.texto_breve}</td><td>${nombreCentro(d.centro)}</td>
           <td><span class="pill-diagnostico diag-${d.diagnostico}">${d.diagnostico_texto}</span></td>
           <td class="num">${numeroO(d.stock_minimo)}</td><td class="num">${numeroO(d.stock_maximo)}</td><td class="num">${numero(d.stock_hoy)}</td>
           <td class="num ${d.meses_bajo_minimo?'dato-negativo':''}">${d.meses_bajo_minimo}</td><td class="num">${d.meses_en_rango}</td>
@@ -1178,7 +1182,7 @@ function renderSeccion5(){
       <table>
         <thead><tr><th>Material</th><th>Descripción</th><th>Centro</th><th class="num">Mín.</th><th class="num">Máx.</th><th class="num">Inicial</th>
           ${meses.map(m=>`<th class="num">${mesCorto(m)}</th>`).join("")}<th>Quiebre</th></tr></thead>
-        <tbody>${matriz.map(f=>`<tr><td class="celda-codigo">${f.material_codigo}</td><td>${f.texto_breve}</td><td>${CENTROS_DESC[f.centro]||f.centro}</td>
+        <tbody>${matriz.map(f=>`<tr><td class="celda-codigo">${f.material_codigo}</td><td>${f.texto_breve}</td><td>${nombreCentro(f.centro)}</td>
           <td class="num">${numeroO(f.stock_minimo)}</td><td class="num">${numeroO(f.stock_maximo)}</td><td class="num">${numero(f.stock_inicial)}</td>
           ${f.celdas.map(c=>`<td class="num estado-${c.estado}">${numero(c.valor)}</td>`).join("")}
           <td class="${f.quiebre?'dato-negativo':''}">${f.quiebre?mesCorto(f.quiebre):'—'}</td></tr>`).join("")}</tbody>
@@ -1221,7 +1225,7 @@ function opcionesEnergia(periodo, centro, material){
 function poblarFiltros6(mantenerCentro, mantenerMaterial, mantenerProveedor){
   llenarSelect(f6periodo, PERIODOS_ENERGIA, f6periodo.value || "todo");
   const {centros} = opcionesEnergia(f6periodo.value, null, null);
-  const centroSel = llenarSelect(f6centro, [{value:"", label:"Todos"}, ...centros.map(c=>({value:c, label:CENTROS_DESC[c]||c}))], mantenerCentro ?? "");
+  const centroSel = llenarSelect(f6centro, [{value:"", label:"Todos"}, ...centros.map(c=>({value:c, label:nombreCentro(c)}))], mantenerCentro ?? "");
   const {materiales} = opcionesEnergia(f6periodo.value, centroSel || null, null);
   const materialSel = llenarSelect(f6material, [{value:"", label:"Todos"}, ...materiales.map(([cod,desc])=>({value:cod, label:`${cod} — ${desc}`}))], mantenerMaterial ?? "");
   const {proveedores} = opcionesEnergia(f6periodo.value, centroSel || null, materialSel || null);
@@ -1344,13 +1348,13 @@ function renderSeccion6(){
   }
   const puntos = unMaterial
     ? porProveedor.map(f=>({nombre:nombreCorto(f.proveedor), pcs:f.pcs, precio:f.precio_efectivo, toneladas:f.toneladas, costo_gcal:f.costo_gcal}))
-    : porMaterial.map(f=>({nombre:`${tituloPalabras(f.texto_breve)} ${f.centro}`, pcs:f.pcs, precio:f.precio_efectivo, toneladas:f.toneladas, costo_gcal:f.costo_gcal}));
+    : porMaterial.map(f=>({nombre:`${tituloPalabras(f.texto_breve)} ${nombreCentro(f.centro)}`, pcs:f.pcs, precio:f.precio_efectivo, toneladas:f.toneladas, costo_gcal:f.costo_gcal}));
   const g = dispersionEnergia(puntos, r.costo_gcal);
 
   const meses = [...new Set(filas.map(f=>f.mes))].sort();
   const filasMes = [...agruparPor(filas, f => unMaterial ? f.proveedor : f.material_codigo+"|"+f.centro).values()].map(gr => {
     const porMes = new Map([...agruparPor(gr, f=>f.mes).entries()].map(([m, gm]) => [m, resumenEnergia(gm).costo_gcal]));
-    return {nombre: unMaterial ? gr[0].proveedor : `${gr[0].texto_breve} (${gr[0].centro})`,
+    return {nombre: unMaterial ? gr[0].proveedor : `${gr[0].texto_breve} (${nombreCentro(gr[0].centro)})`,
             valores: meses.map(m => porMes.has(m) ? porMes.get(m) : null), total: resumenEnergia(gr).costo_gcal};
   }).sort((a,b)=>a.total-b.total);
   const totalMes = new Map([...agruparPor(filas, f=>f.mes).entries()].map(([m, gm]) => [m, resumenEnergia(gm).costo_gcal]));
@@ -1377,7 +1381,7 @@ function renderSeccion6(){
         <thead><tr><th>Material</th><th>Descripción</th><th>Centro</th><th class="num">Toneladas secas</th><th class="num">PCS (kcal/kg)</th>
           <th class="num">Cenizas (%)</th><th class="num">Precio efectivo (S/ por T)</th><th class="num">Gcal</th><th class="num" data-orden="asc">S/ por Gcal</th>
           <th class="col-barra">vs promedio</th><th class="num">Diferencia (S/)</th></tr></thead>
-        <tbody>${porMaterial.map(f=>`<tr><td class="celda-codigo">${f.material_codigo}</td><td>${f.texto_breve}</td><td>${f.centro}</td>
+        <tbody>${porMaterial.map(f=>`<tr><td class="celda-codigo">${f.material_codigo}</td><td>${f.texto_breve}</td><td>${nombreCentro(f.centro)}</td>
           <td class="num">${numero(f.toneladas)}</td><td class="num">${numero(f.pcs)}</td><td class="num">${cenizasTxt(f.cenizas)}</td>
           <td class="num">${numero(f.precio_efectivo,2)}</td><td class="num">${numero(f.gcal)}</td><td class="num"><strong>${numero(f.costo_gcal,2)}</strong></td>
           ${celdaBarra(f)}<td class="num">${numero(f.difSoles)}</td></tr>`).join("")}</tbody>
@@ -1390,7 +1394,7 @@ function renderSeccion6(){
           <th class="num">Cenizas (%)</th><th class="num">Precio base (S/ por T)</th><th class="num">Precio efectivo (S/ por T)</th>
           <th class="num">S/ por Gcal a precio base</th><th class="num">S/ por Gcal pagado</th><th class="col-barra">vs promedio del material</th>
           <th class="num">Diferencia (S/)</th></tr></thead>
-        <tbody>${porProveedor.map(f=>`<tr><td>${f.proveedor}</td>${unMaterial ? "" : `<td>${f.texto_breve} <span class="celda-codigo texto-tenue">${f.centro}</span></td>`}
+        <tbody>${porProveedor.map(f=>`<tr><td>${f.proveedor}</td>${unMaterial ? "" : `<td>${f.texto_breve} <span class="celda-codigo texto-tenue">${nombreCentro(f.centro)}</span></td>`}
           <td class="num">${numero(f.toneladas)}</td><td class="num">${numero(f.pcs)}</td><td class="num">${cenizasTxt(f.cenizas)}</td>
           <td class="num">${numero(f.precio_base,2)}</td><td class="num">${numero(f.precio_efectivo,2)}</td><td class="num">${numero(f.costo_gcal_base,2)}</td>
           <td class="num"><strong>${numero(f.costo_gcal,2)}</strong></td>${celdaBarra(f)}<td class="num">${numero(f.difSoles)}</td></tr>`).join("")}</tbody>
@@ -1576,7 +1580,7 @@ function poblarFiltros7(mantenerCat, mantenerCentro, mantenerMaterial){
   let filas = baseConsumo(f7mes.value).filas;
   const catSel = llenarSelect(f7cat, [{value:"", label:"Todas"}, ...[...new Set(filas.map(f=>f.categoria))].sort().map(c=>({value:c, label:c}))], mantenerCat ?? "");
   if(catSel) filas = filas.filter(f => f.categoria === catSel);
-  const centroSel = llenarSelect(f7centro, [{value:"", label:"Todos"}, ...[...new Set(filas.map(f=>f.centro))].sort().map(c=>({value:c, label:c}))], mantenerCentro ?? "");
+  const centroSel = llenarSelect(f7centro, [{value:"", label:"Todos"}, ...[...new Set(filas.map(f=>f.centro))].sort().map(c=>({value:c, label:nombreCentro(c)}))], mantenerCentro ?? "");
   if(centroSel) filas = filas.filter(f => f.centro === centroSel);
   llenarSelect(f7material, opcionesMaterialDe(filas), mantenerMaterial ?? "");
 }
@@ -1664,7 +1668,7 @@ function renderSeccion7(){
       <thead><tr><th>Material</th><th>Descripción</th><th>Centro</th><th class="num">Plan (T)</th>${c.enCurso ? `<th class="num">Plan a la fecha (T)</th>` : ""}
         <th class="num">Real (T)</th><th class="num" data-orden="desc">Diferencia (T)</th><th class="num">Cumplimiento${c.enCurso ? " a la fecha" : ""}</th><th>Estado</th>
         <th class="num">Real prom. ${MESES_REF} meses (T)</th><th class="num">Mismo mes año anterior (T)</th><th class="num">Plan vs prom. ${MESES_REF} meses</th></tr></thead>
-      <tbody>${c.filas.map(f => `<tr><td class="celda-codigo">${f.material_codigo}</td><td>${f.texto_breve}</td><td>${f.centro}</td>
+      <tbody>${c.filas.map(f => `<tr><td class="celda-codigo">${f.material_codigo}</td><td>${f.texto_breve}</td><td>${nombreCentro(f.centro)}</td>
         <td class="num">${numero(f.plan)}</td>${c.enCurso ? `<td class="num">${numero(f.plan_fecha)}</td>` : ""}
         <td class="num">${numero(f.real)}</td><td class="num">${numero(f.diferencia)}</td>
         <td class="num">${pct(c.enCurso ? f.cumplimiento_fecha : f.cumplimiento)}</td><td>${pill(f.estado)}</td>
@@ -1685,7 +1689,7 @@ function renderSeccion7(){
       <div class="tabla-scroll"><table>
         <thead><tr><th>Material</th><th>Descripción</th><th>Centro</th><th class="num">Plan prom. mensual (T)</th><th class="num">Real prom. reciente (T)</th>
           <th class="num" data-orden="desc">Plan vs reciente</th><th class="num">Real prom. año anterior (T)</th><th class="num">Plan vs año anterior</th></tr></thead>
-        <tbody>${c.futuro.map(f => `<tr><td class="celda-codigo">${f.material_codigo}</td><td>${f.texto_breve}</td><td>${f.centro}</td>
+        <tbody>${c.futuro.map(f => `<tr><td class="celda-codigo">${f.material_codigo}</td><td>${f.texto_breve}</td><td>${nombreCentro(f.centro)}</td>
           <td class="num">${numero(f.plan_promedio)}</td><td class="num">${f.sin_historia ? "—" : numero(f.real_reciente)}</td>
           <td class="num ${f.alerta ? "dato-alerta" : ""}">${f.vs_reciente != null ? (f.alerta ? "⚠ " : "")+conSigno(f.vs_reciente, 1)+"%" : `<span class="texto-tenue">sin consumo reciente</span>`}</td>
           <td class="num">${f.real_anio_anterior ? numero(f.real_anio_anterior) : "—"}</td>
@@ -1714,7 +1718,7 @@ const kgT = f => numero(f*1000)+" kg/T";
 
 function poblarFiltros8(mantenerCentro, mantenerProducto, mantenerMaterial){
   llenarSelect(f8mes, MESES_FACTOR.map(m => ({value:m, label:mesLabel(m)})), f8mes.value || MESES_FACTOR[MESES_FACTOR.length-1]);
-  const centroSel = llenarSelect(f8centro, [{value:"", label:"Todos"}, ...CENTROS_FACTOR.map(c=>({value:c, label:c}))], mantenerCentro ?? "");
+  const centroSel = llenarSelect(f8centro, [{value:"", label:"Todos"}, ...CENTROS_FACTOR.map(c=>({value:c, label:nombreCentro(c)}))], mantenerCentro ?? "");
   let filas = centroSel ? FACT.filter(r => r.centro === centroSel) : FACT;
   const productos = ["clinker", "cemento"].filter(p => filas.some(r => r.producto === p));
   const productoSel = llenarSelect(f8producto, [{value:"", label:"Todos"}, ...productos.map(p=>({value:p, label:PRODUCTOS_TEXTO[p]}))], mantenerProducto ?? "");
@@ -1774,10 +1778,10 @@ function calcularFactor({mes, centro, producto, material}){
     const series = [...grupos.values()].map((g, i) => {
       const puntos = g.filter(r => r.mes >= "2024-01-01" && r.mes <= hoyMes);
       const prod = puntos.length ? PRODUCTOS_TEXTO[puntos[0].producto].toLowerCase() : "";
-      return {nombre:`${g[0].centro} · kg por T de ${prod}`, clase:`serie-${i}`,
-              puntos: puntos.map(r => [r.mes, r.factor*1000, `${mesCorto(r.mes)} · ${r.centro}: ${kgT(r.factor)} de ${prod}\nConsumo ${numero(r.consumo)} T · Producción de ${prod} ${numero(r.produccion)} T`])};
+      return {nombre:`${nombreCentro(g[0].centro)} · kg por T de ${prod}`, clase:`serie-${i}`,
+              puntos: puntos.map(r => [r.mes, r.factor*1000, `${mesCorto(r.mes)} · ${nombreCentro(r.centro)}: ${kgT(r.factor)} de ${prod}\nConsumo ${numero(r.consumo)} T · Producción de ${prod} ${numero(r.produccion)} T`])};
     });
-    const referencias = filas.map((f, i) => f.factor_12 ? {valor:f.factor_12, texto:`Prom. 12 meses ${f.centro}: ${numero(f.factor_12)} kg/T`, clase:`serie-${i}`} : null).filter(Boolean);
+    const referencias = filas.map((f, i) => f.factor_12 ? {valor:f.factor_12, texto:`Prom. 12 meses ${nombreCentro(f.centro)}: ${numero(f.factor_12)} kg/T`, clase:`serie-${i}`} : null).filter(Boolean);
     titulo = "Consumo por tonelada producida, mes a mes (kg por T)";
     grafico = lineasMensuales(series, v => numero(v), {referencias});
   } else {
@@ -1786,9 +1790,9 @@ function calcularFactor({mes, centro, producto, material}){
       const serie = prodMes(p).filter(([m]) => m >= "2024-01-01" && m <= hoyMes);
       if((producto && producto !== p) || !serie.length) return;
       series.push({nombre:`${PRODUCTOS_TEXTO[p]} producido`, clase:`serie-${i}`,
-                   puntos: serie.map(([m, v]) => [m, v, `${mesCorto(m)} · ${PRODUCTOS_TEXTO[p]} producido (${centrosSel.join(" + ")}): ${numero(v)} T`])});
+                   puntos: serie.map(([m, v]) => [m, v, `${mesCorto(m)} · ${PRODUCTOS_TEXTO[p]} producido (${centrosSel.map(nombreCentro).join(" + ")}): ${numero(v)} T`])});
     });
-    titulo = `Producción mensual de clinker y cemento · ${centrosSel.join(" + ")} (T)`;
+    titulo = `Producción mensual de clinker y cemento · ${centrosSel.map(nombreCentro).join(" + ")} (T)`;
     grafico = lineasMensuales(series, toneladasCorto, {desdeCero:true});
   }
 
@@ -1846,7 +1850,7 @@ function renderSeccion8(){
       <thead><tr><th>Material</th><th>Descripción</th><th>Centro</th><th>Se consume en</th><th class="num">Consumo (T)</th><th class="num">Producción (T)</th>
         <th class="num">kg/T mes</th><th class="num">kg/T 3 meses</th><th class="num">kg/T ${MESES_FACTOR_REF} meses</th><th>3 vs ${MESES_FACTOR_REF} meses</th>
         <th class="num" data-orden="desc">Dif. vs prom. ${MESES_REF} meses (T)</th><th class="num">Por producción (T)</th><th class="num">Por consumo por T (T)</th></tr></thead>
-      <tbody>${c.filas.map(f => `<tr><td class="celda-codigo">${f.material_codigo}</td><td>${f.texto_breve}</td><td>${f.centro}</td>
+      <tbody>${c.filas.map(f => `<tr><td class="celda-codigo">${f.material_codigo}</td><td>${f.texto_breve}</td><td>${nombreCentro(f.centro)}</td>
         <td>${f.producto_texto}${f.participacion < 99.5 ? ` <span class="texto-tenue">(${numero(f.participacion)}%)</span>` : ""}</td>
         <td class="num">${numero(f.consumo)}</td><td class="num">${numero(f.produccion)}</td><td class="num"><strong>${numero(f.factor)}</strong></td>
         <td class="num">${numero(f.factor_3)}</td><td class="num">${opt(f.factor_12, numero(f.factor_12))}</td><td>${pillFactor(f)}</td>
@@ -1867,7 +1871,7 @@ function renderSeccion8(){
       <div class="tabla-scroll"><table>
         <thead><tr><th>Material</th><th>Descripción</th><th>Centro</th><th>Producto</th><th class="num">Plan prom. mensual (T)</th><th class="num">kg/T ${MESES_FACTOR_REF} meses</th>
           <th class="num">Producción que supone el plan (T/mes)</th><th class="num">Producción real prom. (T/mes)</th><th class="num" data-orden="desc">Diferencia</th></tr></thead>
-        <tbody>${c.implicita.map(f => `<tr><td class="celda-codigo">${f.material_codigo}</td><td>${f.texto_breve}</td><td>${f.centro}</td><td>${f.producto_texto}</td>
+        <tbody>${c.implicita.map(f => `<tr><td class="celda-codigo">${f.material_codigo}</td><td>${f.texto_breve}</td><td>${nombreCentro(f.centro)}</td><td>${f.producto_texto}</td>
           <td class="num">${numero(f.plan_promedio)}</td><td class="num">${numero(f.factor_12)}</td>
           <td class="num">${f.produccion_plan ? numero(f.produccion_plan) : "—"}</td><td class="num">${f.produccion_reciente ? numero(f.produccion_reciente) : "—"}</td>
           <td class="num ${f.alerta ? "dato-alerta" : ""}">${f.diferencia != null ? (f.alerta ? "⚠ " : "")+conSigno(f.diferencia, 1)+"%" : "—"}</td></tr>`).join("")}</tbody>
@@ -2003,7 +2007,7 @@ const ordenPy = (a, b) => a < b ? -1 : (a > b ? 1 : 0);                    // so
 const unicos = lista => [...new Set(lista)].sort(ordenPy);
 function fechaCorta(f){ const [y,m,d] = f.split("-").map(Number); return String(d).padStart(2,"0")+"-"+MESES_ABREV[m-1]+"-"+String(y%100).padStart(2,"0"); }
 function fechaDMY(f){ const [y,m,d] = f.split("-"); return `${d}/${m}/${y}`; }
-function opcionesCatCentroMat(filas, sel, {conCategoria=true, etiquetaCentro=c=>c} = {}){
+function opcionesCatCentroMat(filas, sel, {conCategoria=true, etiquetaCentro=nombreCentro} = {}){
   // Cascada Categoría -> Centro -> Material (como _opciones_categoria_centro + _opciones_material).
   const salida = {};
   if(conCategoria){
@@ -2022,7 +2026,7 @@ function agrupar(filas, clave){
   for(const f of filas){ const k = clave(f); if(!m.has(k)) m.set(k, []); m.get(k).push(f); }
   return [...m.entries()].sort((a,b) => ordenPy(a[0], b[0]));   // groupby de pandas: claves ordenadas
 }
-const etiquetaCentroImport = c => c + (c === CENTRO_IMPORTACION ? " (importación)" : "");
+const etiquetaCentroImport = c => nombreCentro(c) + (c === CENTRO_IMPORTACION ? " (importación)" : "");
 
 /* ---------- Gráficos de precio (replican charts.minigrafico_precio y evolucion_precio) ---------- */
 function minigraficoPrecio(serie, {ancho=180, alto=46, pad=5} = {}){
@@ -2158,7 +2162,7 @@ function renderSeccion9(){
     <div class="grilla-precios">${tarjetas.map(t => { const m = minigraficoPrecio(t.serie), v = t.variacion_anual;
       return `<button type="button" class="tarjeta-precio" data-material-precios="${t.material_codigo}" data-centro-precios="${t.centro}">
         <span class="tarjeta-precio-cabecera"><span class="tarjeta-precio-nombre">${t.texto_breve}</span>
-          <span class="tarjeta-precio-codigo">${t.material_codigo} · ${t.centro}${t.centro === CENTRO_IMPORTACION ? " (importación)" : ""}</span></span>
+          <span class="tarjeta-precio-codigo">${t.material_codigo} · ${nombreCentro(t.centro)}${t.centro === CENTRO_IMPORTACION ? " (importación)" : ""}</span></span>
         <span class="tarjeta-precio-valor">S/ ${numero(t.precio_ultimo,2)} <small>por T · ${mesCorto(t.mes_ultimo)}</small></span>
         ${m ? `<svg class="minigrafico" viewBox="0 0 ${m.ancho} ${m.alto}" preserveAspectRatio="none" aria-hidden="true"><path d="${m.linea}"></path><circle cx="${m.fin_x}" cy="${m.fin_y}" r="2.6"></circle></svg>` : ""}
         <span class="tarjeta-precio-variacion">
@@ -2316,7 +2320,7 @@ function calcularInflacion(suf, sel){
   const detalleCelda = r => {
     let baseTxt = mesCorto(r.mes_base);
     if(r.base_sustituida) baseTxt += ` (último registrado; ${mesCorto(r.mes_referencia)} sin compra)`;
-    let texto = `${r.texto_breve} (${r.centro}) · ${mesCorto(r.mes)}: ${fmtSigno1(r.variacion*100)}%\n` +
+    let texto = `${r.texto_breve} (${nombreCentro(r.centro)}) · ${mesCorto(r.mes)}: ${fmtSigno1(r.variacion*100)}%\n` +
       `${mesCorto(r.mes)}: S/ ${numero(r.precio,2)} por T\nvs ${baseTxt}: S/ ${numero(r.precio_base,2)} por T\n` +
       `Bolsa: (S/ ${numero(r.precio,2)} − S/ ${numero(r.precio_base,2)}) × ${numero(r.toneladas)} T = ${r.bolsa >= 0 ? "+" : "−"}S/ ${numero(Math.abs(r.bolsa))}`;
     if(r.atipica) texto += "\nATÍPICA: el precio más que se duplica o cae a menos de la mitad (dato a revisar en MB51); no suma en la bolsa ni en la selección.";
@@ -2338,7 +2342,7 @@ function calcularInflacion(suf, sel){
       if(!r) return null;
       if(acumulado && ipuMat.has(m)){
         const d = ipuMat.get(m);
-        return celda(d.acumulado*100, d.bolsa_acumulada, {sustituida:false, atipica:false, detalle:detalleAcumulado(m, d, ipuMat, `${r.texto_breve} (${r.centro}) · `)},
+        return celda(d.acumulado*100, d.bolsa_acumulada, {sustituida:false, atipica:false, detalle:detalleAcumulado(m, d, ipuMat, `${r.texto_breve} (${nombreCentro(r.centro)}) · `)},
                      d.toneladas_acumuladas ? d.importe_acumulado/d.toneladas_acumuladas : null);
       }
       return celda(r.variacion*100, r.bolsa, {sustituida:r.base_sustituida, atipica:r.atipica, detalle:detalleCelda(r)}, r.precio);
@@ -2419,7 +2423,7 @@ function renderInflacion(suf){
       <thead><tr><th>Material</th><th>Centro</th>${c.meses.map(m => `<th class="num">${mesCorto(m)}</th>`).join("")}
         ${c.anios.map(a => `<th class="num">Bolsa ${a} (S/)</th>`).join("")}<th class="num" data-orden="desc">Bolsa total (S/)</th><th class="num">Período %</th></tr></thead>
       <tbody>
-        ${c.filas.map(f => `<tr><td>${f.texto_breve} <span class="celda-codigo texto-tenue">${f.material_codigo}</span></td><td>${f.centro}</td>
+        ${c.filas.map(f => `<tr><td>${f.texto_breve} <span class="celda-codigo texto-tenue">${f.material_codigo}</span></td><td>${nombreCentro(f.centro)}</td>
           ${f.celdas.map(td).join("")}${f.bolsa_anios.map(b => `<td class="num">${b === null ? "—" : numero(b)}</td>`).join("")}
           <td class="num"><strong>${numero(f.bolsa)}</strong></td><td class="num">${f.periodo_pct > 0 ? "+" : ""}${numero(f.periodo_pct,1)}%</td></tr>`).join("")}
         ${c.filas.length > 1 && !c.acumulado ? `<tr class="fila-total"><td>Selección (ponderada, cada mes)</td><td></td>
@@ -2549,7 +2553,7 @@ function renderSeccion12(){
   if(tarjetas.length > 1){
     cont.innerHTML = `<p class="nota">${conProveedor ? `Solo los ingresos de <strong>${proveedorSel}</strong>. ` : ""}Promedio del período y del último mes con análisis (▲ / ▼: el último mes está más de 1% sobre o bajo el promedio). Elige una tarjeta para ver la evolución de cada parámetro.</p>
       <div class="grilla-precios">${tarjetas.map(t => `<button type="button" class="tarjeta-precio tarjeta-calidad" data-material-calidad="${t.material_codigo}" data-centro-calidad="${t.centro}">
-        <span class="tarjeta-precio-cabecera"><span class="tarjeta-precio-nombre">${t.texto_breve}</span><span class="tarjeta-precio-codigo">${t.material_codigo} · ${t.centro}</span></span>
+        <span class="tarjeta-precio-cabecera"><span class="tarjeta-precio-nombre">${t.texto_breve}</span><span class="tarjeta-precio-codigo">${t.material_codigo} · ${nombreCentro(t.centro)}</span></span>
         <span class="tabla-parametros"><span class="fila-parametro fila-parametro-cabecera"><span></span><span>Período</span><span>${t.ultimo_mes}</span></span>
           ${t.parametros.map(p => `<span class="fila-parametro"><span>${p.etiqueta}${p.unidad && p.unidad !== "%" ? ` <small>${p.unidad}</small>` : ""}</span><span>${p.promedio}</span>
             <span>${p.reciente}${p.tendencia === "sube" ? ` <span class="tendencia">▲</span>` : (p.tendencia === "baja" ? ` <span class="tendencia">▼</span>` : "")}</span></span>`).join("")}</span>
@@ -2716,7 +2720,7 @@ function renderSeccion13(){
       <thead><tr><th>Material</th><th>Descripción</th><th>Centro</th><th class="num">Toneladas secas</th><th class="num">Precio base (S/ por T)</th>
         <th class="num">Premios (S/)</th><th class="num">Castigos (S/)</th><th class="num" data-orden="desc">Neto (S/)</th><th class="num">Neto (S/ por T)</th>
         <th class="col-barra">% sobre base</th><th class="num">Precio efectivo (S/ por T)</th></tr></thead>
-      <tbody>${c.porMaterial.map(f => `<tr><td class="celda-codigo">${f.material_codigo}</td><td>${f.texto_breve}</td><td>${f.centro}</td>
+      <tbody>${c.porMaterial.map(f => `<tr><td class="celda-codigo">${f.material_codigo}</td><td>${f.texto_breve}</td><td>${nombreCentro(f.centro)}</td>
         <td class="num">${numero(f.toneladas)}</td><td class="num">${numero(f.precio_base,2)}</td>
         <td class="num">${f.premios ? numero(f.premios) : "—"}</td><td class="num">${f.castigos ? numero(f.castigos) : "—"}</td>
         <td class="num">${numero(f.neto)}</td><td class="num">${numero(f.neto_por_t,2)}</td>
@@ -2727,7 +2731,7 @@ function renderSeccion13(){
       <thead><tr><th>Proveedor</th>${c.unMaterial ? "" : "<th>Material</th>"}<th class="num">Documentos</th><th class="num">Toneladas secas</th>
         <th class="num">Precio base (S/ por T)</th><th class="col-barra">Premio / castigo (S/ por T)</th><th class="num">Precio efectivo (S/ por T)</th>
         <th class="num">Neto (S/)</th><th class="num">% con castigo</th>${cols}</tr></thead>
-      <tbody>${c.porProveedor.map(f => `<tr><td>${f.proveedor}</td>${c.unMaterial ? "" : `<td>${f.texto_breve} <span class="celda-codigo texto-tenue">${f.centro}</span></td>`}
+      <tbody>${c.porProveedor.map(f => `<tr><td>${f.proveedor}</td>${c.unMaterial ? "" : `<td>${f.texto_breve} <span class="celda-codigo texto-tenue">${nombreCentro(f.centro)}</span></td>`}
         <td class="num">${f.documentos}</td><td class="num">${numero(f.toneladas)}</td><td class="num">${numero(f.precio_base,2)}</td>
         <td class="col-barra">${barra(f, (f.neto_por_t > 0 ? "+" : "") + numero(f.neto_por_t,2))}</td><td class="num">${numero(f.precio_efectivo,2)}</td>
         <td class="num">${numero(f.neto)}</td><td class="num">${numero(f.pct_con_castigo)}%</td>${f.calidad.map(v=>`<td class="num">${v}</td>`).join("")}</tr>`).join("")}</tbody>
@@ -2823,7 +2827,7 @@ function textoEntrega(ver, t, c, totalT){
 }
 function poblarFiltrosEntregas(mantenerCentro, mantenerMaterial, mantenerVer){
   const centros = [...new Set(ENTREGAS.map(r => r.centro))].sort();
-  const centroSel = llenarSelect(fEcentro, [{value:"", label:"Todos"}, ...centros.map(c => ({value:c, label:CENTROS_DESC[c] || c}))], mantenerCentro ?? "");
+  const centroSel = llenarSelect(fEcentro, [{value:"", label:"Todos"}, ...centros.map(c => ({value:c, label:nombreCentro(c)}))], mantenerCentro ?? "");
   llenarSelect(fEmaterial, opcionesMaterialDe(ENTREGAS.filter(r => !centroSel || r.centro === centroSel)), mantenerMaterial ?? "");
   llenarSelect(fEver, VER_ENTREGAS.map(([v, t]) => ({value:v, label:t})), mantenerVer ?? "toneladas");
 }
@@ -2887,7 +2891,7 @@ function renderEntregas(){
     const t = g.reduce((s, r) => s + r.toneladas, 0), c = g.reduce((s, r) => s + r.carros, 0);
     return {proveedor: tot.get(clave).proveedor, tipo: tot.get(clave).tipo, clase: color.get(clave),
             material_codigo: g[0].material_codigo, texto_breve: g[0].texto_breve,
-            centro: [...new Set(g.map(r => r.centro))].sort().map(x => CENTROS_DESC[x] || x).join(", "),
+            centro: [...new Set(g.map(r => r.centro))].sort().map(x => nombreCentro(x)).join(", "),
             celdas: meses.map(m => textoEntrega(ver, ...(delMes.get(m) || [0, 0]), totalMes.get(m)[0])),
             total: textoEntrega(ver, t, c, totalT), t};
   }).sort((a, b) => b.t - a.t || comparar(a.proveedor, b.proveedor) || comparar(a.material_codigo, b.material_codigo));
@@ -2904,7 +2908,7 @@ function renderEntregas(){
         <tbody>
           ${filas.map(f => `<tr>
             <td><span class="celda-proveedor"><span class="leyenda-marca marca-${f.clase}"></span>${f.proveedor}</span></td>
-            <td>${f.tipo}</td><td>${f.material_codigo} — ${f.texto_breve}</td><td>${f.centro}</td>
+            <td>${f.tipo}</td><td>${f.material_codigo} — ${f.texto_breve}</td><td>${nombreCentro(f.centro)}</td>
             ${f.celdas.map(v => `<td class="num">${v}</td>`).join("")}<td class="num"><strong>${f.total}</strong></td></tr>`).join("")}
           <tr class="fila-total"><td>Total</td><td></td><td></td><td></td>
             ${meses.map(m => `<td class="num">${textoEntrega(ver, totalMes.get(m)[0], totalMes.get(m)[1], totalMes.get(m)[0])}</td>`).join("")}
