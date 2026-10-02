@@ -1919,12 +1919,22 @@ def _contexto_premios(request):
     return contexto
 
 
+def _centros_por_nombre(df):
+    """Copia de `df` con la columna de centro (centro/Centro) por nombre (U001
+    -> ATOCONGO...), para las descargas a Excel. Pedido por el usuario."""
+    columnas = [c for c in ("centro", "Centro") if c in df.columns]
+    if not columnas:
+        return df
+    return df.assign(**{c: df[c].map(lambda v: q.nombre_centro(v) if isinstance(v, str) else v) for c in columnas})
+
+
 @login_required
 def exportar_premios(request):
     """Excel de Premios y castigos con los mismos filtros de la sección:
     resumen por material y por proveedor, y el detalle completo por
     documento de ingreso (con su calidad)."""
     df, filtros = _filtrar_premios(request)
+    df = _centros_por_nombre(df)
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         if filtros is None or df.empty:
@@ -2076,6 +2086,7 @@ def exportar_energia(request):
     """Excel de Costo por energía con los mismos filtros de la sección: por
     material, por proveedor, mensual y el detalle por documento de ingreso."""
     df, filtros = _filtrar_energia(request)
+    df = _centros_por_nombre(df)
     buffer = io.BytesIO()
     nombres = {
         "material_codigo": "Material", "texto_breve": "Descripción", "centro": "Centro", "proveedor": "Proveedor",
@@ -3477,7 +3488,7 @@ def exportar_excel(request, slug=None):
             df = datos if isinstance(datos, pd.DataFrame) else pd.DataFrame(datos)
             if df.empty:
                 return
-            df.to_excel(writer, sheet_name=nombre[:31], index=False)
+            _centros_por_nombre(df).to_excel(writer, sheet_name=nombre[:31], index=False)
             hojas_escritas = True
 
         if anio_sel:
