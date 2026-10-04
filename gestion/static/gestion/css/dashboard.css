@@ -12,15 +12,13 @@
   --line: #d9d9d9;
   --table-line: #adadad;
   --table-header: #4d4d4d;
-  /* Rojo UNACEM (el de unacem.pe, #D00303; el logo es #FF0000 puro, que
-     sobre blanco no llega al contraste mínimo para texto). Es el acento y
-     también el rojo de "malo" (bajo el plan, quiebre, precio que sube), a
-     pedido del usuario: un solo rojo en todo el reporte. En oscuro, el mismo
-     rojo aclarado para que se lea sobre el fondo. */
-  --accent: #d00303;
+  /* Rojo UNACEM: el exacto del logo (#FF0000), pedido por el usuario en
+     claro y en oscuro. Es el acento y también el rojo de "malo" (bajo el
+     plan, quiebre, precio que sube): un solo rojo en todo el reporte. */
+  --accent: #ff0000;
   --accent-ink: #ffffff;
   --up: #3f7d54;
-  --down: #d00303;
+  --down: #ff0000;
   --alerta-bg: #fde6e6;
   --warn: #9a6400;
   --shadow: 0 1px 2px rgba(0, 0, 0, .05), 0 6px 20px -8px rgba(0, 0, 0, .12);
@@ -35,8 +33,8 @@
     --bg: #1b1b1b; --surface: #242424; --surface-2: #2d2d2d;
     --ink: #f1f1f1; --muted: #a8a8a8; --line: #3a3a3a;
     --table-line: #5a5a5a; --table-header: #c7c7c7;
-    --accent: #ff4d4d; --accent-ink: #1b1b1b;
-    --up: #74c090; --down: #ff4d4d;
+    --accent: #ff0000; --accent-ink: #1b1b1b;
+    --up: #74c090; --down: #ff0000;
     --alerta-bg: #3a1f1f; --warn: #e3ad4f;
     --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 28px -10px rgba(0, 0, 0, .5);
     --prov-0: #6f9fe0; --prov-1: #eab34a; --prov-2: #4fc2ac; --prov-3: #b08ddc;
@@ -47,8 +45,8 @@
   --bg: #1b1b1b; --surface: #242424; --surface-2: #2d2d2d;
   --ink: #f1f1f1; --muted: #a8a8a8; --line: #3a3a3a;
   --table-line: #5a5a5a; --table-header: #c7c7c7;
-  --accent: #ff4d4d; --accent-ink: #1b1b1b;
-  --up: #74c090; --down: #ff4d4d;
+  --accent: #ff0000; --accent-ink: #1b1b1b;
+  --up: #74c090; --down: #ff0000;
   --alerta-bg: #3a1f1f; --warn: #e3ad4f;
   --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 28px -10px rgba(0, 0, 0, .5);
   --prov-0: #6f9fe0; --prov-1: #eab34a; --prov-2: #4fc2ac; --prov-3: #b08ddc;

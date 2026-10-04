@@ -3,11 +3,11 @@ blanco, menú negro, gráficos en rojo. Todos los gráficos de este proyecto son
 una sola serie (magnitud por categoría/mes), así que un solo rojo validado basta —
 no hace falta una paleta categórica con separación CVD entre tonos.
 
-ROJO_CHART es el rojo UNACEM (#D00303, el de unacem.pe), pedido por el usuario el
+ROJO_CHART es el rojo exacto del logo de UNACEM (#FF0000), pedido por el usuario el
 2026-10-04; es el mismo tono usado como primaryColor en .streamlit/config.toml y
 como acento de la web de Django (dashboard.css)."""
 
-ROJO_CHART = "#d00303"
+ROJO_CHART = "#ff0000"
 
 
 def estilo_barras(fig):
