@@ -1,0 +1,89 @@
+{% load dashboard_extras %}
+{# Pestaña Abastecimiento S&OP de una categoría con proceso S&OP (Materias Primas, Combustibles): views._cat_abastecimiento. #}
+{% if not ab %}
+<section class="bloque" id="sec-sop-categoria">
+  <h2>Cumplimiento del plan de abastecimiento</h2>
+  <p class="aviso">Todavía no hay Plan de Abastecimiento S&amp;OP cargado.</p>
+</section>
+{% else %}
+<section class="bloque" id="sec-sop-categoria">
+  <div class="bloque-cabecera">
+    <h2>Cumplimiento del plan de abastecimiento — {{ ab.mes|mesanio }}</h2>
+    <a class="btn-link" href="{% url 'planificacion' %}#cumplimiento">Ver en Planificación <span aria-hidden="true">→</span></a>
+  </div>
+  <p class="nota">Ingresos físicos (báscula, ZMM056) contra el Plan de Abastecimiento S&amp;OP de {{ categoria|title }}, por centro. El detalle por material, proveedor y día está en la pestaña Cumplimiento de Planificación.</p>
+  <form class="filtros" method="get" data-target="sec-sop-categoria">
+    <div class="campo">
+      <label for="mes_sopcat">Mes</label>
+      <select name="mes_sopcat" id="mes_sopcat">
+        {% for m in ab.opciones_mes %}
+          <option value="{{ m|fechaiso }}" {% if m == ab.mes %}selected{% endif %}>{{ m|mesanio }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+  {% if ab.centros %}
+    <div class="metricas">
+      <div class="metrica"><span class="valor">{{ ab.total_plan|numero:0 }} T</span><span class="etiqueta">Plan del mes</span></div>
+      <div class="metrica"><span class="valor">{{ ab.total_real|numero:0 }} T</span><span class="etiqueta">Ingresado</span></div>
+      <div class="metrica"><span class="valor {% if ab.cumplimiento_pct >= 100 %}dato-positivo{% elif ab.cumplimiento_pct < 80 %}dato-negativo{% endif %}">{{ ab.cumplimiento_pct|numero:1|default:"—" }}%</span><span class="etiqueta">Cumplimiento</span></div>
+    </div>
+    <div class="tabla-scroll">
+      <table>
+        <thead><tr><th>Centro</th><th class="num">Plan (T)</th><th class="num">Real (T)</th><th class="num">Diferencia (T)</th><th class="num">% Cumplimiento</th></tr></thead>
+        <tbody>
+          {% for f in ab.centros %}
+            <tr>
+              <td>{{ f.centro|centro }}</td>
+              <td class="num">{{ f.plan|numero:0 }}</td>
+              <td class="num">{{ f.real|numero:0 }}</td>
+              <td class="num {% if f.diferencia > 0 %}dato-positivo{% elif f.diferencia < 0 %}dato-negativo{% endif %}">{{ f.diferencia|numero:0 }}</td>
+              <td class="num {% if f.pct >= 100 %}dato-positivo{% elif f.pct < 80 %}dato-negativo{% endif %}">{{ f.pct|numero:1|default:"—" }}{% if f.pct != None %}%{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="aviso">Sin plan ni ingresos de {{ categoria|title }} en {{ ab.mes|mesanio }}.</p>
+  {% endif %}
+</section>
+
+<section class="bloque" id="sec-sop-mensual">
+  <h2>Cumplimiento mensual</h2>
+  <p class="nota">Real ÷ Plan mes a mes. Un mes sin Plan (todavía no llegó ese snapshot) o sin Real (mes futuro) no tiene barra.</p>
+  {% with g=ab.grafico %}
+    {% if g %}
+      <div class="chart-scroll">
+      <div class="chart-wrap chart-barras">
+        <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Cumplimiento mensual de Abastecimiento">
+          <line class="linea-meta" x1="0" y1="{{ g.y_meta }}" x2="{{ g.ancho }}" y2="{{ g.y_meta }}"></line>
+          {% for b in g.barras %}
+            {% if b.valor %}
+              <rect class="{{ b.valor.clase }}" x="{{ b.valor.x }}" y="{{ b.valor.y }}" width="{{ b.valor.ancho }}" height="{{ b.valor.alto }}" rx="2"></rect>
+            {% endif %}
+          {% endfor %}
+        </svg>
+        {% for b in g.barras %}
+          {% if b.valor %}
+            <span class="etiqueta-valor" style="left:{{ b.valor.x_pct }}%; top:{{ b.valor.y_pct }}%;">{{ b.valor.etiqueta_valor }}</span>
+          {% endif %}
+          {% if b.mostrar_etiqueta %}
+            <span class="etiqueta-mes" style="left:{{ b.x_pct }}%;">{{ b.etiqueta }}</span>
+          {% endif %}
+        {% endfor %}
+      </div>
+      </div>
+      <div class="leyenda-curva">
+        <span class="leyenda-item"><span class="leyenda-marca leyenda-meta"></span>Meta — {{ g.meta_texto }}</span>
+        <span class="leyenda-item"><span class="leyenda-marca barra-buena"></span>≥ 100%</span>
+        <span class="leyenda-item"><span class="leyenda-marca barra-regular"></span>80–99%</span>
+        <span class="leyenda-item"><span class="leyenda-marca barra-mala"></span>&lt; 80%</span>
+      </div>
+    {% else %}
+      <p class="aviso">Sin datos suficientes para graficar la tendencia mensual.</p>
+    {% endif %}
+  {% endwith %}
+</section>
+{% endif %}

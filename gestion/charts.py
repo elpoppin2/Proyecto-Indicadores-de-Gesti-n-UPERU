@@ -642,7 +642,7 @@ def evolucion_consumo(real, plan, etiqueta_mes, mes_parcial=None, ancho=960, alt
 
 
 def lineas_mensuales(series, etiqueta_mes, formato, referencias=None, desde_cero=False,
-                     ancho=960, alto=280, pad_izq=52, pad_der=46, pad_arr=22, pad_abj=24):
+                     ancho=960, alto=280, pad_izq=52, pad_der=46, pad_arr=22, pad_abj=24, max_etiquetas_eje=18):
     """Una o dos series mensuales en la MISMA unidad (un solo eje) sobre un eje
     de meses continuo: la línea se corta donde falta un mes, cada punto tiene
     su recuadro de detalle al pasar el mouse. Etiquetas de valor: con una
@@ -663,7 +663,7 @@ def lineas_mensuales(series, etiqueta_mes, formato, referencias=None, desde_cero
     series = [{**s, "puntos": [(indice[m], v, d) for m, v, d in s["puntos"]]} for s in series]
     return lineas_indice(series, [etiqueta_mes(m) for m in meses], formato, referencias=referencias,
                          desde_cero=desde_cero, ancho=ancho, alto=alto, pad_izq=pad_izq, pad_der=pad_der,
-                         pad_arr=pad_arr, pad_abj=pad_abj, max_etiquetas_eje=18)
+                         pad_arr=pad_arr, pad_abj=pad_abj, max_etiquetas_eje=max_etiquetas_eje)
 
 
 def lineas_indice(series, etiquetas, formato, referencias=None, desde_cero=False, ancho=960, alto=280,

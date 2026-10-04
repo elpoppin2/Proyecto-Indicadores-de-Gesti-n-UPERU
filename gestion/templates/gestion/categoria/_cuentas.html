@@ -1,0 +1,93 @@
+{% load dashboard_extras %}
+{# Pestaña Cuentas por pagar de una categoría (views._cat_cuentas). #}
+<section class="bloque" id="sec-pmp">
+  <h2>Plazo Medio de Pago (PMP)</h2>
+  <p class="nota">Días de pago pactados en las órdenes de compra de esta categoría: los días de cada condición de pago (CPag), ponderados por el valor comprado con ella (Tp.cambio × Valor neto).</p>
+  {% if cx.pmp_anios %}
+    <div class="metricas">
+      {% for a in cx.pmp_anios %}
+        <div class="metrica">
+          <span class="valor">{{ a.pmp|numero:0 }} <small class="prefijo-ipu">días</small></span>
+          <span class="etiqueta">{{ a.anio }}{% if a.diferencia is not None %} · {% if a.diferencia > 0 %}+{% endif %}{{ a.diferencia|numero:0 }} días vs {{ a.anio|add:"-1" }}{% endif %}</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+  {% with g=cx.pmp_grafico %}
+    {% if g %}
+      <h3 class="subtitulo">Evolución de PMP (días)</h3>
+      <div class="chart-wrap">
+        <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Evolución del PMP">
+          <path class="area" d="{{ g.area }}"></path>
+          <path class="linea" d="{{ g.linea }}"></path>
+          {% for p in g.puntos %}
+            <circle class="punto" cx="{{ p.x }}" cy="{{ p.y }}" r="2.6"></circle>
+          {% endfor %}
+        </svg>
+        {% for p in g.puntos %}
+          <span class="etiqueta-valor" style="left:{{ p.x_pct }}%; top:{{ p.y_pct }}%;">{{ p.etiqueta_valor }}</span>
+          {% if p.mostrar_etiqueta %}
+            <span class="etiqueta-mes" style="left:{{ p.x_pct }}%;">{{ p.etiqueta }}</span>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="aviso">No hay suficientes datos de compras para graficar la evolución del PMP en esta categoría.</p>
+    {% endif %}
+  {% endwith %}
+</section>
+
+<section class="bloque" id="sec-plazos">
+  <h2>Compras por plazo de pago — {{ cx.anio_sel }}</h2>
+  <p class="nota">Cuánto del valor comprado en el año se paga al contado y cuánto a 30, 60, 90 o más días, según la condición de pago de cada orden de compra.</p>
+  <form class="filtros" method="get" data-target="sec-plazos">
+    <div class="campo">
+      <label for="anio_cxp">Año</label>
+      <select name="anio_cxp" id="anio_cxp">
+        {% for a in cx.anios %}
+          <option value="{{ a }}" {% if a == cx.anio_sel %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+  {% if cx.tramos %}
+    <div class="metricas">
+      <div class="metrica"><span class="valor">{{ cx.valor_total|soles }}</span><span class="etiqueta">Compras del año</span></div>
+      <div class="metrica"><span class="valor">{{ cx.pmp_anio|numero:0 }} <small class="prefijo-ipu">días</small></span><span class="etiqueta">PMP del año</span></div>
+      <div class="metrica"><span class="valor">{{ cx.pct_60|numero:1 }}%</span><span class="etiqueta">Comprado a 60 días o más</span></div>
+    </div>
+    <div class="barras barras-anchas">
+      {% for t in cx.tramos %}
+        <div class="barra-fila">
+          <span class="barra-etiqueta" title="{{ t.etiqueta }}">{{ t.etiqueta }}</span>
+          <span class="barra-pista"><span class="barra-relleno" style="width:{{ t.pct }}%"></span></span>
+          <span class="barra-valor">{{ t.valor|soles }} · {{ t.participacion|numero:1 }}%</span>
+        </div>
+      {% endfor %}
+    </div>
+    <h3 class="subtitulo">Por condición de pago</h3>
+    <div class="tabla-scroll">
+      <table>
+        <thead><tr><th>Condición de pago</th><th class="num">Días ponderados</th><th class="num">Valor</th><th class="num" data-orden="desc">% del total</th></tr></thead>
+        <tbody>
+          {% for c in cx.condiciones %}
+            <tr>
+              <td>{{ c.condicion_pago|default:"(sin condición)" }}</td>
+              <td class="num">{{ c.dias|numero:0 }}</td>
+              <td class="num">{{ c.valor_total|soles }}</td>
+              <td class="num">{{ c.participacion|numero:1 }}%</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="aviso">Sin compras de esta categoría en {{ cx.anio_sel }}.</p>
+  {% endif %}
+</section>
+
+<section class="bloque" id="sec-deuda">
+  <h2>Saldo por pagar y antigüedad de deuda</h2>
+  <p class="aviso">Pendiente de data: para ver cuánto se debe hoy a los proveedores de esta categoría, qué está vencido y por vencer, y su antigüedad, falta cargar el reporte de partidas abiertas de proveedores de SAP (FBL1N o equivalente).</p>
+</section>

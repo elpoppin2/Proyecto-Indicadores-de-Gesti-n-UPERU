@@ -545,8 +545,13 @@ tr.fila-total td { font-weight: 600; border-top: 2px solid var(--table-line); }
 .barra-fila { display: grid; grid-template-columns: 160px 1fr 90px; align-items: center; gap: 10px; }
 .barra-etiqueta { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .barra-pista { background: var(--surface-2); border-radius: 5px; height: 12px; overflow: hidden; }
-.barra-relleno { background: var(--accent); height: 100%; border-radius: 5px 0 0 5px; }
+.barra-relleno { display: block; background: var(--accent); height: 100%; border-radius: 5px 0 0 5px; }
 .barra-valor { font-size: 12.5px; text-align: right; font-variant-numeric: tabular-nums; }
+/* Barras con un valor largo (monto y %): Compras por plazo de pago y
+   valor por familia del Inventario de cada categoría. */
+.barras-anchas .barra-fila { grid-template-columns: 170px 1fr 230px; }
+@media (max-width: 600px) { .barras-anchas .barra-fila { grid-template-columns: 96px 1fr 120px; } }
+td.col-codigo { white-space: nowrap; }
 
 /* --- Estados --- */
 .dato-positivo { color: var(--up); }
@@ -937,6 +942,12 @@ tbody.tabla-ordenada { animation: filas-asentar .25s ease-out; }
 }
 .pila-segmento.con-detalle:hover { filter: brightness(1.08); box-shadow: inset 0 0 0 1px var(--ink); }
 .zona-panel[class*="entrando"] .pila-pista { animation: barra-crecer .55s cubic-bezier(.2, .8, .2, 1) both; animation-delay: 140ms; transform-origin: left center; }
+/* Pestañas de categoría: compras por mes (rojo de marca) y clasificación
+   ABC del inventario (A en rojo, B gris oscuro, C gris claro). */
+.col-compras, .marca-col-compras { fill: var(--accent); background: var(--accent); }
+.col-abc-a, .marca-col-abc-a { fill: var(--accent); background: var(--accent); color: #fff; }
+.col-abc-b, .marca-col-abc-b { fill: var(--table-header); background: var(--table-header); color: var(--surface); }
+.col-abc-c, .marca-col-abc-c { fill: var(--line); background: var(--line); }
 /* Proveedores (Evolución de entregas por proveedor). */
 .col-prov-0, .marca-col-prov-0 { fill: var(--prov-0); background: var(--prov-0); }
 .col-prov-1, .marca-col-prov-1 { fill: var(--prov-1); background: var(--prov-1); }

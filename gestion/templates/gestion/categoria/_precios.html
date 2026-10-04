@@ -1,0 +1,109 @@
+{% load dashboard_extras %}
+{# Pestaña Precios e IPU de una categoría (views._cat_precios). #}
+<section class="bloque" id="sec-ipu-categoria">
+  <div class="bloque-cabecera">
+    <h2>IPU de {{ categoria|title }}</h2>
+    <button type="button" class="btn-link" data-imprimir="sec-ipu-categoria">Descargar / Imprimir</button>
+  </div>
+  <p class="nota">
+    Precio de compra de cada material (MB51, entradas 101/102 con proveedor: importe ÷ cantidad del mes) contra
+    {{ pr.contra }}. Si ese mes no tuvo compra, se compara contra el último precio registrado antes.
+    <strong>IPU (Índice de Precios Unacem)</strong>: lo pagado ÷ lo que habrían costado esas mismas cantidades al
+    precio base − 1, acumulado desde enero (se reinicia cada año). <strong>Bolsa</strong> = (precio del mes − precio
+    base) × cantidad comprada: el impacto en soles de la variación. Las comparaciones donde el precio más que se
+    duplica o cae a menos de la mitad se consideran atípicas y no suman.
+  </p>
+  <form class="filtros" method="get" data-target="sec-ipu-categoria">
+    <div class="campo">
+      <label for="periodo_ipu">Período</label>
+      <select name="periodo_ipu" id="periodo_ipu">
+        {% for o in pr.periodos %}
+          <option value="{{ o.valor }}" {% if o.valor == pr.periodo_sel %}selected{% endif %}>{{ o.texto }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="evaluacion_ipu">Comparar contra</label>
+      <select name="evaluacion_ipu" id="evaluacion_ipu">
+        {% for o in pr.evaluaciones %}
+          <option value="{{ o.valor }}" {% if o.valor == pr.evaluacion_sel %}selected{% endif %}>{{ o.texto }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="centro_ipu">Centro</label>
+      <select name="centro_ipu" id="centro_ipu">
+        {% for c in pr.centros %}
+          <option value="{{ c }}" {% if c == pr.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+
+  {% with r=pr.resumen %}
+  {% if not r %}
+    <p class="aviso">{{ pr.aviso|default:"Sin compras con base de comparación para los filtros seleccionados." }}</p>
+  {% else %}
+    <div class="metricas">
+      {% for a in r.por_anio %}
+        <div class="metrica">
+          <span class="valor {% if a.pct > 0 %}dato-negativo{% elif a.pct < 0 %}dato-positivo{% endif %}"><small class="prefijo-ipu">IPU</small> {% if a.pct > 0 %}+{% endif %}{{ a.pct|numero:1 }}%</span>
+          <span class="etiqueta">{{ a.anio }}{% if a.anio_completo %} (Ene–Dic){% else %} acumulado a {{ a.hasta }}{% endif %} · bolsa {% if a.bolsa > 0 %}+{% elif a.bolsa < 0 %}−{% endif %}S/ {{ a.bolsa|numero:0|cut:"-" }}</span>
+        </div>
+      {% endfor %}
+      <div class="metrica">
+        <span class="valor {% if r.ultima_pct > 0 %}dato-negativo{% elif r.ultima_pct < 0 %}dato-positivo{% endif %}">{% if r.ultima_pct > 0 %}+{% endif %}{{ r.ultima_pct|numero:1 }}%</span>
+        <span class="etiqueta">{{ r.ultimo_mes }} vs {{ pr.base_titulo }} · {{ r.suben }} ▲ / {{ r.bajan }} ▼ materiales en su última compra</span>
+      </div>
+      <div class="metrica">
+        <span class="valor">{{ r.materiales|numero }}</span>
+        <span class="etiqueta">Materiales comparados ({{ r.desde }} a {{ r.hasta }}){% if r.atipicas %} · {{ r.atipicas|numero }} comparaciones atípicas excluidas{% endif %}</span>
+      </div>
+    </div>
+
+    {% if pr.grafico %}
+      <h3 class="subtitulo">IPU · Índice de Precios Unacem de la categoría</h3>
+      {% include "gestion/_grafico_ipu.html" with g=pr.grafico %}
+      <div class="leyenda-curva">
+        <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>IPU acumulado del año</span>
+        <span class="leyenda-item"><span class="leyenda-marca marca-sube"></span><span class="leyenda-marca marca-baja"></span>Valor individual del mes (sube / baja)</span>
+        <span class="leyenda-item texto-tenue">Se reinicia cada enero · pasa el mouse por un punto para ver el detalle</span>
+      </div>
+    {% endif %}
+
+    {% for t in pr.tablas %}
+      <h3 class="subtitulo">{{ t.titulo }}</h3>
+      {% if t.filas %}
+        <div class="tabla-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Material</th><th>Descripción</th><th>Centro</th><th>UMB</th>
+                <th class="num">Último precio (S/ por UMB)</th><th>Última compra</th>
+                <th class="num">Variación del período</th><th class="num" data-orden="{{ t.orden }}">Bolsa (S/)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for f in t.filas %}
+                <tr>
+                  <td class="col-codigo">{{ f.material_codigo }}</td>
+                  <td class="col-descripcion">{{ f.texto_breve }}</td>
+                  <td>{{ f.centro|centro }}</td>
+                  <td>{{ f.umb }}</td>
+                  <td class="num">{{ f.precio|numero:2 }}</td>
+                  <td>{{ f.mes }}</td>
+                  <td class="num {% if f.pct > 0 %}dato-negativo{% elif f.pct < 0 %}dato-positivo{% endif %}">{% if f.pct > 0 %}+{% endif %}{{ f.pct|numero:1 }}%</td>
+                  <td class="num {% if f.bolsa > 0 %}dato-negativo{% elif f.bolsa < 0 %}dato-positivo{% endif %}">{{ f.bolsa|numero:0 }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="aviso">{{ t.vacio }}</p>
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+  {% endwith %}
+</section>

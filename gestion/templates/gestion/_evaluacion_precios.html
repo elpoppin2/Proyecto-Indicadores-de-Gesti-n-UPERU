@@ -126,27 +126,7 @@
     {% with g=inf.grafico %}
     {% if g %}
       <h3 class="subtitulo">IPU · Índice de Precios Unacem{% if not inf.un_material %} (selección ponderada){% endif %}{% if inf.en_soles %} · bolsa en S/{% endif %}</h3>
-      <div class="chart-scroll">
-      <div class="chart-wrap chart-ipu">
-        <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="IPU acumulado del año (línea) y variación de cada mes (puntos)">
-          {% for a in g.anios %}{% if a.separador %}<line class="separador-anio" x1="{{ a.x }}" y1="{{ g.tope }}" x2="{{ a.x }}" y2="{{ g.base }}"></line>{% endif %}{% endfor %}
-          <line class="linea-cero" x1="0" y1="{{ g.y_cero }}" x2="{{ g.ancho }}" y2="{{ g.y_cero }}"></line>
-          {% for t in g.trazos %}<path class="linea-ipu" d="{{ t }}"></path>{% endfor %}
-          {% for p in g.linea %}<circle class="punto-ipu" cx="{{ p.x }}" cy="{{ p.y }}" r="3.2"></circle>{% endfor %}
-          {% for p in g.marcas %}<circle class="marca-individual {% if p.sube %}marca-sube{% else %}marca-baja{% endif %}" cx="{{ p.x }}" cy="{{ p.y }}" r="4.8"></circle>{% endfor %}
-          {% for p in g.linea %}<circle class="zona-detalle con-detalle" cx="{{ p.x }}" cy="{{ p.y }}" r="9" data-detalle="{{ p.detalle }}"></circle>{% endfor %}
-          {% for p in g.marcas %}<circle class="zona-detalle con-detalle" cx="{{ p.x }}" cy="{{ p.y }}" r="9" data-detalle="{{ p.detalle }}"></circle>{% endfor %}
-        </svg>
-        {% for a in g.anios %}<span class="rotulo-anio" style="left:{{ a.x_pct }}%;">{{ a.texto }}</span>{% endfor %}
-        {% for p in g.linea %}
-        <span class="etiqueta-valor etiqueta-ipu etiqueta-{{ p.pos }} con-detalle" style="left:{{ p.x_pct }}%; top:{{ p.y_pct }}%;" data-detalle="{{ p.detalle }}">{{ p.etiqueta }}</span>
-        {% endfor %}
-        {% for p in g.marcas %}{% if p.etiqueta %}
-        <span class="etiqueta-valor etiqueta-individual etiqueta-{{ p.pos }} con-detalle" style="left:{{ p.x_pct }}%; top:{{ p.y_pct }}%;" data-detalle="{{ p.detalle }}">{{ p.etiqueta }}</span>
-        {% endif %}{% endfor %}
-        {% for e in g.eje %}<span class="etiqueta-mes" style="left:{{ e.x_pct }}%;">{{ e.texto }}</span>{% endfor %}
-      </div>
-      </div>
+      {% include "gestion/_grafico_ipu.html" with g=g %}
       <div class="leyenda-curva">
         <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>IPU acumulado del año{% if inf.desfase == 12 %} (Ene..mes vs el mismo tramo del año anterior){% else %} (variaciones mensuales encadenadas){% endif %}</span>
         <span class="leyenda-item"><span class="leyenda-marca marca-sube"></span><span class="leyenda-marca marca-baja"></span>Valor individual del mes (sube / baja)</span>

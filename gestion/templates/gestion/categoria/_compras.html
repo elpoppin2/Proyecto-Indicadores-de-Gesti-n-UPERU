@@ -1,0 +1,149 @@
+{% load dashboard_extras %}
+{# Pestaña Compras y proveedores de una categoría (views._cat_compras). #}
+<section class="bloque" id="sec-compras">
+  <h2>Compras</h2>
+  {% if compras %}
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr><th>Año</th><th class="num">Valor</th><th class="num">Bajo contrato</th><th class="num">PMP por O.C</th><th class="num">Var. vs año anterior</th></tr>
+        </thead>
+        <tbody>
+          {% for fila in compras %}
+            <tr>
+              <td>{{ fila.anio }}</td>
+              <td class="num">{{ fila.valor_total|soles }}</td>
+              <td class="num">{{ fila.pct_contrato|numero:1 }}%</td>
+              <td class="num">{{ fila.pmp|numero:0|default:"—" }} días</td>
+              <td class="num {% if fila.variacion_yoy_pct > 0 %}dato-positivo{% elif fila.variacion_yoy_pct < 0 %}dato-negativo{% endif %}">{{ fila.variacion_yoy_pct|numero:1|default:"—" }}%</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="aviso">Sin compras registradas en esta categoría.</p>
+  {% endif %}
+
+  {% if compras_mensual %}
+    <h3 class="subtitulo">Compras por mes (S/)</h3>
+    <p class="nota">Valor de las órdenes de compra por mes del documento, últimos {{ compras_mensual.meses }} meses. Pasa el mouse por una columna para ver el detalle.</p>
+    {% include "gestion/planificacion/_grafico_columnas.html" with g=compras_mensual.grafico titulo="Compras por mes" %}
+  {% endif %}
+</section>
+
+<section class="bloque" id="sec-pareto">
+  <h2>Concentración de Proveedores (Pareto) — {{ anio_indicadores }}</h2>
+  <p class="nota">% del valor de compras de esta categoría concentrado en sus 5 proveedores más grandes. Un porcentaje alto indica riesgo de dependencia de pocos proveedores.</p>
+  {% if rango_pareto %}
+    <form class="filtros" method="get" data-target="sec-pareto">
+      <div class="campo">
+        <label for="mes_pareto_desde">Desde</label>
+        <select name="mes_pareto_desde" id="mes_pareto_desde">
+          {% for m in rango_pareto.opciones_mes %}
+            <option value="{{ m.numero }}" {% if m.numero == rango_pareto.mes_desde %}selected{% endif %}>{{ m.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="campo">
+        <label for="mes_pareto_hasta">Hasta</label>
+        <select name="mes_pareto_hasta" id="mes_pareto_hasta">
+          {% for m in rango_pareto.opciones_mes %}
+            <option value="{{ m.numero }}" {% if m.numero == rango_pareto.mes_hasta %}selected{% endif %}>{{ m.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <noscript><button type="submit">Aplicar</button></noscript>
+    </form>
+  {% endif %}
+  {% if pareto %}
+    <div class="metricas">
+      <div class="metrica"><span class="valor">{{ pareto.pct_concentracion_top|numero:1 }}%</span><span class="etiqueta">Concentración en Top 5</span></div>
+    </div>
+    <div class="tabla-scroll">
+      <table>
+        <thead><tr><th>Número de cuenta de proveedor</th><th class="num">Valor</th><th class="num">% del total</th></tr></thead>
+        <tbody>
+          {% for p in pareto.top_proveedores %}
+            <tr>
+              <td>{{ p.proveedor }}</td>
+              <td class="num">{{ p.valor|soles }}</td>
+              <td class="num">{{ p.pct|numero:1 }}%</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="aviso">Sin compras registradas en esta categoría para el año más reciente.</p>
+  {% endif %}
+</section>
+
+{% if rango_fillrate %}
+  <section class="bloque" id="sec-fillrate">
+    <h2>Fill Rate — {{ anio_indicadores }}</h2>
+    <p class="nota">% del valor de líneas de compra de material/importación (Cl. ZNAC/ZIMP, las únicas donde la cantidad pedida y recibida son comparables) entregado completo.</p>
+    <form class="filtros" method="get" data-target="sec-fillrate">
+      <div class="campo">
+        <label for="mes_fillrate_desde">Desde</label>
+        <select name="mes_fillrate_desde" id="mes_fillrate_desde">
+          {% for m in rango_fillrate.opciones_mes %}
+            <option value="{{ m.numero }}" {% if m.numero == rango_fillrate.mes_desde %}selected{% endif %}>{{ m.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="campo">
+        <label for="mes_fillrate_hasta">Hasta</label>
+        <select name="mes_fillrate_hasta" id="mes_fillrate_hasta">
+          {% for m in rango_fillrate.opciones_mes %}
+            <option value="{{ m.numero }}" {% if m.numero == rango_fillrate.mes_hasta %}selected{% endif %}>{{ m.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <noscript><button type="submit">Aplicar</button></noscript>
+    </form>
+    {% if fill_rate %}
+      <div class="metricas">
+        <div class="metrica"><span class="valor">{{ fill_rate.fill_rate_pct|numero:1|default:"—" }}%</span><span class="etiqueta">Fill Rate</span></div>
+        <div class="metrica"><span class="valor">{{ fill_rate.lineas|numero }}</span><span class="etiqueta">Líneas evaluadas</span></div>
+      </div>
+    {% else %}
+      <p class="aviso">Sin datos suficientes para calcular el Fill Rate en el rango seleccionado.</p>
+    {% endif %}
+  </section>
+{% endif %}
+
+<section class="bloque" id="sec-leadtime">
+  <h2>Lead Time de Proveedores — {{ anio_indicadores }}</h2>
+  <p class="nota">Días entre la fecha del pedido y la primera Entrada de Mercancía real (MB51), para líneas de material/importación (Cl. ZNAC/ZIMP).</p>
+  {% if rango_leadtime %}
+    <form class="filtros" method="get" data-target="sec-leadtime">
+      <div class="campo">
+        <label for="mes_leadtime_desde">Desde</label>
+        <select name="mes_leadtime_desde" id="mes_leadtime_desde">
+          {% for m in rango_leadtime.opciones_mes %}
+            <option value="{{ m.numero }}" {% if m.numero == rango_leadtime.mes_desde %}selected{% endif %}>{{ m.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="campo">
+        <label for="mes_leadtime_hasta">Hasta</label>
+        <select name="mes_leadtime_hasta" id="mes_leadtime_hasta">
+          {% for m in rango_leadtime.opciones_mes %}
+            <option value="{{ m.numero }}" {% if m.numero == rango_leadtime.mes_hasta %}selected{% endif %}>{{ m.nombre }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <noscript><button type="submit">Aplicar</button></noscript>
+    </form>
+  {% endif %}
+  {% if lead_time %}
+    <div class="metricas">
+      <div class="metrica"><span class="valor">{{ lead_time.lead_time_promedio|numero:1 }}</span><span class="etiqueta">Lead Time promedio (días)</span></div>
+      <div class="metrica"><span class="valor">{{ lead_time.lead_time_mediana|numero:1 }}</span><span class="etiqueta">Lead Time mediana (días)</span></div>
+      <div class="metrica"><span class="valor">{{ lead_time.lineas|numero }}</span><span class="etiqueta">Líneas evaluadas</span></div>
+    </div>
+  {% else %}
+    <p class="aviso">Sin datos suficientes para calcular el Lead Time en esta categoría.</p>
+  {% endif %}
+</section>

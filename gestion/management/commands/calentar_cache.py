@@ -28,9 +28,13 @@ class Command(BaseCommand):
         # abrirla: se calientan también esas (con sus filtros por defecto).
         paginas = ["/overview/", "/planificacion/"] + [
             f"/planificacion/?_zona={clave}" for clave, _, _, secciones in views._ZONAS_PLANIFICACION if secciones
-        ] + [
-            f"/{views._slug(c)}/" for c in views._categorias_disponibles()
         ]
+        # Igual las categorías: la página trae Indicadores y cada pestaña se pide aparte.
+        con_inventario = set(views.q.categorias_inventario_disponibles())
+        for c in views._categorias_disponibles():
+            paginas.append(f"/{views._slug(c)}/")
+            paginas += [f"/{views._slug(c)}/?_zona={z['clave']}"
+                        for z in views._zonas_categoria(c, c in con_inventario)[1:]]
         inicio = time.monotonic()
         fallidas = 0
         for pagina in paginas:

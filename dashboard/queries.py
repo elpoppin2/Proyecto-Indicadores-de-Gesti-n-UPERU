@@ -2571,6 +2571,42 @@ def precios_entrada_sop():
     return df[columnas].sort_values(["material_codigo", "centro", "mes"]).reset_index(drop=True)
 
 
+@_cacheado
+def precios_entrada_materiales():
+    """Lo mismo que precios_entrada_sop, pero de TODOS los materiales con
+    compra (101/102 con proveedor), para la pestaña Precios e IPU de cada
+    categoría. Pedido por el usuario. La columna "toneladas" es la cantidad en
+    la UMB del material (KG, UND, M...; en T solo para materias primas y
+    combustibles), con el mismo nombre para reusar inflacion_precios e
+    ipu_por_mes; "precio" queda en S/ por UMB. Sin filtro de material, la
+    consulta recorre todos los 101/102 (~11 s en frío), por eso va en caché."""
+    columnas = ["material_codigo", "texto_breve", "unidad_medida_base", "centro", "categoria", "mes",
+                "toneladas", "importe", "precio", "entradas", "proveedores"]
+    df = _query(f"""
+        SELECT material_codigo AS material_codigo, centro AS centro,
+               substr(fecha_contabilizacion, 1, 7) || '-01' AS mes,
+               SUM(cantidad) AS toneladas, SUM(importe_moneda_local) AS importe,
+               SUM(CASE WHEN clase_movimiento = '101' THEN 1 ELSE 0 END) AS entradas,
+               COUNT(DISTINCT proveedor) AS proveedores
+        FROM gestion_movimientomaterial
+        WHERE clase_movimiento IN {_CLASES_ENTRADA_COMPRA} AND proveedor <> '' AND material_codigo <> ''
+              AND fecha_contabilizacion IS NOT NULL
+        GROUP BY material_codigo, centro, mes
+    """)
+    if df.empty:
+        return pd.DataFrame(columns=columnas)
+    df["toneladas"] = df["toneladas"].astype(float)
+    df["importe"] = df["importe"].astype(float)
+    df = df[(df["toneladas"] > 0) & (df["importe"] > 0)].copy()
+    df["precio"] = df["importe"] / df["toneladas"]
+    df["mes"] = pd.to_datetime(df["mes"]).dt.date
+    catalogo = catalogo_materiales()[["material_codigo", "texto_breve", "unidad_medida_base", "categoria"]]
+    df = df.merge(catalogo, on="material_codigo", how="inner")
+    df["texto_breve"] = df["texto_breve"].fillna("")
+    df["unidad_medida_base"] = df["unidad_medida_base"].fillna("")
+    return df[columnas].sort_values(["material_codigo", "centro", "mes"]).reset_index(drop=True)
+
+
 def resumen_precios_entrada(df):
     """Una fila por material/centro de `df` (salida de precios_entrada_sop,
     ya filtrada): último precio y su mes, variación contra la compra anterior

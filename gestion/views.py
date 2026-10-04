@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 
 import pandas as pd
 from django.contrib.auth.decorators import login_required
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse, QueryDict
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.utils.safestring import mark_safe
@@ -3150,22 +3150,70 @@ def _contexto_proyeccion_sop(request):
     return contexto
 
 
-@login_required
-def categoria_detalle(request, slug):
-    categorias_nav, categorias = _construir_nav(slug)
-    mapa_slug = {_slug(c): c for c in categorias}
-    categoria = mapa_slug.get(slug)
-    if categoria is None:
-        raise Http404("Categoría no encontrada")
+# ---------------------------------------------------------------------------
+# Páginas de categoría (CAPEX, Combustibles, Repuestos...), organizadas en
+# pestañas como Planificación. Pedido por el usuario: "que cada uno tenga las
+# pestañas de indicadores, inventario, precio e IPU, cuenta por pagar y demás
+# pestañas de acuerdo a cada categoría". La página trae solo Indicadores;
+# cada otra pestaña se pide al abrirla (?_zona=inventario) y zonas.js las
+# precarga en segundo plano. Al cambiar un filtro, base.html pide
+# ?_seccion=sec-xxx: se devuelve la pestaña que la contiene y de ella toma
+# solo esa sección.
+# ---------------------------------------------------------------------------
 
-    fechas_inv = q.fechas_inventario_disponibles()
+# Pestañas: clave, nombre, descripción, secciones (también los bloques
+# internos con filtro propio, p.ej. sec-inventario-top) y a qué categorías
+# aplican: None = todas, "inventario" = solo las que tienen inventario (no
+# CAPEX ni servicios), "sop" = solo las del S&OP (Materias Primas y
+# Combustibles).
+_ZONAS_CATEGORIA = [
+    ("indicadores", "Indicadores", "Resumen de la categoría", ["sec-indicadores-categoria"], None),
+    ("compras", "Compras", "Proveedores, Fill Rate y Lead Time",
+     ["sec-compras", "sec-pareto", "sec-fillrate", "sec-leadtime"], None),
+    ("inventario", "Inventario", "Stock, ABC, rotación y críticos",
+     ["sec-evolucion", "sec-inventario", "sec-inventario-top", "sec-abc", "sec-obsoletos", "sec-rotacion",
+      "sec-criticos", "sec-variacion"], "inventario"),
+    ("abastecimiento", "Abastecimiento S&OP", "Plan vs ingresos por centro",
+     ["sec-sop-categoria", "sec-sop-mensual"], "sop"),
+    ("precios", "Precios e IPU", "Precio de compra e inflación", ["sec-ipu-categoria"], None),
+    ("cuentas", "Cuentas por pagar", "Plazo de pago (PMP)", ["sec-pmp", "sec-plazos", "sec-deuda"], None),
+]
+
+# Meses de la gráfica Compras por mes (pestaña Compras y su panel en Indicadores).
+_COMPRAS_MESES = 24
+
+
+def _zonas_categoria(categoria, tiene_inventario):
+    aplica = {None: True, "inventario": tiene_inventario, "sop": categoria in q.CATEGORIAS_PLANIFICACION_SOP}
+    return [{"clave": c, "nombre": n, "descripcion": d, "secciones": " ".join(s)}
+            for c, n, d, s, condicion in _ZONAS_CATEGORIA if aplica[condicion]]
+
+
+def _soles_mm(valor):
+    """Soles abreviados para las cifras de los paneles: S/ 12.3 MM, S/ 450 K."""
+    if abs(valor) >= 1e6:
+        return f"S/ {valor / 1e6:,.1f} MM"
+    if abs(valor) >= 1e3:
+        return f"S/ {valor / 1e3:,.0f} K"
+    return f"S/ {valor:,.0f}"
+
+
+def _soles_eje(valor):
+    """Soles abreviados para la grilla de un gráfico: 12.3M, 450K."""
+    if abs(valor) >= 1e6:
+        return f"{valor / 1e6:,.1f}M"
+    if abs(valor) >= 1e3:
+        return f"{valor / 1e3:,.0f}K"
+    return f"{valor:,.0f}"
+
+
+def _cat_compras(request, categoria, tiene_inventario):
+    """Pestaña Compras y proveedores: compras por año (con PMP y variación
+    interanual), compras por mes, Pareto de proveedores, Fill Rate (solo con
+    inventario, a pedido del usuario) y Lead Time; cada uno con su propio
+    rango de meses."""
     anios_compras = q.anios_compras_disponibles()
-
-    contexto = {"categoria": categoria, "categorias_nav": categorias_nav, "slug": slug}
-
-    if not fechas_inv and not anios_compras:
-        contexto["sin_datos"] = True
-        return render(request, "gestion/categoria_detalle.html", contexto)
+    contexto = {}
 
     # --- Compras: una fila por año disponible, con variación interanual (YoY) ---
     compras_filas = []
@@ -3193,17 +3241,32 @@ def categoria_detalle(request, slug):
         valor_anio_anterior = valor_total
     contexto["compras"] = compras_filas
 
-    # Categorías que alguna vez tienen inventario (CAPEX, Servicios Administrativos
-    # y Servicios Industriales son solo de compras/servicios y nunca lo tienen) —
-    # se usa para Fill Rate y para ocultar toda la sección de inventario más abajo.
-    categoria_tiene_inventario = categoria in set(q.categorias_inventario_disponibles())
+    # --- Compras por mes (fecha del documento), últimos _COMPRAS_MESES ---
+    serie = q.compras_por_mes_y_condicion_pago(categoria)
+    contexto["compras_mensual"] = None
+    contexto["compras_por_mes"] = []
+    if not serie.empty:
+        por_mes = serie.groupby("mes")["valor_total"].sum()
+        meses = [(datetime.date.fromisoformat(str(m)[:10]), float(v)) for m, v in por_mes.items()]
+        meses.sort()
+        contexto["compras_por_mes"] = meses
+        ultimos = meses[-_COMPRAS_MESES:]
+        contexto["compras_mensual"] = {
+            "meses": len(ultimos),
+            "grafico": charts.columnas(
+                [_mes_corto(m) for m, _ in ultimos],
+                [[{"valor": v, "clase": "col-compras", "detalle": f"{q.formato_mes_anio(m)}\nCompras: S/ {v:,.0f}"}]
+                 for m, v in ultimos],
+                _soles_eje,
+            ),
+        }
 
     # --- Concentración de Proveedores (Pareto), Fill Rate y Lead Time: año más
     # reciente, cada uno con su propio segmentador de Mes (independiente) ---
     anio_indicadores = anios_compras[-1] if anios_compras else None
+    contexto["anio_indicadores"] = anio_indicadores
+    contexto["pareto"] = contexto["fill_rate"] = contexto["lead_time"] = None
     if anio_indicadores:
-        contexto["anio_indicadores"] = anio_indicadores
-
         rango_pareto = _rango_meses(request, "pareto", anio_indicadores)
         pareto_todas = q.concentracion_proveedores_por_categoria_rango(
             rango_pareto["fecha_ini"], rango_pareto["fecha_fin"]
@@ -3212,38 +3275,26 @@ def categoria_detalle(request, slug):
         contexto["rango_pareto"] = rango_pareto
 
         # Fill Rate: solo si esta categoría tiene inventario (a pedido del usuario).
-        if categoria_tiene_inventario:
+        if tiene_inventario:
             rango_fillrate = _rango_meses(request, "fillrate", anio_indicadores)
             fill_rate_todas = q.fill_rate_por_categoria_rango(rango_fillrate["fecha_ini"], rango_fillrate["fecha_fin"])
             contexto["fill_rate"] = next((r for r in fill_rate_todas if r["categoria"] == categoria), None)
             contexto["rango_fillrate"] = rango_fillrate
-        else:
-            contexto["fill_rate"] = None
 
         # --- Lead Time de proveedores: fecha de pedido -> Entrada de Mercancía real ---
         rango_leadtime = _rango_meses(request, "leadtime", anio_indicadores)
         lead_time_todas = q.lead_time_por_categoria_rango(rango_leadtime["fecha_ini"], rango_leadtime["fecha_fin"])
         contexto["lead_time"] = next((r for r in lead_time_todas if r["categoria"] == categoria), None)
         contexto["rango_leadtime"] = rango_leadtime
-    else:
-        contexto["pareto"] = None
-        contexto["fill_rate"] = None
-        contexto["lead_time"] = None
+    return contexto
 
-    # --- Evolución de PMP (esta categoría) ---
-    pmp_serie_cat = q.pmp_mensual(categoria)
-    puntos_pmp_cat = [(_mes_abrev_guion(row["mes"]), float(row["pmp"])) for _, row in pmp_serie_cat.iterrows()]
-    contexto["pmp_evolucion"] = {
-        "grafico": charts.serie_area(puntos_pmp_cat, formato_valor=lambda v: f"{v:.0f}"),
-    }
 
-    # Sin inventario: ni globalmente (fechas_inv vacío) ni para esta categoría en
-    # particular (CAPEX/Servicios Administrativos/Servicios Industriales) — se
-    # oculta toda la sección de indicadores de inventario (Evolución, Inventario,
-    # ABC, Obsoletos, Rotación, Críticos, Variación), no tiene sentido mostrarla.
-    if not fechas_inv or not categoria_tiene_inventario:
-        contexto["sin_inventario"] = True
-        return render(request, "gestion/categoria_detalle.html", contexto)
+def _cat_inventario(request, categoria, tiene_inventario):
+    """Pestaña Inventario (solo categorías con inventario): Evolución,
+    Inventario del mes, ABC, Sin movimiento, Rotación, Críticos y %
+    Variación, cada uno con sus propios filtros de Mes/Familia/Centro."""
+    fechas_inv = q.fechas_inventario_disponibles()
+    contexto = {}
 
     # --- Evolución de inventario ---
     anio_max = fechas_inv[-1].year
@@ -3415,7 +3466,6 @@ def categoria_detalle(request, slug):
         centro=None if centro_criticos_sel == "Todos" else centro_criticos_sel,
     )
     contexto["criticos"] = next((r for r in criticos_todas if r["categoria"] == categoria), None)
-    contexto["total_criticos_en_riesgo"] = contexto["criticos"]["en_riesgo"] if contexto["criticos"] else 0
     contexto["filtros_criticos"] = {
         "mes": mes_criticos, "opciones_mes": fechas_inv,
         "familias": familias_criticos, "familia_sel": familia_criticos_sel,
@@ -3454,7 +3504,482 @@ def categoria_detalle(request, slug):
             "familias": familias_var, "familia_sel": familia_var_sel,
             "centros": centros_var, "centro_sel": centro_var_sel,
         }
+    return contexto
 
+
+def _cat_abastecimiento(request, categoria, tiene_inventario):
+    """Pestaña Abastecimiento S&OP (Materias Primas y Combustibles): Plan de
+    Abastecimiento vs ingresos físicos del mes por centro y cumplimiento mes
+    a mes, de esta categoría. El detalle sigue en Planificación."""
+    meses, mes_defecto = _meses_plan()
+    if not meses:
+        return {"ab": None}
+    # Por defecto, el último mes cerrado (el mes en curso recién empieza),
+    # igual que la pestaña Indicadores de Planificación.
+    cerrado = q._sumar_meses(datetime.date.today().replace(day=1), -1)
+    mes = _por_str(request.GET.get("mes_sopcat"), meses) or (cerrado if cerrado in meses else mes_defecto)
+    detalle = q.plan_vs_real_abastecimiento_por_material(mes, categoria=categoria)
+    centros = []
+    if not detalle.empty:
+        por_centro = detalle.groupby("centro").agg(plan=("cantidad_plan", "sum"), real=("cantidad_real", "sum"))
+        for cod, r in sorted(por_centro.iterrows(), key=lambda x: q.nombre_centro(x[0])):
+            plan, real = float(r["plan"]), float(r["real"])
+            centros.append({"centro": cod, "plan": plan, "real": real, "diferencia": real - plan,
+                            "pct": round(real / plan * 100, 1) if plan else None})
+    total_plan = sum(f["plan"] for f in centros)
+    total_real = sum(f["real"] for f in centros)
+    # Hasta el mes en curso: los meses futuros del plan todavía no tienen real.
+    hoy_mes = datetime.date.today().replace(day=1)
+    filas = [f for f in q.cumplimiento_mensual_abastecimiento(categoria=categoria) if f["mes"] <= hoy_mes]
+    return {"ab": {
+        "mes": mes, "opciones_mes": meses, "centros": centros,
+        "total_plan": total_plan, "total_real": total_real,
+        "cumplimiento_pct": round(total_real / total_plan * 100, 1) if total_plan else None,
+        "grafico": charts.barras_mensuales(
+            [(q.formato_mes_anio_abrev(f["mes"]), f["cumplimiento_pct"]) for f in filas], alto=240, meta=100,
+        ),
+    }}
+
+
+# Comparación de la pestaña Precios e IPU de una categoría (mismo cálculo que
+# la Inflación de precios de Planificación, queries.inflacion_precios).
+_EVALUACIONES_IPU_CATEGORIA = {
+    "interanual": {"desfase": 12, "texto": "Mismo mes del año anterior",
+                   "contra": "el mismo mes del año anterior (Ene-26 vs Ene-25)", "base_titulo": "un año antes"},
+    "mensual": {"desfase": 1, "texto": "Mes anterior",
+                "contra": "el mes anterior (Mar-26 vs Feb-26)", "base_titulo": "el mes anterior"},
+}
+_IPU_FILAS_TABLA = 15
+
+
+def _cat_precios(request, categoria, tiene_inventario):
+    """Pestaña Precios e IPU de una categoría: IPU (Índice de Precios Unacem)
+    de todos sus materiales comprados, con el mismo cálculo que Planificación
+    (precio de compra de MB51, ver queries.precios_entrada_materiales), y los
+    materiales que más subieron y bajaron. Filtros: Período, contra qué se
+    compara (año anterior o mes anterior) y Centro. Una categoría sin
+    materiales con entrada de mercancía (servicios) muestra un aviso."""
+    base = q.precios_entrada_materiales()
+    base = base[base["categoria"] == categoria]
+    evaluacion_sel = request.GET.get("evaluacion_ipu", "interanual")
+    if evaluacion_sel not in _EVALUACIONES_IPU_CATEGORIA:
+        evaluacion_sel = "interanual"
+    evaluacion = _EVALUACIONES_IPU_CATEGORIA[evaluacion_sel]
+    centros = ["Todos"] + sorted(c for c in base["centro"].unique() if c)
+    centro_sel = request.GET.get("centro_ipu", "Todos")
+    if centro_sel not in centros:
+        centro_sel = "Todos"
+    df = base if centro_sel == "Todos" else base[base["centro"] == centro_sel]
+    pr = {
+        "evaluaciones": [{"valor": k, "texto": v["texto"]} for k, v in _EVALUACIONES_IPU_CATEGORIA.items()],
+        "evaluacion_sel": evaluacion_sel, "contra": evaluacion["contra"], "base_titulo": evaluacion["base_titulo"],
+        "centros": centros, "centro_sel": centro_sel, "periodos": [], "periodo_sel": "desde",
+        "resumen": None, "grafico": None, "puntos": [], "tablas": [], "aviso": "",
+    }
+    if base.empty:
+        pr["aviso"] = ("Esta categoría no tiene compras de materiales con entrada de mercancía (MB51) para medir su "
+                       "precio unitario; las compras de servicios o proyectos se evaluarán cuando se defina con qué "
+                       "dato medirlas.")
+        return {"pr": pr}
+    inflacion_total = q.inflacion_precios(df, evaluacion["desfase"])
+    if inflacion_total.empty:
+        return {"pr": pr}
+    periodos = _periodos_inflacion(sorted(inflacion_total["mes"].unique()))
+    periodo_sel = request.GET.get("periodo_ipu", "desde")
+    if periodo_sel not in {v for v, _ in periodos}:
+        periodo_sel = "desde"
+    pr["periodos"] = [{"valor": v, "texto": t} for v, t in periodos]
+    pr["periodo_sel"] = periodo_sel
+    inflacion = _filtrar_periodo_inflacion(inflacion_total, periodo_sel)
+    if inflacion.empty:
+        return {"pr": pr}
+
+    # IPU mes a mes sobre TODA la historia (el acumulado arranca en enero
+    # aunque el período empiece después); el período solo recorta los meses.
+    ipu = q.ipu_por_mes(inflacion_total, evaluacion["desfase"])
+    meses = [m for m in sorted(inflacion["mes"].unique()) if m in ipu]
+    puntos = []
+    for m in meses:
+        d = ipu[m]
+        c = q.inflacion_canasta(inflacion[inflacion["mes"] == m])
+        inicio = min(x for x in ipu if x.year == m.year)
+        tramo = f"{_mes_corto(inicio)}–{_mes_corto(m)}" if inicio != m else _mes_corto(m)
+        puntos.append({
+            "mes": m, "individual": d["individual"], "acumulado": d["acumulado"],
+            "detalle_individual": (f"{_mes_corto(m)} vs {evaluacion['base_titulo']}: {d['individual'] * 100:+.1f}%\n"
+                                   f"Bolsa: {'+' if d['bolsa'] >= 0 else '−'}S/ {abs(d['bolsa']):,.0f}\n"
+                                   f"{c['materiales']} material{'es' if c['materiales'] != 1 else ''} comprado"
+                                   f"{'s' if c['materiales'] != 1 else ''} · S/ {c['importe']:,.0f}"),
+            "detalle_acumulado": (f"IPU acumulado {tramo}: {d['acumulado'] * 100:+.1f}%\n"
+                                  f"Pagado: S/ {d['importe_acumulado']:,.0f} · al precio base: S/ {d['base_acumulada']:,.0f}\n"
+                                  f"Bolsa acumulada: {'+' if d['bolsa_acumulada'] >= 0 else '−'}S/ {abs(d['bolsa_acumulada']):,.0f}"),
+        })
+    pr["puntos"] = puntos
+    pr["grafico"] = charts.evolucion_ipu(puntos, _mes_corto)
+
+    # IPU de cada año: el acumulado al último mes de ese año dentro del período.
+    por_anio = []
+    for a in sorted({m.year for m in meses}):
+        ultimo = max(m for m in meses if m.year == a)
+        d = ipu[ultimo]
+        por_anio.append({"anio": a, "hasta": _mes_corto(ultimo), "anio_completo": ultimo.month == 12,
+                         "pct": d["acumulado"] * 100, "bolsa": d["bolsa_acumulada"]})
+
+    # Por material (sin las comparaciones atípicas): variación ponderada del
+    # período (lo pagado ÷ lo que habría costado al precio base − 1) y bolsa.
+    validas = inflacion[~inflacion["atipica"]].sort_values("mes")
+    umb = dict(zip(base["material_codigo"], base["unidad_medida_base"]))
+    materiales = validas.assign(base_importe=validas["precio_base"] * validas["toneladas"]).groupby(
+        ["material_codigo", "centro"]).agg(
+        texto_breve=("texto_breve", "last"), importe=("importe", "sum"), base_importe=("base_importe", "sum"),
+        precio=("precio", "last"), mes=("mes", "last"), ultima=("variacion", "last"),
+    ).reset_index()
+    materiales["bolsa"] = materiales["importe"] - materiales["base_importe"]
+    materiales["pct"] = (materiales["importe"] / materiales["base_importe"] - 1) * 100
+
+    def filas(df_tabla):
+        return [{"material_codigo": r.material_codigo, "texto_breve": r.texto_breve, "centro": r.centro,
+                 "umb": umb.get(r.material_codigo, ""), "precio": r.precio, "mes": _mes_corto(r.mes),
+                 "pct": r.pct, "bolsa": r.bolsa} for r in df_tabla.itertuples()]
+
+    suben = materiales[materiales["bolsa"] > 0]
+    bajan = materiales[materiales["bolsa"] < 0]
+    pr["tablas"] = [
+        {"titulo": f"Materiales que más subieron ({len(suben)} con alza en el período)", "orden": "desc",
+         "filas": filas(suben.nlargest(_IPU_FILAS_TABLA, "bolsa")), "vacio": "Ningún material subió de precio en el período."},
+        {"titulo": f"Materiales que más bajaron ({len(bajan)} con baja en el período)", "orden": "asc",
+         "filas": filas(bajan.nsmallest(_IPU_FILAS_TABLA, "bolsa")), "vacio": "Ningún material bajó de precio en el período."},
+    ]
+    ultimo = ipu[meses[-1]] if meses else None
+    pr["resumen"] = {
+        "por_anio": por_anio, "ultimo_mes": _mes_corto(meses[-1]) if meses else "",
+        "ultima_pct": ultimo["individual"] * 100 if ultimo else 0.0,
+        "materiales": int(len(materiales)), "desde": _mes_corto(min(inflacion["mes"])), "hasta": _mes_corto(max(inflacion["mes"])),
+        "suben": int((materiales["ultima"] > 0).sum()), "bajan": int((materiales["ultima"] < 0).sum()),
+        "atipicas": int(inflacion["atipica"].sum()),
+    } if meses else None
+    return {"pr": pr}
+
+
+# Tramos de plazo de pago de Cuentas por pagar: (días hasta, nombre).
+_TRAMOS_PLAZO_PAGO = [(0, "Contado o anticipado"), (30, "Hasta 30 días"), (60, "31 a 60 días"),
+                      (90, "61 a 90 días"), (float("inf"), "Más de 90 días")]
+
+
+def _cat_cuentas(request, categoria, tiene_inventario):
+    """Pestaña Cuentas por pagar: PMP por año y su evolución mensual, y las
+    compras del año por plazo de pago (tramos y condición de pago). El saldo
+    por pagar y su antigüedad quedan pendientes de data (partidas abiertas
+    de proveedores)."""
+    anios = q.anios_compras_disponibles()
+    cx = {"anios": anios, "anio_sel": None, "pmp_anios": [], "tramos": [], "condiciones": [],
+          "pmp_grafico": None, "pmp_serie": []}
+    if not anios:
+        return {"cx": cx}
+
+    anterior = None
+    for anio in anios:
+        fila = q.pmp_por_categoria(anio)
+        fila = fila[fila["categoria"] == categoria]
+        if fila.empty:
+            continue
+        pmp = float(fila["pmp"].iloc[0])
+        cx["pmp_anios"].append({"anio": anio, "pmp": pmp, "diferencia": None if anterior is None else pmp - anterior})
+        anterior = pmp
+
+    serie = q.pmp_mensual(categoria)
+    cx["pmp_serie"] = [(r.mes, float(r.pmp)) for r in serie.itertuples()]
+    cx["pmp_grafico"] = charts.serie_area([(_mes_abrev_guion(m), v) for m, v in cx["pmp_serie"]],
+                                          formato_valor=lambda v: f"{v:.0f}")
+
+    anio_sel = _por_str(request.GET.get("anio_cxp"), [str(a) for a in anios])
+    anio_sel = int(anio_sel) if anio_sel else anios[-1]
+    cx["anio_sel"] = anio_sel
+    df = q.compras_por_categoria_y_condicion_pago(anio_sel)
+    df = df[df["categoria"] == categoria].copy()
+    df["valor_total"] = df["valor_total"].astype(float)
+    total = float(df["valor_total"].sum())
+    if df.empty or not total:
+        return {"cx": cx}
+    df["dias"] = df["condicion_pago"].map(q.dias_ponderados_condicion_pago)
+    tramos, desde = [], -1.0
+    for hasta, nombre in _TRAMOS_PLAZO_PAGO:
+        valor = float(df.loc[(df["dias"] > desde) & (df["dias"] <= hasta), "valor_total"].sum())
+        tramos.append({"etiqueta": nombre, "valor": valor, "participacion": valor / total * 100})
+        desde = hasta
+    cx["tramos"] = charts.barras(tramos)
+    condiciones = df.groupby("condicion_pago", as_index=False, dropna=False).agg(valor_total=("valor_total", "sum"), dias=("dias", "first"))
+    condiciones["participacion"] = condiciones["valor_total"] / total * 100
+    cx["condiciones"] = condiciones.sort_values("valor_total", ascending=False).to_dict("records")
+    cx["valor_total"] = total
+    cx["pmp_anio"] = float((df["dias"] * df["valor_total"]).sum() / total)
+    cx["pct_60"] = float(df.loc[df["dias"] >= 60, "valor_total"].sum() / total * 100)
+    return {"cx": cx}
+
+
+def _cat_indicadores(request, categoria, tiene_inventario):
+    """Pestaña Indicadores de una categoría: un panel por pestaña con su
+    número clave y el gráfico que lo explica, siempre al último dato
+    disponible (con los filtros por defecto de cada pestaña, no los que se
+    hayan cambiado). Devuelve los paneles y cuántos materiales críticos están
+    en riesgo (el aviso rojo de arriba de la página)."""
+    nombres_zona = {z["clave"]: z["nombre"] for z in _zonas_categoria(categoria, tiene_inventario)}
+    sin_filtros = copy.copy(request)
+    sin_filtros.GET = QueryDict()
+    paneles = []
+
+    def panel(zona, titulo, cifra, sub, tipo, g, tono="", estado="", leyenda=(), nota="", ancho=False, vacio=""):
+        paneles.append({
+            "zona": zona, "zona_nombre": nombres_zona[zona], "titulo": titulo, "cifra": cifra, "sub": sub,
+            "tipo": tipo, "g": g, "tono": tono, "estado": estado, "leyenda": list(leyenda), "nota": nota,
+            "ancho": ancho, "vacio": vacio,
+        })
+
+    # 1. Compras del año a la fecha, contra los mismos meses del año anterior.
+    co = _cat_compras(sin_filtros, categoria, tiene_inventario)
+    por_mes = co["compras_por_mes"]
+    titulo = "Compras del año"
+    if not por_mes:
+        panel("compras", titulo, "—", "", "", None, vacio="Sin compras registradas en esta categoría.", ancho=True)
+    else:
+        ultimo_mes = por_mes[-1][0]
+        anio = ultimo_mes.year
+        actual = sum(v for m, v in por_mes if m.year == anio)
+        previo = sum(v for m, v in por_mes if m.year == anio - 1 and m.month <= ultimo_mes.month)
+        fila_anio = next((f for f in co["compras"] if f["anio"] == anio), None)
+        contrato = f" · {fila_anio['pct_contrato']:.1f}% bajo contrato" if fila_anio else ""
+        estado = f"{(actual / previo - 1) * 100:+.1f}% vs {anio - 1}" if previo else ""
+        panel("compras", titulo, _soles_mm(actual),
+              f"Ene–{_MESES_ABREV_GUION[ultimo_mes.month]} {anio}{contrato}"
+              + (f" · mismo tramo de {anio - 1}: {_soles_mm(previo)}" if previo else ""),
+              "columnas", co["compras_mensual"]["grafico"] if co["compras_mensual"] else None, "neutro", estado,
+              nota=f"Valor de las órdenes de compra por mes del documento, últimos {_COMPRAS_MESES} meses.", ancho=True)
+
+    # 2. Concentración de proveedores (Top 5) del año, con Lead Time y Fill Rate.
+    titulo = "Concentración de proveedores"
+    pareto = co["pareto"]
+    if not pareto or not pareto["top_proveedores"]:
+        panel("compras", titulo, "—", "", "", None, vacio="Sin compras en el año más reciente.")
+    else:
+        pct = float(pareto["pct_concentracion_top"])
+        tono, estado = (("alerta", "Alta dependencia") if pct >= 80 else
+                        ("aviso", "Concentrada") if pct >= 60 else ("ok", "Diversificada"))
+        extras = []
+        if co["lead_time"]:
+            extras.append(f"lead time {co['lead_time']['lead_time_promedio']:.0f} días")
+        if co["fill_rate"] and co["fill_rate"].get("fill_rate_pct") is not None:
+            extras.append(f"fill rate {co['fill_rate']['fill_rate_pct']:.1f}%")
+        top = pareto["top_proveedores"]
+        tope = max(float(p["pct"]) for p in top) * 1.1 or 100
+        filas = [{"nombre": _nombre_corto(str(p["proveedor"])), "sub": "", "valor": float(p["pct"]),
+                  "texto": f"{float(p['pct']):.1f}%", "clase": "mal",
+                  "detalle": f"{p['proveedor']}\nS/ {float(p['valor']):,.0f} · {float(p['pct']):.1f}% de las compras"}
+                 for p in top]
+        panel("compras", titulo, f"{pct:.1f}%",
+              f"De las compras de {co['anio_indicadores']} en los 5 proveedores más grandes"
+              + (" · " + " · ".join(extras) if extras else ""),
+              "escala", charts.barras_escala(filas, 0, tope), tono, estado)
+
+    criticos_en_riesgo = 0
+    if tiene_inventario:
+        inv = _cat_inventario(sin_filtros, categoria, tiene_inventario)
+        # 3. Valor del inventario: el último corte de cada uno de los últimos
+        # 13 meses (desde Set-26 hay cortes diarios: va el último de cada mes).
+        cortes = sorted({(f.year, f.month): f for f in q.fechas_inventario_disponibles()}.values())[-13:]
+        serie = q.valor_inventario_mensual_por_categoria(fecha_desde=cortes[0])
+        serie = serie[(serie["categoria"] == categoria) & serie["fecha"].isin(cortes)].sort_values("fecha")
+        valores = [(f, float(v)) for f, v in zip(serie["fecha"], serie["valor_total"])]
+        titulo = "Valor del inventario"
+        if not valores:
+            panel("inventario", titulo, "—", "", "", None, vacio="Sin inventario registrado.")
+        else:
+            rot = inv["rotacion"]
+            partes = [f"Al {valores[-1][0]:%d/%m/%Y}"]
+            if rot["rotacion_anual"] is not None:
+                partes.append(f"rotación {rot['rotacion_anual']:.2f} veces al año")
+            if rot["dias_inventario"] is not None:
+                partes.append(f"{rot['dias_inventario']:,.0f} días de inventario")
+            estado = (f"{(valores[-1][1] / valores[-2][1] - 1) * 100:+.1f}% vs mes anterior"
+                      if len(valores) > 1 and valores[-2][1] else "")
+            panel("inventario", titulo, _soles_mm(valores[-1][1]), " · ".join(partes), "lineas",
+                  charts.lineas_mensuales(
+                      [{"nombre": "Valor", "clase": "serie-0",
+                        "puntos": [(f.replace(day=1), v, f"Al {f:%d/%m/%Y}\nS/ {v:,.0f}") for f, v in valores]}],
+                      _mes_corto, _soles_eje, max_etiquetas_eje=7),
+                  "neutro", estado, nota="Valor del inventario (MB5B) al cierre de cada mes, últimos 13 meses "
+                                         "(el mes en curso, a su último corte).")
+
+        # 4. Salud del inventario: críticos en riesgo, sin movimiento y ABC.
+        titulo = "Salud del inventario"
+        criticos, obsoletos, abc = inv["criticos"], inv["obsoletos"], inv["abc"]
+        criticos_en_riesgo = criticos["en_riesgo"] if criticos else 0
+        partes = []
+        if criticos:
+            partes.append(f"de {criticos['materiales_criticos']:,} materiales críticos")
+        if obsoletos:
+            partes.append(f"sin movimiento en 3 años: {_soles_mm(float(obsoletos['valor_obsoleto']))} "
+                          f"({obsoletos['materiales_obsoletos']:,} materiales)")
+        g = None
+        if abc and abc["clases"]:
+            total_valor = sum(float(c["valor"]) for c in abc["clases"]) or 1
+            total_mat = sum(int(c["materiales"]) for c in abc["clases"]) or 1
+            g = charts.pilas_horizontales([
+                {"nombre": "Valor", "sub": "", "texto": "",
+                 "segmentos": [{"valor": float(c["valor"]), "clase": f"col-abc-{c['clase'].lower()}",
+                                "detalle": f"Clase {c['clase']}: S/ {float(c['valor']):,.0f} "
+                                           f"({float(c['valor']) / total_valor * 100:.1f}% del valor)"}
+                               for c in abc["clases"]]},
+                {"nombre": "Materiales", "sub": "", "texto": "",
+                 "segmentos": [{"valor": int(c["materiales"]), "clase": f"col-abc-{c['clase'].lower()}",
+                                "detalle": f"Clase {c['clase']}: {int(c['materiales']):,} materiales "
+                                           f"({int(c['materiales']) / total_mat * 100:.1f}%)"}
+                               for c in abc["clases"]]},
+            ])
+            # En la barra de valor, el texto de cada segmento es su % del valor (no los soles).
+            for s in g["filas"][0]["segmentos"]:
+                s["texto"] = f"{s['valor'] / total_valor * 100:.0f}%" if s["texto"] else ""
+        leyenda_abc = [("col-abc-a", "Clase A"), ("col-abc-b", "Clase B"), ("col-abc-c", "Clase C")]
+        nota_abc = "Barras: clasificación ABC del inventario (A = 80% del valor, B = hasta 95%, C = el resto)."
+        if criticos:
+            panel("inventario", titulo, f"{criticos_en_riesgo:,}", "Materiales críticos con menos de 1 mes de cobertura, "
+                  + " · ".join(partes), "pilas", g, "alerta" if criticos_en_riesgo else "ok",
+                  "En riesgo" if criticos_en_riesgo else "Sin riesgo", leyenda=leyenda_abc, nota=nota_abc)
+        else:
+            # Sin materiales críticos marcados en el maestro: la cifra pasa a
+            # ser el capital inmovilizado (sin movimiento en 3 años).
+            panel("inventario", titulo, _soles_mm(float(obsoletos["valor_obsoleto"])) if obsoletos else "—",
+                  (f"Sin movimiento en 3 años ({obsoletos['materiales_obsoletos']:,} materiales)" if obsoletos
+                   else "Sin materiales sin movimiento") + " · sin materiales críticos marcados en el maestro",
+                  "pilas", g, "aviso" if obsoletos else "ok", "Inmovilizado" if obsoletos else "Sin inmovilizado",
+                  leyenda=leyenda_abc, nota=nota_abc)
+
+    # 5. Abastecimiento S&OP: cumplimiento del último mes cerrado, por centro.
+    if "abastecimiento" in nombres_zona:
+        titulo = "Cumplimiento del plan de abastecimiento"
+        ab = _cat_abastecimiento(sin_filtros, categoria, tiene_inventario)["ab"]
+        if not ab or not ab["centros"] or ab["cumplimiento_pct"] is None:
+            panel("abastecimiento", titulo, "—", "", "", None, vacio="Sin plan ni ingresos del último mes cerrado.")
+        else:
+            pct = ab["cumplimiento_pct"]
+            filas = [{"nombre": q.nombre_centro(f["centro"]).title(), "sub": f"{f['real']:,.0f} de {f['plan']:,.0f} T",
+                      "valor": f["pct"] or 0.0, "texto": f"{f['pct']:.0f}%" if f["pct"] is not None else "—",
+                      "clase": "bien" if (f["pct"] or 0) >= 100 else "regular" if (f["pct"] or 0) >= 80 else "mal",
+                      "detalle": f"{q.nombre_centro(f['centro'])}: {f['real']:,.0f} T ingresadas de {f['plan']:,.0f} T planificadas"}
+                     for f in ab["centros"]]
+            tope = min(max(120, max(f["valor"] for f in filas) * 1.08), 200)
+            tono, estado = (("ok", "Cumplido") if pct >= 100 else ("aviso", "Por debajo") if pct >= 80 else ("alerta", "Bajo el plan"))
+            panel("abastecimiento", titulo, f"{pct:.1f}%",
+                  f"{q.formato_mes_anio(ab['mes'])} · {ab['total_real']:,.0f} T ingresadas de {ab['total_plan']:,.0f} T planificadas",
+                  "escala", charts.barras_escala(filas, 0, tope, referencias=[(100, "100%")]), tono, estado)
+
+    # 6. Precios e IPU: acumulado del año (interanual) y cada mes.
+    pr = _cat_precios(sin_filtros, categoria, tiene_inventario)["pr"]
+    titulo = "IPU · Índice de Precios Unacem"
+    if not pr["resumen"] or not pr["puntos"]:
+        panel("precios", titulo, "—", "", "", None, vacio=pr["aviso"] or "Sin compras con base de comparación.")
+    else:
+        a = pr["resumen"]["por_anio"][-1]
+        tono, estado = (("alerta", "Sube") if a["pct"] > 0.5 else ("ok", "Baja") if a["pct"] < -0.5 else ("neutro", "Estable"))
+        puntos = pr["puntos"][-_COMPRAS_MESES:]
+        cortes = [i for i, p in enumerate(puntos) if i and p["mes"].year != puntos[i - 1]["mes"].year]
+        g = charts.columnas(
+            [_mes_corto(p["mes"]) for p in puntos],
+            [[{"valor": p["individual"] * 100, "clase": "col-sube" if p["individual"] > 0 else "col-baja",
+               "detalle": p["detalle_individual"]}] for p in puntos],
+            lambda v: f"{v:+.0f}%",
+            linea={"valores": [p["acumulado"] * 100 for p in puntos], "cortes": cortes, "clase": "",
+                   "detalles": [p["detalle_acumulado"] for p in puntos],
+                   "etiqueta_final": f"{puntos[-1]['acumulado'] * 100:+.1f}%"},
+            ancho=480, alto=200,  # panel de media página: menos etiquetas de mes, sin que se pisen
+        )
+        panel("precios", titulo, f"{a['pct']:+.1f}%",
+              f"{a['anio']} acumulado a {a['hasta']} vs el mismo tramo de {a['anio'] - 1} · bolsa "
+              f"{'+' if a['bolsa'] >= 0 else '−'}{_soles_mm(abs(a['bolsa']))} · {pr['resumen']['materiales']:,} materiales",
+              "columnas", g, tono, estado,
+              leyenda=[("col-sube", "El mes sube"), ("col-baja", "El mes baja"), ("linea-ipu", "IPU acumulado del año")],
+              nota="Precio de compra (MB51) de cada mes contra el mismo mes del año anterior; la línea acumula desde enero.")
+
+    # 7. Cuentas por pagar: PMP del año y su evolución.
+    cx = _cat_cuentas(sin_filtros, categoria, tiene_inventario)["cx"]
+    titulo = "Plazo medio de pago"
+    if not cx["pmp_anios"]:
+        panel("cuentas", titulo, "—", "", "", None, vacio="Sin compras registradas en esta categoría.")
+    else:
+        ultimo = cx["pmp_anios"][-1]
+        estado = f"{ultimo['diferencia']:+.0f} días vs {ultimo['anio'] - 1}" if ultimo["diferencia"] is not None else ""
+        serie = cx["pmp_serie"][-_COMPRAS_MESES:]
+        panel("cuentas", titulo, f"{ultimo['pmp']:.0f} días",
+              f"Compras de {ultimo['anio']}"
+              + (f" · {cx['pct_60']:.0f}% del valor a 60 días o más" if cx.get("pct_60") is not None else ""),
+              "lineas", charts.lineas_mensuales(
+                  [{"nombre": "PMP", "clase": "serie-0",
+                    "puntos": [(m, v, f"{q.formato_mes_anio(m)}\nPMP: {v:.0f} días") for m, v in serie]}],
+                  _mes_corto, lambda v: f"{v:.0f} d", desde_cero=True, max_etiquetas_eje=8),
+              "neutro", estado, nota="Días de pago pactados en las órdenes de compra, ponderados por valor (mes a mes).")
+
+    # Paneles de media página en número impar: el último ocupa el ancho
+    # completo (si no, queda solo en su fila con un hueco al lado).
+    medios = [p for p in paneles if not p["ancho"]]
+    if len(medios) % 2:
+        medios[-1]["ancho"] = True
+    return {"paneles": paneles, "criticos_en_riesgo": criticos_en_riesgo}
+
+
+# Pestaña -> (plantilla, función de contexto).
+_CONTENIDO_ZONA_CATEGORIA = {
+    "indicadores": ("gestion/categoria/_indicadores.html", _cat_indicadores),
+    "compras": ("gestion/categoria/_compras.html", _cat_compras),
+    "inventario": ("gestion/categoria/_inventario.html", _cat_inventario),
+    "abastecimiento": ("gestion/categoria/_abastecimiento.html", _cat_abastecimiento),
+    "precios": ("gestion/categoria/_precios.html", _cat_precios),
+    "cuentas": ("gestion/categoria/_cuentas.html", _cat_cuentas),
+}
+
+
+def _html_zona_categoria(request, categoria, slug, zona, tiene_inventario, contexto=None):
+    plantilla, funcion = _CONTENIDO_ZONA_CATEGORIA[zona]
+    if contexto is None:
+        contexto = funcion(request, categoria, tiene_inventario)
+    return render_to_string(plantilla, {**contexto, "categoria": categoria, "slug": slug}, request=request)
+
+
+@login_required
+def categoria_detalle(request, slug):
+    categorias_nav, categorias = _construir_nav(slug)
+    mapa_slug = {_slug(c): c for c in categorias}
+    categoria = mapa_slug.get(slug)
+    if categoria is None:
+        raise Http404("Categoría no encontrada")
+
+    fechas_inv = q.fechas_inventario_disponibles()
+    sin_datos = not fechas_inv and not q.anios_compras_disponibles()
+    # Categorías que alguna vez tienen inventario (CAPEX, Servicios Administrativos
+    # y Servicios Industriales son solo de compras/servicios y nunca lo tienen):
+    # sin pestaña Inventario ni Fill Rate.
+    tiene_inventario = bool(fechas_inv) and categoria in set(q.categorias_inventario_disponibles())
+    zonas = _zonas_categoria(categoria, tiene_inventario)
+
+    # Una pestaña (?_zona=) o la pestaña que contiene una sección (?_seccion=,
+    # al cambiar un filtro): solo ese pedazo de HTML.
+    zona, seccion = request.GET.get("_zona"), request.GET.get("_seccion")
+    if zona or seccion:
+        if not zona:
+            zona = next((z["clave"] for z in zonas if seccion in z["secciones"].split()), "")
+        if sin_datos or zona not in {z["clave"] for z in zonas}:
+            return HttpResponse("")
+        return HttpResponse(_html_zona_categoria(request, categoria, slug, zona, tiene_inventario))
+
+    contexto = {"categoria": categoria, "categorias_nav": categorias_nav, "slug": slug}
+    if sin_datos:
+        contexto["sin_datos"] = True
+        return render(request, "gestion/categoria_detalle.html", contexto)
+    indicadores = _cat_indicadores(request, categoria, tiene_inventario)
+    contexto.update({
+        "zonas": zonas,
+        "indicadores_html": mark_safe(_html_zona_categoria(request, categoria, slug, "indicadores",
+                                                           tiene_inventario, indicadores)),
+        "total_criticos_en_riesgo": indicadores["criticos_en_riesgo"],
+    })
     return render(request, "gestion/categoria_detalle.html", contexto)
 
 

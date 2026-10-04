@@ -1,0 +1,81 @@
+{% load dashboard_extras %}
+{# Un panel de la pestaña Indicadores (p: cifra, estado, gráfico, leyenda y nota; i: su orden, para la entrada en cascada). Lo usan Planificación (_indicadores.html) y las categorías (categoria/_indicadores.html). #}
+<article class="panel-indicador{% if p.ancho %} panel-ancho{% endif %}" style="--i: {{ i }};">
+  <header class="panel-cabecera">
+    <div class="panel-titulos">
+      <span class="panel-zona">{{ p.zona_nombre }}</span>
+      <h2>{{ p.titulo }}</h2>
+    </div>
+    <button type="button" class="btn-link btn-ir-zona" data-ir-zona="{{ p.zona }}">Ver detalle <span aria-hidden="true">→</span></button>
+  </header>
+  <div class="panel-resultado">
+    <span class="panel-cifra">{{ p.cifra }}</span>
+    {% if p.estado %}<span class="pill-estado estado-{{ p.tono|default:'neutro' }}">{{ p.estado }}</span>{% endif %}
+    <span class="panel-sub">{{ p.sub }}</span>
+  </div>
+
+  {% with g=p.g %}
+  {% if not g %}
+    <p class="texto-tenue panel-vacio">{{ p.vacio|default:"Sin datos para graficar con los filtros de esta pestaña." }}</p>
+  {% elif p.tipo == "escala" %}
+    <div class="escala">
+      {% for f in g.filas %}
+        <div class="escala-fila con-detalle" data-detalle="{{ f.detalle }}">
+          <span class="escala-nombre">{{ f.nombre }} <span class="escala-sub">{{ f.sub }}</span></span>
+          <span class="escala-pista">
+            {% if g.banda %}<span class="escala-banda" style="left:{{ g.banda.izq }}%; width:{{ g.banda.ancho }}%;"></span>{% endif %}
+            {% for r in g.referencias %}<span class="escala-ref" style="left:{{ r.pos }}%;"></span>{% endfor %}
+            <span class="escala-barra tono-{{ f.clase }}{% if f.negativa %} escala-negativa{% endif %}{% if f.recortada %} escala-recortada{% endif %}" style="left:{{ f.izq }}%; width:{{ f.ancho }}%;"></span>
+          </span>
+          <span class="escala-valor">{{ f.texto }}</span>
+        </div>
+      {% endfor %}
+      <div class="escala-fila escala-eje" aria-hidden="true">
+        <span></span>
+        <span class="escala-pista">{% for r in g.referencias %}{% if r.texto %}<span class="escala-ref-texto" style="left:{{ r.pos }}%;">{{ r.texto }}</span>{% endif %}{% endfor %}</span>
+        <span></span>
+      </div>
+    </div>
+  {% elif p.tipo == "columnas" %}
+    {% include "gestion/planificacion/_grafico_columnas.html" with g=g titulo=p.titulo %}
+  {% elif p.tipo == "pilas" %}
+    <div class="escala">
+      {% for f in g.filas %}
+        <div class="escala-fila pila-fila">
+          <span class="escala-nombre">{{ f.nombre }} <span class="escala-sub">{{ f.sub }}</span></span>
+          <span class="pila-pista">{% for s in f.segmentos %}<span class="pila-segmento {{ s.clase }} con-detalle" style="width:{{ s.ancho }}%;" data-detalle="{{ s.detalle }}">{{ s.texto }}</span>{% endfor %}</span>
+          <span class="escala-valor">{{ f.texto }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% elif p.tipo == "lineas" %}
+    <div class="chart-scroll">
+    <div class="chart-wrap chart-lineas">
+      <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="{{ p.titulo }}">
+        {% for m in g.grilla %}<line class="grilla-lineas" x1="{{ g.x0 }}" y1="{{ m.y }}" x2="{{ g.x1 }}" y2="{{ m.y }}"></line>{% endfor %}
+        {% for r in g.referencias %}<line class="referencia-lineas {{ r.clase }}" x1="{{ g.x0 }}" y1="{{ r.y }}" x2="{{ g.x1 }}" y2="{{ r.y }}"></line>{% endfor %}
+        {% for s in g.series %}
+          {% for t in s.tramos %}<path class="linea-serie {{ s.clase }}" d="{{ t }}"></path>{% endfor %}
+          {% for pt in s.puntos %}
+            <circle class="punto-serie {{ s.clase }}" cx="{{ pt.x }}" cy="{{ pt.y }}" r="3"></circle>
+            <circle class="zona-detalle con-detalle" cx="{{ pt.x }}" cy="{{ pt.y }}" r="9" data-detalle="{{ pt.detalle }}"></circle>
+          {% endfor %}
+        {% endfor %}
+      </svg>
+      {% for m in g.grilla %}<span class="etiqueta-grilla" style="top:{{ m.y_pct }}%;">{{ m.texto }}</span>{% endfor %}
+      {% for s in g.series %}{% for pt in s.puntos %}{% if pt.etiqueta %}
+        <span class="etiqueta-valor etiqueta-{{ s.clase }}{% if pt.derecha %} etiqueta-derecha{% endif %}" style="left:{{ pt.x_pct }}%; top:{{ pt.y_pct }}%;">{{ pt.etiqueta }}</span>
+      {% endif %}{% endfor %}{% endfor %}
+      {% for e in g.eje %}<span class="etiqueta-mes" style="left:{{ e.x_pct }}%;">{{ e.texto }}</span>{% endfor %}
+    </div>
+    </div>
+  {% endif %}
+  {% endwith %}
+
+  <footer class="panel-pie">
+    {% if p.leyenda and p.g %}
+      <div class="leyenda-curva">{% for clase, texto in p.leyenda %}<span class="leyenda-item"><span class="leyenda-marca marca-{{ clase }}"></span>{{ texto }}</span>{% endfor %}</div>
+    {% endif %}
+    {% if p.nota %}<p class="panel-nota">{{ p.nota }}</p>{% endif %}
+  </footer>
+</article>
