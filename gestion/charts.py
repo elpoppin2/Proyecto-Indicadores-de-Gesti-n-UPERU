@@ -923,6 +923,62 @@ def _separar_etiquetas(etiquetas, alto_linea=13, ancho_letra=5.6):
     return etiquetas
 
 
+def dispersion_pago(puntos, referencia, formato_x, ancho=960, alto=380, pad_izq=48, pad_der=40, pad_arr=16,
+                    pad_abj=26, etiquetados=8):
+    """Monto comprado (eje x, escala logarítmica: los montos van de miles a
+    decenas de millones) vs días de pago (eje y) de cada proveedor, con la
+    línea punteada del PMP de la categoría (`referencia`): un punto por
+    debajo se paga antes que el promedio, uno por encima después. Solo los
+    `etiquetados` proveedores de más monto llevan su nombre. `puntos`: dicts
+    con nombre (texto de la etiqueta), monto, dias y detalle; `formato_x`:
+    monto -> texto de las marcas del eje x. Usado por Cuentas por pagar."""
+    puntos = [p for p in puntos if p["monto"] > 0]
+    if not puntos:
+        return None
+    logs = [math.log10(p["monto"]) for p in puntos]
+    x_lo, x_hi = math.floor(min(logs)), math.ceil(max(logs))
+    if x_hi - x_lo < 2:
+        x_lo, x_hi = x_lo - 1, x_hi + (1 if x_hi - x_lo < 1 else 0)
+    y_hi = max([p["dias"] for p in puntos] + [referencia, 30.0]) * 1.12
+    izq, der, arr, abj = pad_izq, ancho - pad_der, pad_arr, alto - pad_abj
+
+    def x_de(monto):
+        return izq + (der - izq) * (math.log10(monto) - x_lo) / (x_hi - x_lo)
+
+    def y_de(dias):
+        return abj - (abj - arr) * dias / y_hi
+
+    mas_grandes = {id(p) for p in sorted(puntos, key=lambda p: -p["monto"])[:etiquetados]}
+    marcas, etiquetas = [], []
+    for p in sorted(puntos, key=lambda p: p["monto"]):
+        x, y = x_de(p["monto"]), y_de(p["dias"])
+        sentido = "antes" if p["dias"] < referencia - 0.5 else ("despues" if p["dias"] > referencia + 0.5 else "igual")
+        marca = {"x": f"{x:.1f}", "y": f"{y:.1f}", "sentido": sentido, "detalle": p["detalle"],
+                 "grande": id(p) in mas_grandes}
+        marcas.append(marca)
+        if marca["grande"]:
+            alineacion = "fin" if x > izq + (der - izq) * 0.7 else ""
+            etiqueta = {"x": x, "y": y, "texto": p["nombre"], "alineacion": alineacion}
+            etiquetas.append(etiqueta)
+            marca["_etiqueta"] = etiqueta
+    _separar_etiquetas(etiquetas)
+    for m in marcas:
+        e = m.pop("_etiqueta", None)
+        if e:
+            m.update({"nombre": e["texto"], "alineacion": e["alineacion"],
+                      "x_pct": f"{e['x'] / ancho * 100:.2f}", "y_pct": f"{e['y_final'] / alto * 100:.2f}"})
+    return {
+        "ancho": ancho, "alto": alto, "marcas": marcas,
+        "referencia": {"y": f"{y_de(referencia):.1f}", "y_pct": f"{y_de(referencia) / alto * 100:.2f}"},
+        "grilla_y": [{"y": f"{y_de(v):.1f}", "y_pct": f"{y_de(v) / alto * 100:.2f}", "texto": f"{v:,.0f} d"}
+                     for v in _marcas_eje(0, y_hi) if v <= y_hi],
+        "grilla_x": [{"x": f"{x_de(10 ** k):.1f}", "x_pct": f"{x_de(10 ** k) / ancho * 100:.2f}", "texto": formato_x(10 ** k)}
+                     for k in range(x_lo, x_hi + 1)],
+        "base": f"{abj:.1f}", "arriba": f"{arr:.1f}", "izq": f"{izq:.1f}", "der": f"{der:.1f}",
+        "izq_pct": f"{izq / ancho * 100:.2f}",
+    }
+
+
 def dispersion_energia(puntos, costo_referencia, ancho=960, alto=360, pad_izq=48, pad_der=18, pad_arr=14, pad_abj=24):
     """PCS (eje x, kcal/kg) vs precio efectivo (eje y, S/ por T) de cada
     proveedor o material de carbón, con una burbuja proporcional a las

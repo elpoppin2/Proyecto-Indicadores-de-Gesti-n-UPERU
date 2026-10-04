@@ -496,6 +496,17 @@ th.col-barra, td.col-barra { min-width: 170px; text-align: center; }
   text-shadow: 0 0 3px var(--surface), 0 0 3px var(--surface);
 }
 .etiqueta-burbuja.alinear-fin { transform: translate(calc(-100% - var(--desplazamiento)), -50%); }
+/* Monto vs días de pago (Cuentas por pagar): rojo = se paga antes que el
+   PMP de la categoría; gris = en el PMP o después. Los de más monto, más
+   grandes y con nombre. Pedido por el usuario. */
+.chart-pago .punto-pago { stroke: var(--surface); stroke-width: 1.5; fill-opacity: .6; cursor: default; }
+.chart-pago .punto-grande { fill-opacity: .85; }
+.chart-pago .punto-pago:hover { fill-opacity: 1; stroke: var(--ink); }
+.pago-antes { fill: var(--down); background: var(--down); }
+.pago-despues, .pago-igual { fill: var(--table-header); background: var(--table-header); }
+.leyenda-marca.pago-antes, .leyenda-marca.pago-despues { width: 10px; height: 10px; border-radius: 50%; opacity: .75; }
+.chart-pago .linea-iso { stroke-width: 1.6; }
+.bloque .nota.nota-lectura { margin-top: 0; color: var(--ink); }
 .barra-divergente .barra-barato, .barra-divergente .barra-caro { position: absolute; top: 3px; height: 12px; opacity: .55; }
 .barra-divergente .barra-barato { right: 50%; background: var(--up); border-radius: 3px 0 0 3px; }
 .barra-divergente .barra-caro { left: 50%; background: var(--down); border-radius: 0 3px 3px 0; }

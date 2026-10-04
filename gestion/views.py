@@ -3150,7 +3150,8 @@ _ZONAS_CATEGORIA = [
     ("abastecimiento", "Abastecimiento S&OP", "Plan vs ingresos por centro",
      ["sec-sop-categoria", "sec-sop-mensual"], "sop"),
     ("precios", "Precios e IPU", "Precio de compra e inflación", ["sec-ipu-categoria"], None),
-    ("cuentas", "Cuentas por pagar", "Plazo de pago (PMP)", ["bloque-cuentas", "sec-pmp", "sec-plazos", "sec-proveedores-cxp", "sec-deuda"], None),
+    ("cuentas", "Cuentas por pagar", "Plazo de pago (PMP)",
+     ["bloque-cuentas", "sec-pmp", "sec-plazos", "sec-dispersion-cxp", "sec-proveedores-cxp", "sec-deuda"], None),
 ]
 
 # Meses de la gráfica Compras por mes (pestaña Compras y su panel en Indicadores).
@@ -3590,7 +3591,34 @@ def _cat_cuentas(request, categoria, tiene_inventario):
             "condicion": principal.loc[nombre, "condicion_pago"] or "—",
             "participacion": float(r["valor"]) / total * 100,
         } for nombre, r in agr.iterrows()]
+
+        # Dispersión monto vs días de pago (pedido por el usuario), con el
+        # PMP de la categoría como referencia, y su lectura: cuánto se paga
+        # antes que el promedio y a qué proveedores grandes (dónde negociar
+        # plazo). "Grandes" = los 15 de más monto.
+        referencia = cx["pmp_anio"]
+        cx["dispersion"] = charts.dispersion_pago(
+            [{"nombre": _nombre_corto(p["proveedor"]), "monto": p["valor"], "dias": p["pmp"],
+              "detalle": (f"{p['proveedor']}\nCompras: S/ {p['valor']:,.0f} ({p['participacion']:.1f}% de la categoría)\n"
+                          f"Días de pago: {p['pmp']:.0f} (PMP de la categoría: {referencia:.0f})\n"
+                          f"Condición principal: {p['condicion']} · {p['pedidos']:,} pedidos")}
+             for p in cx["proveedores"]],
+            referencia, _soles_marca,
+        )
+        antes = [p for p in cx["proveedores"] if p["pmp"] < referencia - 0.5]
+        cx["antes"] = {"proveedores": len(antes), "valor": sum(p["valor"] for p in antes),
+                       "pct": sum(p["valor"] for p in antes) / total * 100}
+        cx["oportunidades"] = [p for p in cx["proveedores"][:15] if p["pmp"] < referencia - 5][:5]
     return {"cx": cx}
+
+
+def _soles_marca(valor):
+    """Marcas del eje de montos en escala logarítmica: S/ 10K, S/ 1M."""
+    if valor >= 1e6:
+        return f"S/ {valor / 1e6:,.0f}M"
+    if valor >= 1e3:
+        return f"S/ {valor / 1e3:,.0f}K"
+    return f"S/ {valor:,.0f}"
 
 
 def _cat_indicadores(request, categoria, tiene_inventario):

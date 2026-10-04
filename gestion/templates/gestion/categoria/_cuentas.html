@@ -113,6 +113,54 @@
     {% endif %}
   </section>
 
+  <section class="bloque" id="sec-dispersion-cxp">
+    <div class="bloque-cabecera">
+      <h2>Monto vs días de pago · {{ cx.texto }}</h2>
+      <button type="button" class="btn-link" data-imprimir="sec-dispersion-cxp">Descargar / Imprimir</button>
+    </div>
+    <p class="nota">Un punto por proveedor: cuánto se le compró en el período (eje x, en escala logarítmica, cada marca es 10 veces la anterior) y en cuántos días se le paga (eje y). La línea punteada es el PMP de la categoría: los puntos rojos, debajo, se pagan antes que el promedio. Los de más monto llevan su nombre; pasa el mouse por cualquier punto para ver su detalle.</p>
+    {% with g=cx.dispersion %}
+    {% if g %}
+      <div class="metricas">
+        <div class="metrica"><span class="valor">{{ cx.pmp_anio|numero:0 }} <small class="prefijo-ipu">días</small></span><span class="etiqueta">PMP de la categoría (línea punteada)</span></div>
+        <div class="metrica"><span class="valor">{{ cx.antes.proveedores|numero }}</span><span class="etiqueta">Proveedores que se pagan antes que el promedio</span></div>
+        <div class="metrica"><span class="valor">{{ cx.antes.pct|numero:1 }}%</span><span class="etiqueta">Del valor comprado se paga antes que el promedio ({{ cx.antes.valor|soles }})</span></div>
+      </div>
+      <div class="chart-scroll">
+      <div class="chart-wrap chart-energia chart-pago">
+        <span class="titulo-eje-y">Días de pago</span>
+        <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Monto comprado contra días de pago de cada proveedor, con la línea del PMP de la categoría">
+          {% for t in g.grilla_y %}<line class="grilla" x1="{{ g.izq }}" y1="{{ t.y }}" x2="{{ g.der }}" y2="{{ t.y }}"></line>{% endfor %}
+          {% for t in g.grilla_x %}<line class="grilla" x1="{{ t.x }}" y1="{{ g.arriba }}" x2="{{ t.x }}" y2="{{ g.base }}"></line>{% endfor %}
+          <line class="eje" x1="{{ g.izq }}" y1="{{ g.base }}" x2="{{ g.der }}" y2="{{ g.base }}"></line>
+          <line class="linea-iso" x1="{{ g.izq }}" y1="{{ g.referencia.y }}" x2="{{ g.der }}" y2="{{ g.referencia.y }}"></line>
+          {% for m in g.marcas %}
+            <circle class="punto-pago pago-{{ m.sentido }}{% if m.grande %} punto-grande{% endif %} con-detalle" cx="{{ m.x }}" cy="{{ m.y }}" r="{% if m.grande %}6.5{% else %}4.5{% endif %}" data-detalle="{{ m.detalle }}"></circle>
+          {% endfor %}
+        </svg>
+        {% for t in g.grilla_y %}<span class="etiqueta-eje-y" style="top:{{ t.y_pct }}%; width:{{ g.izq_pct }}%;">{{ t.texto }}</span>{% endfor %}
+        {% for t in g.grilla_x %}<span class="etiqueta-mes" style="left:{{ t.x_pct }}%;">{{ t.texto }}</span>{% endfor %}
+        {% for m in g.marcas %}{% if m.nombre %}
+          <span class="etiqueta-burbuja{% if m.alineacion %} alinear-{{ m.alineacion }}{% endif %}" style="left:{{ m.x_pct }}%; top:{{ m.y_pct }}%; --desplazamiento:10px;">{{ m.nombre }}</span>
+        {% endif %}{% endfor %}
+      </div>
+      </div>
+      <div class="leyenda-curva">
+        <span class="leyenda-item"><span class="leyenda-marca pago-antes"></span>Se paga antes que el PMP de la categoría</span>
+        <span class="leyenda-item"><span class="leyenda-marca pago-despues"></span>Se paga en el PMP o después</span>
+        <span class="leyenda-item"><span class="leyenda-marca leyenda-meta"></span>PMP de la categoría ({{ cx.pmp_anio|numero:0 }} días)</span>
+        <span class="leyenda-item texto-tenue">Eje x: monto comprado (S/, escala logarítmica)</span>
+      </div>
+      {% if cx.oportunidades %}
+        <p class="nota nota-lectura"><strong>Dónde negociar plazo:</strong> entre los 15 proveedores de más monto, se pagan antes que el promedio
+          {% for p in cx.oportunidades %}{{ p.proveedor }} ({{ p.valor|soles }}, {{ p.pmp|numero:0 }} días){% if not forloop.last %}; {% endif %}{% endfor %}.</p>
+      {% endif %}
+    {% else %}
+      <p class="aviso">Sin compras de esta categoría en {{ cx.texto }}.</p>
+    {% endif %}
+    {% endwith %}
+  </section>
+
   <section class="bloque" id="sec-proveedores-cxp">
     <h2>Por proveedor · {{ cx.texto }}</h2>
     <p class="nota">Valor comprado a cada proveedor en el período, su plazo medio de pago (días ponderados por valor) y la condición de pago con la que más se le compró. Ordena con clic en el título de cada columna.</p>
