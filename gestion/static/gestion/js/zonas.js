@@ -36,16 +36,32 @@
    - Una zona que se carga después (o en el estático, que se dibuja al
      abrirla) se alinea al mes vigente (window.uperuAlinearMes). */
 (function () {
-  var MESES = ['mes_indicadores', 'mes_plan', 'mes_detalle', 'mes_consumo', 'mes_factor', 'mes_cobertura', 'sop_proyeccion'];
-  var mesVigente = null;
+  /* Grupos de filtros que se alinean entre sí. El primero es el mes de
+     Planificación; los demás, los de las pestañas de cada categoría
+     (pedido del usuario: "los segmentadores no están bien relacionados"):
+     el período de Compras y el de Cuentas por pagar van juntos, y la
+     Familia y el Centro de Inventario con los de Precios e IPU. */
+  var GRUPOS = [
+    ['mes_indicadores', 'mes_plan', 'mes_detalle', 'mes_consumo', 'mes_factor', 'mes_cobertura', 'sop_proyeccion'],
+    ['anio_compras', 'anio_cxp'],
+    ['mes_compras_desde', 'mes_cxp_desde'],
+    ['mes_compras_hasta', 'mes_cxp_hasta'],
+    ['familia_inv', 'familia_ipu'],
+    ['centro_inv', 'centro_ipu']
+  ];
+  var vigentes = [];
   var estatico = function () { return !!window.uperuCargarZona; };
 
   function tieneOpcion(select, valor) {
     return Array.prototype.some.call(select.options, function (o) { return o.value === valor; });
   }
+  function grupoDe(id) {
+    for (var i = 0; i < GRUPOS.length; i++) if (GRUPOS[i].indexOf(id) !== -1) return i;
+    return -1;
+  }
 
-  function alinear(raiz, valor, origen) {
-    MESES.forEach(function (id) {
+  function alinear(raiz, grupo, valor, origen) {
+    GRUPOS[grupo].forEach(function (id) {
       var select = raiz.querySelector ? raiz.querySelector('select#' + id) : null;
       if (!select || select === origen || select.value === valor || !tieneOpcion(select, valor)) return;
       select.value = valor;
@@ -55,24 +71,25 @@
 
   document.addEventListener('change', function (evento) {
     var select = evento.target;
-    if (!evento.isTrusted || !select || MESES.indexOf(select.id) === -1 || !select.value) return;
-    mesVigente = select.value;
+    var grupo = select && select.id ? grupoDe(select.id) : -1;
+    if (!evento.isTrusted || grupo === -1 || !select.value) return;
+    vigentes[grupo] = select.value;
     if (!estatico()) {
-      // En la URL: el de cada sección ya cargada solo si tiene ese mes (si
+      // En la URL: el de cada sección ya cargada solo si tiene ese valor (si
       // no, conserva el suyo); el de las que no se cargaron, siempre.
       var params = new URLSearchParams(window.location.search);
-      MESES.forEach(function (id) {
+      GRUPOS[grupo].forEach(function (id) {
         var otro = document.getElementById(id);
-        if (!otro || otro === select || tieneOpcion(otro, mesVigente)) params.set(id, mesVigente);
+        if (!otro || otro === select || tieneOpcion(otro, select.value)) params.set(id, select.value);
       });
       var qs = params.toString();
       window.history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : '') + window.location.hash);
     }
-    alinear(document, mesVigente, select);
+    alinear(document, grupo, select.value, select);
   }, true);
 
   window.uperuAlinearMes = function (raiz) {
-    if (mesVigente) alinear(raiz, mesVigente, null);
+    vigentes.forEach(function (valor, grupo) { if (valor) alinear(raiz, grupo, valor, null); });
   };
 })();
 

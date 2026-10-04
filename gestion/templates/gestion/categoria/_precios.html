@@ -31,6 +31,14 @@
       </select>
     </div>
     <div class="campo">
+      <label for="familia_ipu">Familia</label>
+      <select name="familia_ipu" id="familia_ipu">
+        {% for f in pr.familias %}
+          <option value="{{ f }}" {% if f == pr.familia_sel %}selected{% endif %}>{{ f }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
       <label for="centro_ipu">Centro</label>
       <select name="centro_ipu" id="centro_ipu">
         {% for c in pr.centros %}
@@ -38,6 +46,7 @@
         {% endfor %}
       </select>
     </div>
+    {% include "gestion/planificacion/_filtro_material.html" with nombre="material_ipu" opciones=pr.materiales seleccion=pr.material_sel %}
     <noscript><button type="submit">Aplicar</button></noscript>
   </form>
 
@@ -72,7 +81,59 @@
       </div>
     {% endif %}
 
-    {% for t in pr.tablas %}
+    {% if pr.grafico_precio %}
+      {% with g=pr.grafico_precio %}
+        <h3 class="subtitulo">Precio del mes vs precio base · {{ pr.un_material }}</h3>
+        <div class="chart-scroll">
+        <div class="chart-wrap chart-precio">
+          <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Precio del mes contra el precio base">
+            <line class="base-barras" x1="0" y1="{{ g.base_barras }}" x2="{{ g.ancho }}" y2="{{ g.base_barras }}"></line>
+            {% for b in g.barras %}
+              <rect class="barra-toneladas con-detalle" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.ancho }}" height="{{ b.alto }}" rx="1.5" data-detalle="{{ b.titulo }}"></rect>
+            {% endfor %}
+            {% if g.linea_base %}<path class="linea-precio-base" d="{{ g.linea_base }}"></path>{% endif %}
+            <path class="linea" d="{{ g.linea }}"></path>
+            {% for pt in g.puntos %}
+              <circle class="punto" cx="{{ pt.x }}" cy="{{ pt.y }}" r="3"></circle>
+              <circle class="zona-detalle con-detalle" cx="{{ pt.x }}" cy="{{ pt.y }}" r="9" data-detalle="{{ pt.titulo }}"></circle>
+            {% endfor %}
+          </svg>
+          {% for pt in g.puntos %}
+            {% if pt.etiqueta %}<span class="etiqueta-valor" style="left:{{ pt.x_pct }}%; top:{{ pt.y_pct }}%;">{{ pt.etiqueta }}</span>{% endif %}
+          {% endfor %}
+          {% for e in g.eje %}<span class="etiqueta-mes" style="left:{{ e.x_pct }}%;">{{ e.texto }}</span>{% endfor %}
+        </div>
+        </div>
+        <div class="leyenda-curva">
+          <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>Precio del mes</span>
+          <span class="leyenda-item"><span class="leyenda-marca leyenda-meta"></span>Precio base contra el que se compara</span>
+          <span class="leyenda-item"><span class="leyenda-marca barra-toneladas"></span>Cantidad comprada en el mes</span>
+        </div>
+      {% endwith %}
+      <h3 class="subtitulo">Detalle de la comparación</h3>
+      <div class="tabla-scroll">
+        <table>
+          <thead>
+            <tr><th>Mes</th><th class="num">Cantidad</th><th class="num">Precio</th><th>Comparado contra</th><th class="num">Precio base</th><th class="num">Variación</th><th class="num">Bolsa (S/)</th></tr>
+          </thead>
+          <tbody>
+            {% for d in pr.detalle %}
+              <tr>
+                <td>{{ d.mes }}</td>
+                <td class="num">{{ d.cantidad|numero:0 }}</td>
+                <td class="num">{{ d.precio|numero:2 }}</td>
+                <td>{{ d.base }}</td>
+                <td class="num">{{ d.precio_base|numero:2 }}</td>
+                <td class="num {% if d.pct > 0 %}dato-negativo{% elif d.pct < 0 %}dato-positivo{% endif %}">{% if d.pct > 0 %}+{% endif %}{{ d.pct|numero:1 }}%</td>
+                <td class="num {% if d.atipica %}texto-tenue{% elif d.bolsa > 0 %}dato-negativo{% elif d.bolsa < 0 %}dato-positivo{% endif %}">{{ d.bolsa|numero:0 }}{% if d.atipica %} <span class="marca-atipica" title="Atípica: no suma en la bolsa">!</span>{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+
+    {% if not pr.grafico_precio %}{% for t in pr.tablas %}
       <h3 class="subtitulo">{{ t.titulo }}</h3>
       {% if t.filas %}
         <div class="tabla-scroll">
@@ -103,7 +164,7 @@
       {% else %}
         <p class="aviso">{{ t.vacio }}</p>
       {% endif %}
-    {% endfor %}
+    {% endfor %}{% endif %}
   {% endif %}
   {% endwith %}
 </section>

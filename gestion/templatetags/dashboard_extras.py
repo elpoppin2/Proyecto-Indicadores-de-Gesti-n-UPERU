@@ -1,3 +1,4 @@
+import datetime
 import sys
 from pathlib import Path
 
@@ -31,6 +32,18 @@ def soles(valor):
 @register.filter
 def mesanio(fecha):
     return q.formato_mes_anio(fecha) if fecha else ""
+
+
+@register.filter
+def corte(fecha):
+    """Corte de inventario para los selectores: el mes ("Septiembre - 2026")
+    si es fin de mes, o el mes y el día del último corte si el mes sigue en
+    curso ("Octubre - 2026 (al 04/10)"). Ver views._cortes_inventario."""
+    if not fecha:
+        return ""
+    texto = q.formato_mes_anio(fecha)
+    siguiente = fecha + datetime.timedelta(days=1)
+    return texto if siguiente.month != fecha.month else f"{texto} (al {fecha:%d/%m})"
 
 
 @register.filter

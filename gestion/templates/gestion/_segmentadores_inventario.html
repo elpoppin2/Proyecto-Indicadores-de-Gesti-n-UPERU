@@ -1,0 +1,35 @@
+{% load dashboard_extras %}
+{# Segmentadores del bloque Inventario (views._segmentadores_inventario): Corte, Familia y Centro en cascada, para todas las secciones del bloque `objetivo`. Lo usan el Overview y la pestaña Inventario de cada categoría. #}
+<div class="barra-segmentadores">
+  <div class="segmentadores-cabecera">
+    <h2 class="segmentadores-titulo">Filtros de inventario</h2>
+    <p class="segmentadores-nota">Aplican a todas las secciones de este bloque. Corte: <strong>{{ si.mes|corte }}</strong>{% if si.texto_filtros %} · <strong>{{ si.texto_filtros }}</strong>{% endif %}.</p>
+  </div>
+  <form class="filtros" method="get" data-target="{{ objetivo }}">
+    <div class="campo">
+      <label for="mes_inv">Corte de inventario</label>
+      <select name="mes_inv" id="mes_inv">
+        {% for f in si.cortes %}
+          <option value="{{ f|fechaiso }}" {% if f == si.mes %}selected{% endif %}>{{ f|corte }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="familia_inv">Familia</label>
+      <select name="familia_inv" id="familia_inv">
+        {% for f in si.familias %}
+          <option value="{{ f }}" {% if f == si.familia_sel %}selected{% endif %}>{{ f }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="centro_inv">Centro</label>
+      <select name="centro_inv" id="centro_inv">
+        {% for c in si.centros %}
+          <option value="{{ c }}" {% if c == si.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+</div>

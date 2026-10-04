@@ -991,6 +991,33 @@ def compras_por_categoria_y_proveedor_rango(fecha_inicio, fecha_fin):
     """, [fecha_inicio, fecha_fin])
 
 
+def compras_por_categoria_proveedor_condicion_rango(fecha_inicio, fecha_fin):
+    """Valor de compras por categoría, proveedor (por nombre) y condición de
+    pago en un rango de fecha_documento. Insumo de la tabla Por proveedor de
+    Cuentas por pagar (PMP de cada proveedor y su condición principal)."""
+    return _query(f"""
+        SELECT CASE {CATEGORIA_EFECTIVA_LC}
+                   {_CASE_CONSOLIDACION_CATEGORIAS}
+                   ELSE {CATEGORIA_EFECTIVA_LC}
+               END AS categoria,
+               {PROVEEDOR_EFECTIVO_LC} AS proveedor,
+               lc.condicion_pago AS condicion_pago,
+               SUM({VALOR_COMPRA_EXPR_LC}) AS valor_total,
+               COUNT(DISTINCT lc.doc_compra) AS pedidos
+        FROM gestion_lineacompra lc
+        LEFT JOIN gestion_categoria c ON c.grupo_articulo = lc.grupo_articulo
+        LEFT JOIN gestion_categoriaservicio cs ON cs.grupo_compras = lc.grupo_compras
+        WHERE lc.fecha_documento BETWEEN %s AND %s AND {FILTRO_COMPRAS_VALIDAS_LC}
+              AND {FILTRO_CATEGORIA_VALIDA_LC}
+              AND {PROVEEDOR_EFECTIVO_LC} != ''
+        GROUP BY CASE {CATEGORIA_EFECTIVA_LC}
+                   {_CASE_CONSOLIDACION_CATEGORIAS}
+                   ELSE {CATEGORIA_EFECTIVA_LC}
+               END,
+                 {PROVEEDOR_EFECTIVO_LC}, lc.condicion_pago
+    """, [fecha_inicio, fecha_fin])
+
+
 def _concentracion_proveedores(df, top):
     """Cálculo de concentración de proveedores compartido por
     concentracion_proveedores_por_categoria (año) y su variante _rango (mes)."""
@@ -2580,7 +2607,7 @@ def precios_entrada_materiales():
     combustibles), con el mismo nombre para reusar inflacion_precios e
     ipu_por_mes; "precio" queda en S/ por UMB. Sin filtro de material, la
     consulta recorre todos los 101/102 (~11 s en frío), por eso va en caché."""
-    columnas = ["material_codigo", "texto_breve", "unidad_medida_base", "centro", "categoria", "mes",
+    columnas = ["material_codigo", "texto_breve", "unidad_medida_base", "centro", "categoria", "familia", "mes",
                 "toneladas", "importe", "precio", "entradas", "proveedores"]
     df = _query(f"""
         SELECT material_codigo AS material_codigo, centro AS centro,
@@ -2600,10 +2627,11 @@ def precios_entrada_materiales():
     df = df[(df["toneladas"] > 0) & (df["importe"] > 0)].copy()
     df["precio"] = df["importe"] / df["toneladas"]
     df["mes"] = pd.to_datetime(df["mes"]).dt.date
-    catalogo = catalogo_materiales()[["material_codigo", "texto_breve", "unidad_medida_base", "categoria"]]
+    catalogo = catalogo_materiales()[["material_codigo", "texto_breve", "unidad_medida_base", "categoria", "familia"]]
     df = df.merge(catalogo, on="material_codigo", how="inner")
     df["texto_breve"] = df["texto_breve"].fillna("")
     df["unidad_medida_base"] = df["unidad_medida_base"].fillna("")
+    df["familia"] = df["familia"].fillna("")
     return df[columnas].sort_values(["material_codigo", "centro", "mes"]).reset_index(drop=True)
 
 

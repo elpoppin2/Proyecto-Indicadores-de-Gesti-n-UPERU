@@ -1,0 +1,43 @@
+{% load dashboard_extras %}
+{# Segmentadores del bloque Compras (views._segmentadores_compras): Año, Desde, Hasta y Top de proveedores, para todas las secciones del bloque `objetivo`. Lo usan el Overview y la pestaña Compras de cada categoría. #}
+<div class="barra-segmentadores">
+  <div class="segmentadores-cabecera">
+    <h2 class="segmentadores-titulo">Filtros de compras</h2>
+    <p class="segmentadores-nota">Aplican a todas las secciones de este bloque. Período elegido: <strong>{{ sc.texto }}</strong>.</p>
+  </div>
+  <form class="filtros" method="get" data-target="{{ objetivo }}">
+    <div class="campo">
+      <label for="anio_compras">Año</label>
+      <select name="anio_compras" id="anio_compras">
+        {% for a in sc.anios %}
+          <option value="{{ a }}" {% if a == sc.anio %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="mes_compras_desde">Desde</label>
+      <select name="mes_compras_desde" id="mes_compras_desde">
+        {% for m in sc.rango.opciones_mes %}
+          <option value="{{ m.numero }}" {% if m.numero == sc.rango.mes_desde %}selected{% endif %}>{{ m.nombre }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="mes_compras_hasta">Hasta</label>
+      <select name="mes_compras_hasta" id="mes_compras_hasta">
+        {% for m in sc.rango.opciones_mes %}
+          <option value="{{ m.numero }}" {% if m.numero == sc.rango.mes_hasta %}selected{% endif %}>{{ m.nombre }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="top_compras">Proveedores</label>
+      <select name="top_compras" id="top_compras">
+        {% for t in sc.tops %}
+          <option value="{{ t }}" {% if t == sc.top %}selected{% endif %}>Top {{ t }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+</div>

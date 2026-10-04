@@ -40,206 +40,120 @@
   {% if total_criticos_en_riesgo %}
     <div class="alerta">
       <span class="alerta-num">{{ total_criticos_en_riesgo }}</span>
-      <span>material{{ total_criticos_en_riesgo|pluralize:"es" }} crítico{{ total_criticos_en_riesgo|pluralize }} con menos de 1 mes de cobertura — ver "Cobertura de Materiales Críticos" más abajo.</span>
+      <span>material{{ total_criticos_en_riesgo|pluralize:"es" }} crítico{{ total_criticos_en_riesgo|pluralize }} con menos de 1 mes de cobertura — ver <a href="#sec-criticos">Cobertura de Materiales Críticos</a>.</span>
     </div>
   {% endif %}
+
 
   {% if sin_datos %}
     <p class="aviso">Todavía no hay datos cargados.</p>
   {% else %}
 
-    <section class="bloque" id="sec-compras">
-      <h2>Compras — todas las categorías</h2>
-      <p class="nota">"Var. YoY" compara el valor del rango elegido contra los mismos meses del año anterior.</p>
-      <form class="filtros" method="get" data-target="sec-compras">
-        <div class="campo">
-          <label for="anio_compras">Año</label>
-          <select name="anio_compras" id="anio_compras">
-            {% for a in anios_compras reversed %}
-              <option value="{{ a }}" {% if a == anio_sel %}selected{% endif %}>{{ a }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        {% if rango_compras %}
-          <div class="campo">
-            <label for="mes_compras_desde">Desde</label>
-            <select name="mes_compras_desde" id="mes_compras_desde">
-              {% for m in rango_compras.opciones_mes %}
-                <option value="{{ m.numero }}" {% if m.numero == rango_compras.mes_desde %}selected{% endif %}>{{ m.nombre }}</option>
-              {% endfor %}
-            </select>
+    {# Bloque Compras: los segmentadores de arriba (Año, Desde, Hasta, Top) rigen Compras, Pareto, Fill Rate y Lead Time; al cambiarlos se vuelve a pedir todo el bloque. Pedido por el usuario: antes cada sección tenía su propio Desde/Hasta y no estaban relacionados. #}
+    <div class="bloque-segmentado" id="bloque-compras">
+      {% if sc %}{% include "gestion/_segmentadores_compras.html" with sc=sc objetivo="bloque-compras" %}{% endif %}
+
+      <section class="bloque" id="sec-compras">
+        <h2>Compras — todas las categorías · {{ sc.texto }}</h2>
+        <p class="nota">"Var. YoY" compara el valor del período contra los mismos meses del año anterior. Haz clic en una categoría para ver su detalle con el mismo período.</p>
+        {% if compras %}
+          <div class="tabla-scroll">
+            <table>
+              <thead>
+                <tr><th>Categoría</th><th class="num">Valor</th><th class="num">Bajo contrato</th><th class="num">PMP por O.C</th><th class="num">Var. YoY</th></tr>
+              </thead>
+              <tbody>
+                {% for fila in compras %}
+                  <tr {% if fila.categoria == "TOTAL" %}class="fila-total" style="font-weight:600;"{% endif %}>
+                    <td>{% if fila.slug %}<a class="enlace-tabla" href="{% url 'categoria_detalle' slug=fila.slug %}?{{ sc.qs }}#compras">{{ fila.categoria }}</a>{% else %}{{ fila.categoria }}{% endif %}</td>
+                    <td class="num">{{ fila.valor_total|soles }}</td>
+                    <td class="num">{{ fila.pct_contrato|numero:1 }}%</td>
+                    <td class="num">{{ fila.pmp|numero:0|default:"—" }} días</td>
+                    <td class="num {% if fila.variacion_yoy_pct > 0 %}dato-positivo{% elif fila.variacion_yoy_pct < 0 %}dato-negativo{% endif %}">{{ fila.variacion_yoy_pct|numero:1|default:"—" }}%</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
           </div>
-          <div class="campo">
-            <label for="mes_compras_hasta">Hasta</label>
-            <select name="mes_compras_hasta" id="mes_compras_hasta">
-              {% for m in rango_compras.opciones_mes %}
-                <option value="{{ m.numero }}" {% if m.numero == rango_compras.mes_hasta %}selected{% endif %}>{{ m.nombre }}</option>
-              {% endfor %}
-            </select>
-          </div>
+        {% else %}
+          <p class="aviso">Sin compras registradas.</p>
         {% endif %}
-        <noscript><button type="submit">Aplicar</button></noscript>
-      </form>
-      {% if compras %}
-        <div class="tabla-scroll">
-          <table>
-            <thead>
-              <tr><th>Categoría</th><th class="num">Valor</th><th class="num">Bajo contrato</th><th class="num">PMP por O.C</th><th class="num">Var. YoY</th></tr>
-            </thead>
-            <tbody>
-              {% for fila in compras %}
-                <tr {% if fila.categoria == "TOTAL" %}class="fila-total" style="font-weight:600;"{% endif %}>
-                  <td>{{ fila.categoria }}</td>
-                  <td class="num">{{ fila.valor_total|soles }}</td>
-                  <td class="num">{{ fila.pct_contrato|numero:1 }}%</td>
-                  <td class="num">{{ fila.pmp|numero:0|default:"—" }} días</td>
-                  <td class="num {% if fila.variacion_yoy_pct > 0 %}dato-positivo{% elif fila.variacion_yoy_pct < 0 %}dato-negativo{% endif %}">{{ fila.variacion_yoy_pct|numero:1|default:"—" }}%</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <p class="aviso">Sin compras registradas.</p>
-      {% endif %}
-    </section>
+      </section>
 
-    <section class="bloque" id="sec-pareto">
-      <h2>Concentración de Proveedores (Pareto) — {{ anio_sel }}</h2>
-      <p class="nota">% del valor de compras de cada categoría concentrado en sus 5 proveedores más grandes. Un porcentaje alto indica riesgo de dependencia de pocos proveedores.</p>
-      {% if rango_pareto %}
-        <form class="filtros" method="get" data-target="sec-pareto">
-          <div class="campo">
-            <label for="mes_pareto_desde">Desde</label>
-            <select name="mes_pareto_desde" id="mes_pareto_desde">
-              {% for m in rango_pareto.opciones_mes %}
-                <option value="{{ m.numero }}" {% if m.numero == rango_pareto.mes_desde %}selected{% endif %}>{{ m.nombre }}</option>
-              {% endfor %}
-            </select>
+      <section class="bloque" id="sec-pareto">
+        <h2>Concentración de Proveedores (Pareto) · {{ sc.texto }}</h2>
+        <p class="nota">% del valor de compras de cada categoría concentrado en sus {{ sc.top }} proveedores más grandes. Un porcentaje alto indica riesgo de dependencia de pocos proveedores.</p>
+        {% if pareto %}
+          <div class="tabla-scroll">
+            <table>
+              <thead><tr><th>Categoría</th><th class="num">% en Top {{ sc.top }}</th><th>Proveedores principales</th></tr></thead>
+              <tbody>
+                {% for r in pareto %}
+                  <tr>
+                    <td>{{ r.categoria }}</td>
+                    <td class="num">{{ r.pct_concentracion_top|numero:1 }}%</td>
+                    <td>{% for p in r.top_proveedores %}{{ p.proveedor }} ({{ p.pct|numero:1 }}%){% if not forloop.last %}, {% endif %}{% endfor %}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
           </div>
-          <div class="campo">
-            <label for="mes_pareto_hasta">Hasta</label>
-            <select name="mes_pareto_hasta" id="mes_pareto_hasta">
-              {% for m in rango_pareto.opciones_mes %}
-                <option value="{{ m.numero }}" {% if m.numero == rango_pareto.mes_hasta %}selected{% endif %}>{{ m.nombre }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <noscript><button type="submit">Aplicar</button></noscript>
-        </form>
-      {% endif %}
-      {% if pareto %}
-        <div class="tabla-scroll">
-          <table>
-            <thead><tr><th>Categoría</th><th class="num">% en Top 5</th><th>Proveedores principales</th></tr></thead>
-            <tbody>
-              {% for r in pareto %}
-                <tr>
-                  <td>{{ r.categoria }}</td>
-                  <td class="num">{{ r.pct_concentracion_top|numero:1 }}%</td>
-                  <td>{% for p in r.top_proveedores %}{{ p.proveedor }} ({{ p.pct|numero:1 }}%){% if not forloop.last %}, {% endif %}{% endfor %}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <p class="aviso">Sin datos de compras para el año seleccionado.</p>
-      {% endif %}
-    </section>
+        {% else %}
+          <p class="aviso">Sin datos de compras para el período seleccionado.</p>
+        {% endif %}
+      </section>
 
-    <section class="bloque" id="sec-fillrate">
-      <h2>Fill Rate — {{ anio_sel }}</h2>
-      <p class="nota">% del valor de líneas de compra de material/importación (Cl. ZNAC/ZIMP, las únicas donde la cantidad pedida y recibida son comparables) entregado completo. Solo categorías con inventario.</p>
-      {% if rango_fillrate %}
-        <form class="filtros" method="get" data-target="sec-fillrate">
-          <div class="campo">
-            <label for="mes_fillrate_desde">Desde</label>
-            <select name="mes_fillrate_desde" id="mes_fillrate_desde">
-              {% for m in rango_fillrate.opciones_mes %}
-                <option value="{{ m.numero }}" {% if m.numero == rango_fillrate.mes_desde %}selected{% endif %}>{{ m.nombre }}</option>
-              {% endfor %}
-            </select>
+      <section class="bloque" id="sec-fillrate">
+        <h2>Fill Rate · {{ sc.texto }}</h2>
+        <p class="nota">% del valor de líneas de compra de material/importación (Cl. ZNAC/ZIMP, las únicas donde la cantidad pedida y recibida son comparables) entregado completo. Solo categorías con inventario.</p>
+        {% if fill_rate %}
+          <div class="tabla-scroll">
+            <table>
+              <thead><tr><th>Categoría</th><th class="num">Líneas</th><th class="num">Fill Rate</th></tr></thead>
+              <tbody>
+                {% for r in fill_rate %}
+                  <tr>
+                    <td>{{ r.categoria }}</td>
+                    <td class="num">{{ r.lineas|numero }}</td>
+                    <td class="num">{{ r.fill_rate_pct|numero:1|default:"—" }}%</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
           </div>
-          <div class="campo">
-            <label for="mes_fillrate_hasta">Hasta</label>
-            <select name="mes_fillrate_hasta" id="mes_fillrate_hasta">
-              {% for m in rango_fillrate.opciones_mes %}
-                <option value="{{ m.numero }}" {% if m.numero == rango_fillrate.mes_hasta %}selected{% endif %}>{{ m.nombre }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <noscript><button type="submit">Aplicar</button></noscript>
-        </form>
-      {% endif %}
-      {% if fill_rate %}
-        <div class="tabla-scroll">
-          <table>
-            <thead><tr><th>Categoría</th><th class="num">Líneas</th><th class="num">Fill Rate</th></tr></thead>
-            <tbody>
-              {% for r in fill_rate %}
-                <tr>
-                  <td>{{ r.categoria }}</td>
-                  <td class="num">{{ r.lineas|numero }}</td>
-                  <td class="num">{{ r.fill_rate_pct|numero:1|default:"—" }}%</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <p class="aviso">Sin datos suficientes para calcular el Fill Rate.</p>
-      {% endif %}
-    </section>
+        {% else %}
+          <p class="aviso">Sin datos suficientes para calcular el Fill Rate en el período seleccionado.</p>
+        {% endif %}
+      </section>
 
-    <section class="bloque" id="sec-leadtime">
-      <h2>Lead Time de Proveedores — {{ anio_sel }}</h2>
-      <p class="nota">Días entre la fecha del pedido y la primera Entrada de Mercancía real (MB51), para líneas de material/importación (Cl. ZNAC/ZIMP). Se usa la mediana además del promedio porque la distribución tiene una cola larga (pedidos de importación con lead time mucho mayor al típico).</p>
-      {% if rango_leadtime %}
-        <form class="filtros" method="get" data-target="sec-leadtime">
-          <div class="campo">
-            <label for="mes_leadtime_desde">Desde</label>
-            <select name="mes_leadtime_desde" id="mes_leadtime_desde">
-              {% for m in rango_leadtime.opciones_mes %}
-                <option value="{{ m.numero }}" {% if m.numero == rango_leadtime.mes_desde %}selected{% endif %}>{{ m.nombre }}</option>
-              {% endfor %}
-            </select>
+      <section class="bloque" id="sec-leadtime">
+        <h2>Lead Time de Proveedores · {{ sc.texto }}</h2>
+        <p class="nota">Días entre la fecha del pedido y la primera Entrada de Mercancía real (MB51), para líneas de material/importación (Cl. ZNAC/ZIMP). Se usa la mediana además del promedio porque la distribución tiene una cola larga (pedidos de importación con lead time mucho mayor al típico).</p>
+        {% if lead_time %}
+          <div class="tabla-scroll">
+            <table>
+              <thead><tr><th>Categoría</th><th class="num">Líneas</th><th class="num">Lead Time promedio</th><th class="num">Lead Time mediana</th></tr></thead>
+              <tbody>
+                {% for r in lead_time %}
+                  <tr>
+                    <td>{{ r.categoria }}</td>
+                    <td class="num">{{ r.lineas|numero }}</td>
+                    <td class="num">{{ r.lead_time_promedio|numero:1 }} días</td>
+                    <td class="num">{{ r.lead_time_mediana|numero:1 }} días</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
           </div>
-          <div class="campo">
-            <label for="mes_leadtime_hasta">Hasta</label>
-            <select name="mes_leadtime_hasta" id="mes_leadtime_hasta">
-              {% for m in rango_leadtime.opciones_mes %}
-                <option value="{{ m.numero }}" {% if m.numero == rango_leadtime.mes_hasta %}selected{% endif %}>{{ m.nombre }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <noscript><button type="submit">Aplicar</button></noscript>
-        </form>
-      {% endif %}
-      {% if lead_time %}
-        <div class="tabla-scroll">
-          <table>
-            <thead><tr><th>Categoría</th><th class="num">Líneas</th><th class="num">Lead Time promedio</th><th class="num">Lead Time mediana</th></tr></thead>
-            <tbody>
-              {% for r in lead_time %}
-                <tr>
-                  <td>{{ r.categoria }}</td>
-                  <td class="num">{{ r.lineas|numero }}</td>
-                  <td class="num">{{ r.lead_time_promedio|numero:1 }} días</td>
-                  <td class="num">{{ r.lead_time_mediana|numero:1 }} días</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <p class="aviso">Sin datos suficientes para calcular el Lead Time.</p>
-      {% endif %}
-    </section>
+        {% else %}
+          <p class="aviso">Sin datos suficientes para calcular el Lead Time en el período seleccionado.</p>
+        {% endif %}
+      </section>
+    </div>
 
     <section class="bloque">
       <h2>Evolución de PMP (días) — todas las categorías</h2>
-      <p class="nota">Plazo Medio de Pago mensual, ponderado por el valor de compra (Tp.cambio × Valor neto) de cada condición de pago.</p>
+      <p class="nota">Plazo Medio de Pago mensual, ponderado por el valor de compra (Tp.cambio × Valor neto) de cada condición de pago. Toda la historia, sin los filtros de compras.</p>
       {% with g=pmp_evolucion.grafico %}
         {% if g %}
           <div class="chart-wrap">
@@ -267,107 +181,79 @@
       <p class="aviso">Todavía no hay inventario cargado.</p>
     {% else %}
 
-      <section class="bloque" id="sec-evolucion">
-        <h2>Evolución de Inventario (S/. MM) — todas las categorías</h2>
-        <p class="nota">Valores en soles, expresados en millones (MM).</p>
-        <form class="filtros" method="get" data-target="sec-evolucion">
-          <div class="campo">
-            <label for="mes_inicio_evo">Mes de inicio</label>
-            <select name="mes_inicio_evo" id="mes_inicio_evo">
-              {% for f in evolucion.opciones_inicio %}
-                <option value="{{ f|fechaiso }}" {% if f == evolucion.mes_inicio %}selected{% endif %}>{{ f|mesanio }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="campo">
-            <label for="mes_fin_evo">Mes de fin</label>
-            <select name="mes_fin_evo" id="mes_fin_evo">
-              {% for f in evolucion.opciones_fin %}
-                <option value="{{ f|fechaiso }}" {% if f == evolucion.mes_fin %}selected{% endif %}>{{ f|mesanio }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <noscript><button type="submit">Aplicar</button></noscript>
-        </form>
+      {# Bloque Inventario: Corte, Familia y Centro de arriba rigen todas las secciones; cada sección solo conserva lo propio (rango de la Evolución, mes comparativo de la Variación). #}
+      <div class="bloque-segmentado" id="bloque-inventario">
+        {% include "gestion/_segmentadores_inventario.html" with si=si objetivo="bloque-inventario" %}
 
-        {% with g=evolucion.grafico %}
-          {% if g %}
-            <div class="chart-wrap">
-              <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Evolución de valor de inventario total">
-                <path class="area" d="{{ g.area }}"></path>
-                <path class="linea" d="{{ g.linea }}"></path>
-                {% for p in g.puntos %}
-                  <circle class="punto" cx="{{ p.x }}" cy="{{ p.y }}" r="2.6"></circle>
-                {% endfor %}
-              </svg>
-              {% for p in g.puntos %}
-                <span class="etiqueta-valor" style="left:{{ p.x_pct }}%; top:{{ p.y_pct }}%;">{{ p.etiqueta_valor }}</span>
-                {% if p.mostrar_etiqueta %}
-                  <span class="etiqueta-mes" style="left:{{ p.x_pct }}%;">{{ p.etiqueta }}</span>
-                {% endif %}
-              {% endfor %}
-            </div>
-          {% else %}
-            <p class="aviso">No hay inventario registrado en ese rango.</p>
-          {% endif %}
-        {% endwith %}
-      </section>
-
-      <section class="bloque" id="sec-inventario">
-        <h2>Inventario — {{ inventario.mes_cierre|mesanio }} (todas las categorías)</h2>
-        <form class="filtros" method="get" data-target="sec-inventario">
-          <div class="campo">
-            <label for="mes_cierre">Mes de cierre</label>
-            <select name="mes_cierre" id="mes_cierre">
-              {% for f in inventario.opciones_mes %}
-                <option value="{{ f|fechaiso }}" {% if f == inventario.mes_cierre %}selected{% endif %}>{{ f|mesanio }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <noscript><button type="submit">Aplicar</button></noscript>
-        </form>
-
-        <div class="metricas">
-          <div class="metrica"><span class="valor">{{ inventario.materiales_con_stock|numero }}</span><span class="etiqueta">Materiales con stock</span></div>
-          <div class="metrica"><span class="valor">{{ inventario.stock_total|numero }}</span><span class="etiqueta">Stock total (unidades)</span></div>
-          <div class="metrica"><span class="valor">{{ inventario.valor_total|soles }}</span><span class="etiqueta">Valor total</span></div>
-        </div>
-
-        <h2 class="subtitulo">Valor de inventario por categoría</h2>
-        {% if inventario.familias %}
-          <div class="barras">
-            {% for f in inventario.familias %}
-              <div class="barra-fila">
-                <span class="barra-etiqueta" title="{{ f.etiqueta }}">{{ f.etiqueta }}</span>
-                <span class="barra-pista"><span class="barra-relleno" style="width:{{ f.pct }}%"></span></span>
-                <span class="barra-valor">{{ f.valor|soles }}</span>
-              </div>
-            {% endfor %}
-          </div>
-        {% endif %}
-
-        <div id="sec-inventario-top">
-          <h2 class="subtitulo">Top materiales por valor de inventario</h2>
-          <form class="filtros" method="get" data-target="sec-inventario-top">
-            <input type="hidden" name="mes_cierre" value="{{ inventario.mes_cierre|fechaiso }}">
+        <section class="bloque" id="sec-evolucion">
+          <h2>Evolución de Inventario (S/. MM) — todas las categorías</h2>
+          <p class="nota">Valor al último corte de cada mes, en millones de soles{% if si.texto_filtros %} · {{ si.texto_filtros }}{% endif %}. Por defecto, los 12 meses que terminan en el corte elegido arriba.</p>
+          <form class="filtros" method="get" data-target="sec-evolucion">
             <div class="campo">
-              <label for="familia_top">Familia</label>
-              <select name="familia_top" id="familia_top">
-                {% for f in inventario.familias_top %}
-                  <option value="{{ f }}" {% if f == inventario.familia_top_sel %}selected{% endif %}>{{ f }}</option>
+              <label for="mes_inicio_evo">Desde</label>
+              <select name="mes_inicio_evo" id="mes_inicio_evo">
+                {% for f in evolucion.opciones_inicio %}
+                  <option value="{{ f|fechaiso }}" {% if f == evolucion.mes_inicio %}selected{% endif %}>{{ f|corte }}</option>
                 {% endfor %}
               </select>
             </div>
             <div class="campo">
-              <label for="centro_top">Centro</label>
-              <select name="centro_top" id="centro_top">
-                {% for c in inventario.centros_top %}
-                  <option value="{{ c }}" {% if c == inventario.centro_top_sel %}selected{% endif %}>{{ c|centro }}</option>
+              <label for="mes_fin_evo">Hasta</label>
+              <select name="mes_fin_evo" id="mes_fin_evo">
+                {% for f in evolucion.opciones_fin %}
+                  <option value="{{ f|fechaiso }}" {% if f == evolucion.mes_fin %}selected{% endif %}>{{ f|corte }}</option>
                 {% endfor %}
               </select>
             </div>
             <noscript><button type="submit">Aplicar</button></noscript>
           </form>
+          {% with g=evolucion.grafico %}
+            {% if g %}
+              <div class="chart-wrap">
+                <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Evolución de valor de inventario total">
+                  <path class="area" d="{{ g.area }}"></path>
+                  <path class="linea" d="{{ g.linea }}"></path>
+                  {% for p in g.puntos %}
+                    <circle class="punto" cx="{{ p.x }}" cy="{{ p.y }}" r="2.6"></circle>
+                  {% endfor %}
+                </svg>
+                {% for p in g.puntos %}
+                  <span class="etiqueta-valor" style="left:{{ p.x_pct }}%; top:{{ p.y_pct }}%;">{{ p.etiqueta_valor }}</span>
+                  {% if p.mostrar_etiqueta %}
+                    <span class="etiqueta-mes" style="left:{{ p.x_pct }}%;">{{ p.etiqueta }}</span>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="aviso">No hay inventario registrado en ese rango.</p>
+            {% endif %}
+          {% endwith %}
+        </section>
+
+        <section class="bloque" id="sec-inventario">
+          <h2>Inventario — {{ si.mes|corte }} (todas las categorías)</h2>
+          <div class="metricas">
+            <div class="metrica"><span class="valor">{{ inventario.materiales_con_stock|numero }}</span><span class="etiqueta">Materiales con stock</span></div>
+            <div class="metrica"><span class="valor">{{ inventario.stock_total|numero }}</span><span class="etiqueta">Stock total (unidades)</span></div>
+            <div class="metrica"><span class="valor">{{ inventario.valor_total|soles }}</span><span class="etiqueta">Valor total</span></div>
+          </div>
+
+          <h2 class="subtitulo">Valor de inventario por categoría</h2>
+          {% if inventario.familias %}
+            <div class="barras barras-anchas">
+              {% for f in inventario.familias %}
+                <div class="barra-fila">
+                  <span class="barra-etiqueta" title="{{ f.etiqueta }}">{{ f.etiqueta }}</span>
+                  <span class="barra-pista"><span class="barra-relleno" style="width:{{ f.pct }}%"></span></span>
+                  <span class="barra-valor">{{ f.valor|soles }}</span>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="aviso">Sin inventario con los filtros elegidos.</p>
+          {% endif %}
+
+          <h2 class="subtitulo">Top materiales por valor de inventario</h2>
           <div class="tabla-buscable">
             <div class="buscador">
               <div class="campo">
@@ -400,285 +286,153 @@
               </table>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="bloque" id="sec-abc">
-        <h2>Clasificación ABC de Inventario — por categoría</h2>
-        <p class="nota">Materiales ordenados por valor: A = acumulan hasta 80% del valor de su categoría, B = hasta 95%, C = el resto. Ayuda a priorizar qué materiales vigilar de cerca.</p>
-        <form class="filtros" method="get" data-target="sec-abc">
-          <div class="campo">
-            <label for="mes_abc">Mes</label>
-            <select name="mes_abc" id="mes_abc">
-              {% for f in filtros_abc.opciones_mes %}
-                <option value="{{ f|fechaiso }}" {% if f == filtros_abc.mes %}selected{% endif %}>{{ f|mesanio }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="campo">
-            <label for="familia_abc">Familia</label>
-            <select name="familia_abc" id="familia_abc">
-              {% for f in filtros_abc.familias %}
-                <option value="{{ f }}" {% if f == filtros_abc.familia_sel %}selected{% endif %}>{{ f }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="campo">
-            <label for="centro_abc">Centro</label>
-            <select name="centro_abc" id="centro_abc">
-              {% for c in filtros_abc.centros %}
-                <option value="{{ c }}" {% if c == filtros_abc.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <noscript><button type="submit">Aplicar</button></noscript>
-        </form>
-        {% if abc %}
-          <div class="tabla-scroll">
-            <table>
-              <thead><tr><th>Categoría</th><th class="num">Materiales A</th><th class="num">Valor A</th><th class="num">Materiales B</th><th class="num">Valor B</th><th class="num">Materiales C</th><th class="num">Valor C</th></tr></thead>
-              <tbody>
-                {% for r in abc %}
-                  <tr>
-                    <td>{{ r.categoria }}</td>
-                    {% for c in r.clases %}
-                      <td class="num">{{ c.materiales|numero }}</td>
-                      <td class="num">{{ c.valor|soles }}</td>
-                    {% endfor %}
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        {% else %}
-          <p class="aviso">Sin inventario para clasificar.</p>
-        {% endif %}
-      </section>
-
-      <section class="bloque" id="sec-obsoletos">
-        <h2>Materiales sin Movimiento — por categoría</h2>
-        <p class="nota">Materiales con stock pero sin ningún consumo (MB51) en los últimos 3 años: capital inmovilizado. Umbral mucho más exigente que el resto de indicadores de consumo (6 meses) — pensado para detectar material realmente parado, no solo de baja rotación reciente.</p>
-        <form class="filtros" method="get" data-target="sec-obsoletos">
-          <div class="campo">
-            <label for="mes_obsoletos">Mes</label>
-            <select name="mes_obsoletos" id="mes_obsoletos">
-              {% for f in filtros_obsoletos.opciones_mes %}
-                <option value="{{ f|fechaiso }}" {% if f == filtros_obsoletos.mes %}selected{% endif %}>{{ f|mesanio }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="campo">
-            <label for="familia_obsoletos">Familia</label>
-            <select name="familia_obsoletos" id="familia_obsoletos">
-              {% for f in filtros_obsoletos.familias %}
-                <option value="{{ f }}" {% if f == filtros_obsoletos.familia_sel %}selected{% endif %}>{{ f }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="campo">
-            <label for="centro_obsoletos">Centro</label>
-            <select name="centro_obsoletos" id="centro_obsoletos">
-              {% for c in filtros_obsoletos.centros %}
-                <option value="{{ c }}" {% if c == filtros_obsoletos.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <noscript><button type="submit">Aplicar</button></noscript>
-        </form>
-        {% if obsoletos %}
-          <div class="tabla-scroll">
-            <table>
-              <thead><tr><th>Categoría</th><th class="num">Materiales sin movimiento</th><th class="num">Valor inmovilizado</th></tr></thead>
-              <tbody>
-                {% for r in obsoletos %}
-                  <tr>
-                    <td>{{ r.categoria }}</td>
-                    <td class="num">{{ r.materiales_obsoletos|numero }}</td>
-                    <td class="num">{{ r.valor_obsoleto|soles }}</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        {% else %}
-          <p class="aviso">No se encontraron materiales sin movimiento.</p>
-        {% endif %}
-      </section>
-
-      <section class="bloque" id="sec-rotacion">
-        <h2>Índice de Rotación de Inventario — por categoría</h2>
-        <p class="nota">Indicador clásico de rotación, en valor (S/.): consumo valorizado promedio mensual (MB51, últimos 6 meses) ÷ valor de stock (MB5B), × 12. Se usa valor y no cantidad porque los materiales de una misma categoría pueden tener distinta unidad de medida (kg, ton, unidades…), que no se puede sumar directamente.</p>
-        <form class="filtros" method="get" data-target="sec-rotacion">
-          <div class="campo">
-            <label for="mes_rotacion">Mes de referencia</label>
-            <select name="mes_rotacion" id="mes_rotacion">
-              {% for f in rotacion.opciones_mes %}
-                <option value="{{ f|fechaiso }}" {% if f == rotacion.mes %}selected{% endif %}>{{ f|mesanio }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="campo">
-            <label for="familia_rotacion">Familia</label>
-            <select name="familia_rotacion" id="familia_rotacion">
-              {% for f in rotacion.familias %}
-                <option value="{{ f }}" {% if f == rotacion.familia_sel %}selected{% endif %}>{{ f }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="campo">
-            <label for="centro_rotacion">Centro</label>
-            <select name="centro_rotacion" id="centro_rotacion">
-              {% for c in rotacion.centros %}
-                <option value="{{ c }}" {% if c == rotacion.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <noscript><button type="submit">Aplicar</button></noscript>
-        </form>
-        {% if rotacion.filas %}
-          <div class="tabla-scroll">
-            <table>
-              <thead><tr><th>Categoría</th><th class="num">Valor de stock</th><th class="num">Consumo valorizado (6m)</th><th class="num">Rotación anual (veces/año)</th><th class="num">Cobertura (meses)</th><th class="num">Días de Inventario (DOH)</th></tr></thead>
-              <tbody>
-                {% for r in rotacion.filas %}
-                  <tr>
-                    <td>{{ r.categoria }}</td>
-                    <td class="num">{{ r.valor_stock|soles }}</td>
-                    <td class="num">{{ r.consumo_valor_6meses|soles }}</td>
-                    <td class="num">{{ r.indice_rotacion_anual|numero:2 }}</td>
-                    <td class="num">{{ r.cobertura_meses|numero:2|default:"—" }}</td>
-                    <td class="num">{{ r.dias_inventario|numero:0|default:"—" }}</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        {% else %}
-          <p class="aviso">Sin datos de rotación para el mes seleccionado.</p>
-        {% endif %}
-      </section>
-
-      <section class="bloque" id="sec-criticos">
-        <h2>Cobertura de Materiales Críticos — por categoría</h2>
-        <p class="nota">Materiales marcados como críticos en el maestro (ZMM060). "En riesgo" = cobertura menor a 1 mes al ritmo de consumo actual.</p>
-        <form class="filtros" method="get" data-target="sec-criticos">
-          <div class="campo">
-            <label for="mes_criticos">Mes</label>
-            <select name="mes_criticos" id="mes_criticos">
-              {% for f in filtros_criticos.opciones_mes %}
-                <option value="{{ f|fechaiso }}" {% if f == filtros_criticos.mes %}selected{% endif %}>{{ f|mesanio }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="campo">
-            <label for="familia_criticos">Familia</label>
-            <select name="familia_criticos" id="familia_criticos">
-              {% for f in filtros_criticos.familias %}
-                <option value="{{ f }}" {% if f == filtros_criticos.familia_sel %}selected{% endif %}>{{ f }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="campo">
-            <label for="centro_criticos">Centro</label>
-            <select name="centro_criticos" id="centro_criticos">
-              {% for c in filtros_criticos.centros %}
-                <option value="{{ c }}" {% if c == filtros_criticos.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <noscript><button type="submit">Aplicar</button></noscript>
-        </form>
-        {% if criticos %}
-          <div class="tabla-scroll">
-            <table>
-              <thead><tr><th>Categoría</th><th class="num">Materiales críticos</th><th class="num">Cobertura promedio (meses)</th><th class="num">En riesgo (&lt;1 mes)</th></tr></thead>
-              <tbody>
-                {% for r in criticos %}
-                  <tr>
-                    <td>{{ r.categoria }}</td>
-                    <td class="num">{{ r.materiales_criticos|numero }}</td>
-                    <td class="num">{{ r.cobertura_promedio|numero:2 }}</td>
-                    <td class="num {% if r.en_riesgo > 0 %}dato-negativo{% endif %}">{{ r.en_riesgo|numero }}</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        {% else %}
-          <p class="aviso">No hay materiales marcados como críticos con datos de cobertura.</p>
-        {% endif %}
-      </section>
-
-      <section class="bloque" id="sec-variacion">
-        <h2>% Variación de Inventario — por categoría</h2>
-        <form class="filtros" method="get" data-target="sec-variacion">
-          <div class="campo">
-            <label for="mes_var_final">Mes de inventario</label>
-            <select name="mes_var_final" id="mes_var_final">
-              {% for f in variacion.opciones_final %}
-                <option value="{{ f|fechaiso }}" {% if f == variacion.mes_final %}selected{% endif %}>{{ f|mesanio }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          {% if variacion.mes_inicial %}
-            <div class="campo">
-              <label for="mes_var_inicial">Mes comparativo</label>
-              <select name="mes_var_inicial" id="mes_var_inicial">
-                {% for f in variacion.opciones_inicial %}
-                  <option value="{{ f|fechaiso }}" {% if f == variacion.mes_inicial %}selected{% endif %}>{{ f|mesanio }}</option>
-                {% endfor %}
-              </select>
+        <section class="bloque" id="sec-abc">
+          <h2>Clasificación ABC de Inventario — por categoría</h2>
+          <p class="nota">Materiales ordenados por valor: A = acumulan hasta 80% del valor de su categoría, B = hasta 95%, C = el resto. Ayuda a priorizar qué materiales vigilar de cerca.</p>
+          {% if abc %}
+            <div class="tabla-scroll">
+              <table>
+                <thead><tr><th>Categoría</th><th class="num">Materiales A</th><th class="num">Valor A</th><th class="num">Materiales B</th><th class="num">Valor B</th><th class="num">Materiales C</th><th class="num">Valor C</th></tr></thead>
+                <tbody>
+                  {% for r in abc %}
+                    <tr>
+                      <td>{{ r.categoria }}</td>
+                      {% for c in r.clases %}
+                        <td class="num">{{ c.materiales|numero }}</td>
+                        <td class="num">{{ c.valor|soles }}</td>
+                      {% endfor %}
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
             </div>
+          {% else %}
+            <p class="aviso">Sin inventario para clasificar con los filtros elegidos.</p>
           {% endif %}
-          <div class="campo">
-            <label for="familia_var">Familia</label>
-            <select name="familia_var" id="familia_var">
-              {% for f in variacion.familias %}
-                <option value="{{ f }}" {% if f == variacion.familia_sel %}selected{% endif %}>{{ f }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="campo">
-            <label for="centro_var">Centro</label>
-            <select name="centro_var" id="centro_var">
-              {% for c in variacion.centros %}
-                <option value="{{ c }}" {% if c == variacion.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <noscript><button type="submit">Aplicar</button></noscript>
-        </form>
+        </section>
 
-        {% if not variacion.mes_inicial %}
-          <p class="aviso">No hay un mes anterior para comparar.</p>
-        {% elif variacion.filas %}
-          <div class="tabla-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Categoría</th>
-                  <th class="num">Valor {{ variacion.mes_inicial|mesanio }}</th>
-                  <th class="num">Valor {{ variacion.mes_final|mesanio }}</th>
-                  <th class="num">Variación (S/.)</th><th class="num">Variación (%)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for r in variacion.filas %}
-                  <tr {% if r.categoria == "TOTAL" %}class="fila-total" style="font-weight:600;"{% endif %}>
-                    <td>{{ r.categoria }}</td>
-                    <td class="num">{{ r.valor_mes_inicial|soles }}</td>
-                    <td class="num">{{ r.valor_mes_final|soles }}</td>
-                    <td class="num {% if r.variacion_valor > 0 %}dato-positivo{% elif r.variacion_valor < 0 %}dato-negativo{% endif %}">{{ r.variacion_valor|soles }}</td>
-                    <td class="num {% if r.variacion_pct > 0 %}dato-positivo{% elif r.variacion_pct < 0 %}dato-negativo{% endif %}">{{ r.variacion_pct|numero:1|default:"—" }}%</td>
+        <section class="bloque" id="sec-obsoletos">
+          <h2>Materiales sin Movimiento — por categoría</h2>
+          <p class="nota">Materiales con stock pero sin ningún consumo (MB51) en los últimos 3 años: capital inmovilizado. Umbral mucho más exigente que el resto de indicadores de consumo (6 meses) — pensado para detectar material realmente parado, no solo de baja rotación reciente.</p>
+          {% if obsoletos %}
+            <div class="tabla-scroll">
+              <table>
+                <thead><tr><th>Categoría</th><th class="num">Materiales sin movimiento</th><th class="num">Valor inmovilizado</th></tr></thead>
+                <tbody>
+                  {% for r in obsoletos %}
+                    <tr>
+                      <td>{{ r.categoria }}</td>
+                      <td class="num">{{ r.materiales_obsoletos|numero }}</td>
+                      <td class="num">{{ r.valor_obsoleto|soles }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="aviso">No se encontraron materiales sin movimiento con los filtros elegidos.</p>
+          {% endif %}
+        </section>
+
+        <section class="bloque" id="sec-rotacion">
+          <h2>Índice de Rotación de Inventario — por categoría</h2>
+          <p class="nota">Indicador clásico de rotación, en valor (S/.): consumo valorizado promedio mensual (MB51, 6 meses que terminan en el corte elegido) ÷ valor de stock (MB5B), × 12. Se usa valor y no cantidad porque los materiales de una misma categoría pueden tener distinta unidad de medida (kg, ton, unidades…), que no se puede sumar directamente.</p>
+          {% if rotacion.filas %}
+            <div class="tabla-scroll">
+              <table>
+                <thead><tr><th>Categoría</th><th class="num">Valor de stock</th><th class="num">Consumo valorizado (6m)</th><th class="num">Rotación anual (veces/año)</th><th class="num">Cobertura (meses)</th><th class="num">Días de Inventario (DOH)</th></tr></thead>
+                <tbody>
+                  {% for r in rotacion.filas %}
+                    <tr>
+                      <td>{{ r.categoria }}</td>
+                      <td class="num">{{ r.valor_stock|soles }}</td>
+                      <td class="num">{{ r.consumo_valor_6meses|soles }}</td>
+                      <td class="num">{{ r.indice_rotacion_anual|numero:2 }}</td>
+                      <td class="num">{{ r.cobertura_meses|numero:2|default:"—" }}</td>
+                      <td class="num">{{ r.dias_inventario|numero:0|default:"—" }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="aviso">Sin datos de rotación con los filtros elegidos.</p>
+          {% endif %}
+        </section>
+
+        <section class="bloque" id="sec-criticos">
+          <h2>Cobertura de Materiales Críticos — por categoría</h2>
+          <p class="nota">Materiales marcados como críticos en el maestro (ZMM060). "En riesgo" = cobertura menor a 1 mes al ritmo de consumo actual.</p>
+          {% if criticos %}
+            <div class="tabla-scroll">
+              <table>
+                <thead><tr><th>Categoría</th><th class="num">Materiales críticos</th><th class="num">Cobertura promedio (meses)</th><th class="num">En riesgo (&lt;1 mes)</th></tr></thead>
+                <tbody>
+                  {% for r in criticos %}
+                    <tr>
+                      <td>{{ r.categoria }}</td>
+                      <td class="num">{{ r.materiales_criticos|numero }}</td>
+                      <td class="num">{{ r.cobertura_promedio|numero:2 }}</td>
+                      <td class="num {% if r.en_riesgo > 0 %}dato-negativo{% endif %}">{{ r.en_riesgo|numero }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="aviso">No hay materiales marcados como críticos con datos de cobertura.</p>
+          {% endif %}
+        </section>
+
+        <section class="bloque" id="sec-variacion">
+          <h2>% Variación de Inventario — por categoría</h2>
+          <p class="nota">Valor al corte elegido arriba ({{ variacion.mes_final|corte }}) contra el mes comparativo.</p>
+          {% if variacion.mes_inicial %}
+            <form class="filtros" method="get" data-target="sec-variacion">
+              <div class="campo">
+                <label for="mes_var_inicial">Mes comparativo</label>
+                <select name="mes_var_inicial" id="mes_var_inicial">
+                  {% for f in variacion.opciones_inicial %}
+                    <option value="{{ f|fechaiso }}" {% if f == variacion.mes_inicial %}selected{% endif %}>{{ f|corte }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <noscript><button type="submit">Aplicar</button></noscript>
+            </form>
+          {% endif %}
+          {% if not variacion.mes_inicial %}
+            <p class="aviso">No hay un mes anterior para comparar.</p>
+          {% elif variacion.filas %}
+            <div class="tabla-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Categoría</th>
+                    <th class="num">Valor {{ variacion.mes_inicial|corte }}</th>
+                    <th class="num">Valor {{ variacion.mes_final|corte }}</th>
+                    <th class="num">Variación (S/.)</th><th class="num">Variación (%)</th>
                   </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        {% else %}
-          <p class="aviso">Sin datos de variación para el rango seleccionado.</p>
-        {% endif %}
-      </section>
+                </thead>
+                <tbody>
+                  {% for r in variacion.filas %}
+                    <tr {% if r.categoria == "TOTAL" %}class="fila-total" style="font-weight:600;"{% endif %}>
+                      <td>{{ r.categoria }}</td>
+                      <td class="num">{{ r.valor_mes_inicial|soles }}</td>
+                      <td class="num">{{ r.valor_mes_final|soles }}</td>
+                      <td class="num {% if r.variacion_valor > 0 %}dato-positivo{% elif r.variacion_valor < 0 %}dato-negativo{% endif %}">{{ r.variacion_valor|soles }}</td>
+                      <td class="num {% if r.variacion_pct > 0 %}dato-positivo{% elif r.variacion_pct < 0 %}dato-negativo{% endif %}">{{ r.variacion_pct|numero:1|default:"—" }}%</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <p class="aviso">Sin datos de variación con los filtros elegidos.</p>
+          {% endif %}
+        </section>
+      </div>
 
     {% endif %}
   {% endif %}

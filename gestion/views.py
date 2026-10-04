@@ -83,7 +83,7 @@ def _rango_meses(request, prefijo, anio_sel):
     mes_desde = _por_str(request.GET.get(f"mes_{prefijo}_desde"), [str(m) for m in opciones_mes])
     mes_desde = int(mes_desde) if mes_desde else 1
     mes_hasta = _por_str(request.GET.get(f"mes_{prefijo}_hasta"), [str(m) for m in opciones_mes])
-    mes_hasta = int(mes_hasta) if mes_hasta else 12
+    mes_hasta = int(mes_hasta) if mes_hasta else _hasta_defecto(anio_sel)
     if mes_hasta < mes_desde:
         mes_hasta = mes_desde
 
@@ -98,32 +98,148 @@ def _rango_meses(request, prefijo, anio_sel):
     }
 
 
-def _selector_mes(request, prefijo, fechas_disponibles):
-    """Selector de Mes de una sola fecha (indicadores 'foto a un mes': ABC,
-    Obsoletos, Rotación, Críticos), con parámetro GET propio (mes_<prefijo>) —
-    independiente del mes elegido en cualquier otra tabla."""
-    return _por_str(request.GET.get(f"mes_{prefijo}"), fechas_disponibles) or fechas_disponibles[-1]
+def _hasta_defecto(anio):
+    """Mes "Hasta" por defecto de un año de compras: diciembre en un año
+    cerrado y el mes en curso en el año actual, así la comparación contra el
+    año anterior es de los mismos meses y no de un año parcial contra uno
+    completo."""
+    hoy = datetime.date.today()
+    return hoy.month if anio == hoy.year else 12
 
 
-def _opciones_familia_centro(df):
-    """Opciones de Familia/Centro presentes en `df` (debe tener esas columnas),
-    con el primer valor "Todas"/"Todos" para el segmentador."""
-    familias = ["Todas"] + sorted(f for f in df["familia"].dropna().unique().tolist() if f)
-    centros = ["Todos"] + sorted(c for c in df["centro"].dropna().unique().tolist() if c)
-    return familias, centros
+def _texto_rango(rango, anio):
+    """'Ene–Oct 2026', o '2025' si el rango es el año completo."""
+    if rango["mes_desde"] == 1 and rango["mes_hasta"] == 12:
+        return str(anio)
+    desde, hasta = _MESES_ABREV_GUION[rango["mes_desde"]], _MESES_ABREV_GUION[rango["mes_hasta"]]
+    return f"{desde} {anio}" if desde == hasta else f"{desde}–{hasta} {anio}"
 
 
-def _selector_familia_centro(request, prefijo, opciones_familia, opciones_centro):
-    """Selectores de Familia y Centro con parámetro GET propio por tabla
-    (familia_<prefijo>/centro_<prefijo>) — cada tabla filtra estos dos ejes de
-    forma independiente."""
-    familia_sel = request.GET.get(f"familia_{prefijo}", "Todas")
-    if familia_sel not in opciones_familia:
+def _rango_en_anio(rango, anio):
+    """Las fechas del mismo rango de meses (Desde–Hasta) en otro año."""
+    fin = datetime.date(anio, rango["mes_hasta"], calendar.monthrange(anio, rango["mes_hasta"])[1])
+    return datetime.date(anio, rango["mes_desde"], 1), fin
+
+
+# Cuántos proveedores ver en Concentración de proveedores (Pareto).
+_TOPS_PROVEEDORES = (5, 10, 20)
+
+
+def _segmentadores_compras(request):
+    """Segmentadores del bloque Compras (Overview y pestaña Compras de cada
+    categoría): Año, Desde, Hasta y cuántos proveedores ver. Rigen todas las
+    secciones del bloque (Compras, Pareto, Fill Rate, Lead Time). Pedido por
+    el usuario ("afina los segmentadores"): antes cada sección tenía su
+    propio Desde/Hasta y el año solo se elegía en Compras del Overview."""
+    anios = q.anios_compras_disponibles()
+    if not anios:
+        return None
+    anio = _por_str(request.GET.get("anio_compras"), [str(a) for a in anios])
+    anio = int(anio) if anio else anios[-1]
+    top = _por_str(request.GET.get("top_compras"), [str(t) for t in _TOPS_PROVEEDORES])
+    rango = _rango_meses(request, "compras", anio)
+    top = int(top) if top else _TOPS_PROVEEDORES[0]
+    return {"anios": list(reversed(anios)), "anio": anio, "rango": rango, "texto": _texto_rango(rango, anio),
+            "tops": _TOPS_PROVEEDORES, "top": top,
+            # Para abrir una categoría desde el Overview con el mismo período.
+            "qs": urlencode({"anio_compras": anio, "mes_compras_desde": rango["mes_desde"],
+                             "mes_compras_hasta": rango["mes_hasta"], "top_compras": top})}
+
+
+def _cortes_inventario():
+    """Un corte de inventario por mes: el último de cada mes (fin de mes o, en
+    el mes en curso, el último día cargado). Desde Set-26 llegan cortes
+    diarios y los selectores repetían "Septiembre - 2026" una vez por día."""
+    return sorted({(f.year, f.month): f for f in q.fechas_inventario_disponibles()}.values())
+
+
+def _segmentadores_inventario(request, categoria=None):
+    """Segmentadores del bloque Inventario (Overview y pestaña Inventario de
+    cada categoría): Corte, Familia y Centro, en cascada (las familias del
+    corte; los centros de la familia elegida). Rigen todas las secciones del
+    bloque; antes cada una tenía su propio Mes/Familia/Centro. Devuelve
+    también el inventario del corte ya filtrado ("inv")."""
+    cortes = _cortes_inventario()
+    mes = _por_str(request.GET.get("mes_inv"), cortes) or cortes[-1]
+    inv = q.inventario_por_material(mes)
+    if categoria:
+        inv = inv[inv["categoria"] == categoria]
+    familias = ["Todas"] + sorted(f for f in inv["familia"].dropna().unique().tolist() if f)
+    familia_sel = request.GET.get("familia_inv", "Todas")
+    if familia_sel not in familias:
         familia_sel = "Todas"
-    centro_sel = request.GET.get(f"centro_{prefijo}", "Todos")
-    if centro_sel not in opciones_centro:
+    if familia_sel != "Todas":
+        inv = inv[inv["familia"] == familia_sel]
+    centros = ["Todos"] + sorted(c for c in inv["centro"].dropna().unique().tolist() if c)
+    centro_sel = request.GET.get("centro_inv", "Todos")
+    if centro_sel not in centros:
         centro_sel = "Todos"
-    return familia_sel, centro_sel
+    if centro_sel != "Todos":
+        inv = inv[inv["centro"] == centro_sel]
+    filtros = [f for f in (None if familia_sel == "Todas" else familia_sel,
+                           None if centro_sel == "Todos" else q.nombre_centro(centro_sel)) if f]
+    return {
+        "cortes": list(reversed(cortes)), "mes": mes, "familias": familias, "familia_sel": familia_sel,
+        "centros": centros, "centro_sel": centro_sel,
+        "familia": None if familia_sel == "Todas" else familia_sel,
+        "centro": None if centro_sel == "Todos" else centro_sel,
+        "texto_filtros": " · ".join(filtros), "inv": inv,
+    }
+
+
+def _por_familia_centro(df, si):
+    """`df` (con columnas familia y centro) filtrado por la Familia y el Centro
+    de los segmentadores de Inventario `si`."""
+    if si["familia"]:
+        df = df[df["familia"] == si["familia"]]
+    if si["centro"]:
+        df = df[df["centro"] == si["centro"]]
+    return df
+
+
+def _serie_inventario(cortes, categoria=None, familia=None, centro=None):
+    """Valor del inventario en cada corte de `cortes` (fecha, valor). Sin
+    Familia ni Centro usa las series ya agregadas por fecha; con alguno,
+    suma inventario_por_material de cada corte (en caché)."""
+    if not cortes:
+        return []
+    if familia is None and centro is None:
+        if categoria:
+            s = q.valor_inventario_mensual_por_categoria(fecha_desde=cortes[0])
+            s = s[s["categoria"] == categoria]
+        else:
+            s = q.valor_inventario_mensual()
+        valores = {f: float(v) for f, v in zip(s["fecha"], s["valor_total"])}
+        return [(c, valores[c]) for c in cortes if c in valores]
+    serie = []
+    for c in cortes:
+        inv = q.inventario_por_material(c)
+        if categoria:
+            inv = inv[inv["categoria"] == categoria]
+        if familia:
+            inv = inv[inv["familia"] == familia]
+        if centro:
+            inv = inv[inv["centro"] == centro]
+        serie.append((c, float(inv["valor_total"].sum())))
+    return serie
+
+
+def _evolucion_inventario(request, si, categoria=None):
+    """Evolución del valor del inventario con su rango propio (Desde/Hasta,
+    entre los cortes mensuales): por defecto, los 12 meses que terminan en el
+    corte de los segmentadores; con su Familia y Centro."""
+    cortes = list(reversed(si["cortes"]))
+    fin = _por_str(request.GET.get("mes_fin_evo"), cortes) or si["mes"]
+    opciones_inicio = [c for c in cortes if c <= fin]
+    inicio = (_por_str(request.GET.get("mes_inicio_evo"), opciones_inicio)
+              or opciones_inicio[max(0, len(opciones_inicio) - 13)])
+    rango = [c for c in cortes if inicio <= c <= fin]
+    serie = _serie_inventario(rango, categoria, si["familia"], si["centro"])
+    return {
+        "grafico": charts.serie_area([(_mes_abrev_guion(f), v) for f, v in serie]),
+        "mes_inicio": inicio, "mes_fin": fin,
+        "opciones_inicio": list(reversed(opciones_inicio)), "opciones_fin": list(reversed(cortes)),
+    }
 
 
 def _opciones_categoria_centro(df):
@@ -223,13 +339,15 @@ def overview(request):
         contexto["sin_datos"] = True
         return render(request, "gestion/categoria_detalle.html", contexto)
 
-    # --- Compras: una fila por categoría + total, para el año/rango seleccionado ---
-    anio_sel = _por_str(request.GET.get("anio_compras"), [str(a) for a in anios_compras])
-    anio_sel = int(anio_sel) if anio_sel else (anios_compras[-1] if anios_compras else None)
-
+    # --- Bloque Compras (Compras, Pareto, Fill Rate, Lead Time): un solo
+    # juego de segmentadores (Año, Desde, Hasta, Top de proveedores) ---
+    sc = _segmentadores_compras(request)
+    contexto["sc"] = sc
     compras_filas = []
-    if anio_sel:
-        rango = _rango_meses(request, "compras", anio_sel)
+    contexto["pareto"] = contexto["fill_rate"] = contexto["lead_time"] = []
+    categorias_con_inv = set(q.categorias_inventario_disponibles())
+    if sc:
+        rango = sc["rango"]
         df = q.compras_por_categoria_contrato_rango(rango["fecha_ini"], rango["fecha_fin"])
         pmp_df = q.pmp_por_categoria_rango(rango["fecha_ini"], rango["fecha_fin"])
         # Comparativo interanual (YoY): mismos meses, un año antes.
@@ -252,7 +370,7 @@ def overview(request):
             total_valor_ant += valor_total_ant
 
             compras_filas.append({
-                "categoria": cat, "valor_total": valor_total,
+                "categoria": cat, "slug": _slug(cat), "valor_total": valor_total,
                 "pct_contrato": round(valor_bajo_contrato / valor_total * 100, 1) if valor_total else 0,
                 "pmp": round(pmp, 0) if pmp is not None else None,
                 "variacion_yoy_pct": (
@@ -270,39 +388,14 @@ def overview(request):
                 round((total_valor - total_valor_ant) / total_valor_ant * 100, 1) if total_valor_ant else None
             ),
         })
-        contexto["rango_compras"] = rango
-    contexto["compras"] = compras_filas
-    contexto["anio_sel"] = anio_sel
-    contexto["anios_compras"] = anios_compras
-
-    categorias_con_inv = set(q.categorias_inventario_disponibles())
-
-    # --- Concentración de Proveedores (Pareto): segmentador de Mes propio ---
-    if anio_sel:
-        rango_pareto = _rango_meses(request, "pareto", anio_sel)
         contexto["pareto"] = q.concentracion_proveedores_por_categoria_rango(
-            rango_pareto["fecha_ini"], rango_pareto["fecha_fin"]
+            rango["fecha_ini"], rango["fecha_fin"], top=sc["top"]
         )
-        contexto["rango_pareto"] = rango_pareto
-    else:
-        contexto["pareto"] = []
-
-    # --- Fill Rate: solo categorías con inventario (a pedido del usuario), segmentador de Mes propio ---
-    if anio_sel:
-        rango_fillrate = _rango_meses(request, "fillrate", anio_sel)
-        fill_rate_todas = q.fill_rate_por_categoria_rango(rango_fillrate["fecha_ini"], rango_fillrate["fecha_fin"])
+        # Fill Rate: solo categorías con inventario (a pedido del usuario).
+        fill_rate_todas = q.fill_rate_por_categoria_rango(rango["fecha_ini"], rango["fecha_fin"])
         contexto["fill_rate"] = [r for r in fill_rate_todas if r["categoria"] in categorias_con_inv]
-        contexto["rango_fillrate"] = rango_fillrate
-    else:
-        contexto["fill_rate"] = []
-
-    # --- Lead Time de proveedores: fecha de pedido -> Entrada de Mercancía real, segmentador de Mes propio ---
-    if anio_sel:
-        rango_leadtime = _rango_meses(request, "leadtime", anio_sel)
-        contexto["lead_time"] = q.lead_time_por_categoria_rango(rango_leadtime["fecha_ini"], rango_leadtime["fecha_fin"])
-        contexto["rango_leadtime"] = rango_leadtime
-    else:
-        contexto["lead_time"] = []
+        contexto["lead_time"] = q.lead_time_por_categoria_rango(rango["fecha_ini"], rango["fecha_fin"])
+    contexto["compras"] = compras_filas
 
     # --- Evolución de PMP (general, todas las categorías) ---
     pmp_serie = q.pmp_mensual()
@@ -313,96 +406,32 @@ def overview(request):
 
     if not fechas_inv:
         contexto["sin_inventario"] = True
-        return render(request, "gestion/categoria_detalle.html", contexto)
+        return render(request, "gestion/overview.html", contexto)
 
-    # --- Evolución de inventario (total, todas las categorías) ---
-    anio_max = fechas_inv[-1].year
-    fechas_anio_max = [f for f in fechas_inv if f.year == anio_max]
-    default_inicio_evo = fechas_anio_max[0] if fechas_anio_max else fechas_inv[0]
-
-    mes_inicio_evo = _por_str(request.GET.get("mes_inicio_evo"), fechas_inv) or default_inicio_evo
-    opciones_fin_evo = [f for f in fechas_inv if f >= mes_inicio_evo]
-    mes_fin_evo = _por_str(request.GET.get("mes_fin_evo"), opciones_fin_evo) or opciones_fin_evo[-1]
-
-    serie_total = q.valor_inventario_mensual()
-    serie = serie_total[
-        (serie_total["fecha"] >= mes_inicio_evo) & (serie_total["fecha"] <= mes_fin_evo)
-    ].sort_values("fecha")
-    puntos = [(_mes_abrev_guion(row["fecha"]), float(row["valor_total"])) for _, row in serie.iterrows()]
-
-    contexto["evolucion"] = {
-        "grafico": charts.serie_area(puntos),
-        "mes_inicio": mes_inicio_evo, "mes_fin": mes_fin_evo,
-        "opciones_inicio": fechas_inv, "opciones_fin": opciones_fin_evo,
-    }
-
-    # --- Inventario (foto del mes: métricas, por categoría, top materiales) ---
-    mes_cierre = _por_str(request.GET.get("mes_cierre"), fechas_inv) or fechas_inv[-1]
-    inv = q.inventario_por_material(mes_cierre)
-
-    familias_top, centros_top = _opciones_familia_centro(inv)
-    familia_top_sel, centro_top_sel = _selector_familia_centro(request, "top", familias_top, centros_top)
-    inv_top = inv
-    if familia_top_sel != "Todas":
-        inv_top = inv_top[inv_top["familia"] == familia_top_sel]
-    if centro_top_sel != "Todos":
-        inv_top = inv_top[inv_top["centro"] == centro_top_sel]
+    # --- Bloque Inventario: un solo juego de segmentadores (Corte, Familia,
+    # Centro) para Evolución, Inventario, ABC, Sin movimiento, Rotación,
+    # Críticos y % Variación ---
+    si = _segmentadores_inventario(request)
+    contexto["si"] = si
+    mes, inv = si["mes"], si["inv"]
+    contexto["evolucion"] = _evolucion_inventario(request, si)
 
     categorias_df = (
         inv.groupby("categoria", as_index=False)["valor_total"].sum()
         .sort_values("valor_total", ascending=False)
     )
-    categorias_items = charts.barras([
-        {"etiqueta": r["categoria"], "valor": float(r["valor_total"])}
-        for _, r in categorias_df.iterrows()
-    ])
-
-    top_materiales = inv_top.sort_values("valor_total", ascending=False).head(15).to_dict("records")
-
     contexto["inventario"] = {
-        "mes_cierre": mes_cierre, "opciones_mes": fechas_inv,
         "materiales_con_stock": len(inv),
         "stock_total": float(inv["stock_cierre"].sum()) if not inv.empty else 0,
         "valor_total": float(inv["valor_total"].sum()) if not inv.empty else 0,
-        "familias": categorias_items,
-        "familias_top": familias_top, "familia_top_sel": familia_top_sel,
-        "centros_top": centros_top, "centro_top_sel": centro_top_sel,
-        "top_materiales": top_materiales,
+        "familias": charts.barras([
+            {"etiqueta": r["categoria"], "valor": float(r["valor_total"])} for _, r in categorias_df.iterrows()
+        ]),
+        "top_materiales": inv.sort_values("valor_total", ascending=False).head(15).to_dict("records"),
     }
 
-    # --- Clasificación ABC de Inventario (por categoría): Mes/Familia/Centro propios ---
-    mes_abc = _selector_mes(request, "abc", fechas_inv)
-    inv_abc_base = q.inventario_por_material(mes_abc)
-    familias_abc, centros_abc = _opciones_familia_centro(inv_abc_base)
-    familia_abc_sel, centro_abc_sel = _selector_familia_centro(request, "abc", familias_abc, centros_abc)
-    contexto["abc"] = q.clasificacion_abc_por_categoria(
-        mes_abc,
-        familia=None if familia_abc_sel == "Todas" else familia_abc_sel,
-        centro=None if centro_abc_sel == "Todos" else centro_abc_sel,
-    )
-    contexto["filtros_abc"] = {
-        "mes": mes_abc, "opciones_mes": fechas_inv,
-        "familias": familias_abc, "familia_sel": familia_abc_sel,
-        "centros": centros_abc, "centro_sel": centro_abc_sel,
-    }
-
-    # --- Materiales obsoletos (sin consumo en 6 meses, capital inmovilizado): Mes/Familia/Centro propios ---
-    mes_obsoletos = _selector_mes(request, "obsoletos", fechas_inv)
-    inv_obsoletos_base = q.inventario_por_material(mes_obsoletos)
-    familias_obsoletos, centros_obsoletos = _opciones_familia_centro(inv_obsoletos_base)
-    familia_obsoletos_sel, centro_obsoletos_sel = _selector_familia_centro(
-        request, "obsoletos", familias_obsoletos, centros_obsoletos
-    )
-    contexto["obsoletos"] = q.materiales_obsoletos_por_categoria(
-        mes_obsoletos,
-        familia=None if familia_obsoletos_sel == "Todas" else familia_obsoletos_sel,
-        centro=None if centro_obsoletos_sel == "Todos" else centro_obsoletos_sel,
-    )
-    contexto["filtros_obsoletos"] = {
-        "mes": mes_obsoletos, "opciones_mes": fechas_inv,
-        "familias": familias_obsoletos, "familia_sel": familia_obsoletos_sel,
-        "centros": centros_obsoletos, "centro_sel": centro_obsoletos_sel,
-    }
+    contexto["abc"] = q.clasificacion_abc_por_categoria(mes, familia=si["familia"], centro=si["centro"])
+    contexto["obsoletos"] = q.materiales_obsoletos_por_categoria(mes, familia=si["familia"], centro=si["centro"])
 
     # --- Índice de Rotación: resumen por categoría ---
     # El índice por material (dashboard/queries.py) está en CANTIDAD, y cada
@@ -411,29 +440,13 @@ def overview(request):
     # promediar o sumar esas cantidades entre materiales no es válido. Por eso
     # el resumen por categoría del OVERVIEW se calcula en VALOR (S/.), la única
     # unidad común a todos los materiales, igual que el indicador clásico de
-    # rotación (Costo de Ventas $ ÷ Inventario $). Las páginas de categoría y
-    # Streamlit siguen en cantidad, a nivel de material, sin cambios.
-    mes_rotacion = _selector_mes(request, "rotacion", fechas_inv)
-    inv_valor_rot = q.inventario_por_material(mes_rotacion)
-    familias_rotacion, centros_rotacion = _opciones_familia_centro(inv_valor_rot)
-    familia_rotacion_sel, centro_rotacion_sel = _selector_familia_centro(
-        request, "rotacion", familias_rotacion, centros_rotacion
-    )
-    if familia_rotacion_sel != "Todas":
-        inv_valor_rot = inv_valor_rot[inv_valor_rot["familia"] == familia_rotacion_sel]
-    if centro_rotacion_sel != "Todos":
-        inv_valor_rot = inv_valor_rot[inv_valor_rot["centro"] == centro_rotacion_sel]
-    stock_valor_cat = inv_valor_rot.groupby("categoria")["valor_total"].sum()
-
-    consumo_val = q.consumo_valorizado_6_meses_por_material(mes_rotacion)
+    # rotación (Costo de Ventas $ ÷ Inventario $).
+    stock_valor_cat = inv.groupby("categoria")["valor_total"].sum()
+    consumo_val = q.consumo_valorizado_6_meses_por_material(mes)
     catalogo = q.catalogo_materiales()
-    consumo_val = consumo_val.merge(
+    consumo_val = _por_familia_centro(consumo_val.merge(
         catalogo[["material_codigo", "categoria", "familia", "centro"]], on="material_codigo", how="left"
-    )
-    if familia_rotacion_sel != "Todas":
-        consumo_val = consumo_val[consumo_val["familia"] == familia_rotacion_sel]
-    if centro_rotacion_sel != "Todos":
-        consumo_val = consumo_val[consumo_val["centro"] == centro_rotacion_sel]
+    ), si)
     consumo_valor_cat = consumo_val.groupby("categoria")["consumo_valor_6meses"].sum()
 
     rotacion_filas = []
@@ -455,49 +468,23 @@ def overview(request):
             # lectura ejecutiva que "cobertura en meses". Definido por el usuario.
             "dias_inventario": round(cobertura_meses * 365 / 12, 0) if cobertura_meses is not None else None,
         })
+    contexto["rotacion"] = {"filas": sorted(rotacion_filas, key=lambda f: f["indice_rotacion_anual"], reverse=True)}
 
-    contexto["rotacion"] = {
-        "mes": mes_rotacion, "opciones_mes": fechas_inv,
-        "familias": familias_rotacion, "familia_sel": familia_rotacion_sel,
-        "centros": centros_rotacion, "centro_sel": centro_rotacion_sel,
-        "filas": sorted(rotacion_filas, key=lambda f: f["indice_rotacion_anual"], reverse=True),
-    }
-
-    # --- Cobertura de Materiales Críticos (por categoría): Mes/Familia/Centro propios ---
-    mes_criticos = _selector_mes(request, "criticos", fechas_inv)
-    rot_criticos_base = q.rotacion_inventario_por_material(mes_criticos)
-    familias_criticos, centros_criticos = _opciones_familia_centro(rot_criticos_base)
-    familia_criticos_sel, centro_criticos_sel = _selector_familia_centro(
-        request, "criticos", familias_criticos, centros_criticos
-    )
-    contexto["criticos"] = q.cobertura_materiales_criticos_por_categoria(
-        mes_criticos,
-        familia=None if familia_criticos_sel == "Todas" else familia_criticos_sel,
-        centro=None if centro_criticos_sel == "Todos" else centro_criticos_sel,
-    )
+    # --- Cobertura de Materiales Críticos (por categoría) ---
+    contexto["criticos"] = q.cobertura_materiales_criticos_por_categoria(mes, familia=si["familia"], centro=si["centro"])
     contexto["total_criticos_en_riesgo"] = sum(r["en_riesgo"] for r in contexto["criticos"])
-    contexto["filtros_criticos"] = {
-        "mes": mes_criticos, "opciones_mes": fechas_inv,
-        "familias": familias_criticos, "familia_sel": familia_criticos_sel,
-        "centros": centros_criticos, "centro_sel": centro_criticos_sel,
-    }
 
-    # --- % Variación de Inventario: resumen por categoría ---
-    mes_var_final = _por_str(request.GET.get("mes_var_final"), fechas_inv) or fechas_inv[-1]
-    opciones_var_inicial = [f for f in fechas_inv if f < mes_var_final]
+    # --- % Variación de Inventario: el corte de los segmentadores contra el
+    # Mes comparativo (propio de la sección; por defecto, el corte anterior) ---
+    opciones_var_inicial = [c for c in reversed(si["cortes"]) if c < mes]
     mes_var_inicial = _por_str(request.GET.get("mes_var_inicial"), opciones_var_inicial) or (
         opciones_var_inicial[-1] if opciones_var_inicial else None
     )
-
-    inv_var_base = q.inventario_por_material(mes_var_final)
-    familias_var, centros_var = _opciones_familia_centro(inv_var_base)
-    familia_var_sel, centro_var_sel = _selector_familia_centro(request, "var", familias_var, centros_var)
-
+    contexto["variacion"] = {"mes_inicial": mes_var_inicial, "mes_final": mes,
+                             "opciones_inicial": list(reversed(opciones_var_inicial))}
     if mes_var_inicial:
         variacion = q.variacion_inventario_por_material(
-            mes_var_inicial, mes_var_final,
-            familia=None if familia_var_sel == "Todas" else familia_var_sel,
-            centro=None if centro_var_sel == "Todos" else centro_var_sel,
+            mes_var_inicial, mes, familia=si["familia"], centro=si["centro"],
         )
         variacion_filas = []
         total_inicial = total_final = 0.0
@@ -519,20 +506,7 @@ def overview(request):
             "variacion_valor": total_final - total_inicial,
             "variacion_pct": round((total_final - total_inicial) / total_inicial * 100, 1) if total_inicial else None,
         })
-        contexto["variacion"] = {
-            "mes_inicial": mes_var_inicial, "mes_final": mes_var_final,
-            "opciones_final": fechas_inv, "opciones_inicial": opciones_var_inicial,
-            "familias": familias_var, "familia_sel": familia_var_sel,
-            "centros": centros_var, "centro_sel": centro_var_sel,
-            "filas": variacion_filas,
-        }
-    else:
-        contexto["variacion"] = {
-            "mes_final": mes_var_final, "opciones_final": fechas_inv,
-            "opciones_inicial": [], "mes_inicial": None,
-            "familias": familias_var, "familia_sel": familia_var_sel,
-            "centros": centros_var, "centro_sel": centro_var_sel,
-        }
+        contexto["variacion"]["filas"] = variacion_filas
 
     return render(request, "gestion/overview.html", contexto)
 
@@ -3169,14 +3143,14 @@ def _contexto_proyeccion_sop(request):
 _ZONAS_CATEGORIA = [
     ("indicadores", "Indicadores", "Resumen de la categoría", ["sec-indicadores-categoria"], None),
     ("compras", "Compras", "Proveedores, Fill Rate y Lead Time",
-     ["sec-compras", "sec-pareto", "sec-fillrate", "sec-leadtime"], None),
+     ["bloque-compras", "sec-compras", "sec-pareto", "sec-fillrate", "sec-leadtime"], None),
     ("inventario", "Inventario", "Stock, ABC, rotación y críticos",
-     ["sec-evolucion", "sec-inventario", "sec-inventario-top", "sec-abc", "sec-obsoletos", "sec-rotacion",
+     ["bloque-inventario", "sec-evolucion", "sec-inventario", "sec-abc", "sec-obsoletos", "sec-rotacion",
       "sec-criticos", "sec-variacion"], "inventario"),
     ("abastecimiento", "Abastecimiento S&OP", "Plan vs ingresos por centro",
      ["sec-sop-categoria", "sec-sop-mensual"], "sop"),
     ("precios", "Precios e IPU", "Precio de compra e inflación", ["sec-ipu-categoria"], None),
-    ("cuentas", "Cuentas por pagar", "Plazo de pago (PMP)", ["sec-pmp", "sec-plazos", "sec-deuda"], None),
+    ("cuentas", "Cuentas por pagar", "Plazo de pago (PMP)", ["bloque-cuentas", "sec-pmp", "sec-plazos", "sec-proveedores-cxp", "sec-deuda"], None),
 ]
 
 # Meses de la gráfica Compras por mes (pestaña Compras y su panel en Indicadores).
@@ -3208,219 +3182,113 @@ def _soles_eje(valor):
 
 
 def _cat_compras(request, categoria, tiene_inventario):
-    """Pestaña Compras y proveedores: compras por año (con PMP y variación
-    interanual), compras por mes, Pareto de proveedores, Fill Rate (solo con
-    inventario, a pedido del usuario) y Lead Time; cada uno con su propio
-    rango de meses."""
-    anios_compras = q.anios_compras_disponibles()
-    contexto = {}
+    """Pestaña Compras: un solo juego de segmentadores (Año, Desde, Hasta,
+    Top de proveedores) para Compras por año, Compras por mes, Pareto, Fill
+    Rate (solo con inventario, a pedido del usuario) y Lead Time."""
+    sc = _segmentadores_compras(request)
+    contexto = {"sc": sc, "compras": [], "compras_mensual": None, "compras_por_mes": [],
+                "pareto": None, "fill_rate": None, "lead_time": None, "con_fill_rate": tiene_inventario}
+    if not sc:
+        return contexto
+    rango = sc["rango"]
 
-    # --- Compras: una fila por año disponible, con variación interanual (YoY) ---
-    compras_filas = []
+    # --- Compras por año, en los MISMOS meses (Desde–Hasta) de cada año: la
+    # variación contra el año anterior compara períodos equivalentes ---
     valor_anio_anterior = None
-    for anio in anios_compras:
-        df = q.compras_por_categoria_contrato(anio)
+    for anio in reversed(sc["anios"]):
+        inicio, fin = _rango_en_anio(rango, anio)
+        df = q.compras_por_categoria_contrato_rango(inicio, fin)
         fila = df[df["categoria"] == categoria]
         if fila.empty:
+            valor_anio_anterior = None
             continue
         valor_total = float(fila["valor_total"].iloc[0] or 0)
         valor_bajo_contrato = float(fila["valor_bajo_contrato"].iloc[0] or 0)
-        pct_contrato = (valor_bajo_contrato / valor_total * 100) if valor_total else 0
-        pmp_df = q.pmp_por_categoria(anio)
+        pmp_df = q.pmp_por_categoria_rango(inicio, fin)
         fila_pmp = pmp_df[pmp_df["categoria"] == categoria]
         pmp = float(fila_pmp["pmp"].iloc[0]) if not fila_pmp.empty else None
-        compras_filas.append({
-            "anio": anio, "valor_total": valor_total,
-            "pct_contrato": round(pct_contrato, 1),
-            "pmp": round(pmp, 0) if pmp is not None else None,
+        contexto["compras"].append({
+            "anio": anio, "periodo": _texto_rango(rango, anio), "valor_total": valor_total,
+            "pct_contrato": round(valor_bajo_contrato / valor_total * 100, 1) if valor_total else 0,
+            "pmp": round(pmp, 0) if pmp is not None else None, "seleccionado": anio == sc["anio"],
             "variacion_yoy_pct": (
                 round((valor_total - valor_anio_anterior) / valor_anio_anterior * 100, 1)
                 if valor_anio_anterior else None
             ),
         })
         valor_anio_anterior = valor_total
-    contexto["compras"] = compras_filas
 
-    # --- Compras por mes (fecha del documento), últimos _COMPRAS_MESES ---
+    # --- Compras por mes: los _COMPRAS_MESES que terminan en el "Hasta"
+    # elegido; los meses del período elegido en rojo, el resto en gris ---
     serie = q.compras_por_mes_y_condicion_pago(categoria)
-    contexto["compras_mensual"] = None
-    contexto["compras_por_mes"] = []
     if not serie.empty:
         por_mes = serie.groupby("mes")["valor_total"].sum()
-        meses = [(datetime.date.fromisoformat(str(m)[:10]), float(v)) for m, v in por_mes.items()]
-        meses.sort()
+        meses = sorted((datetime.date.fromisoformat(str(m)[:10]), float(v)) for m, v in por_mes.items())
         contexto["compras_por_mes"] = meses
-        ultimos = meses[-_COMPRAS_MESES:]
-        contexto["compras_mensual"] = {
-            "meses": len(ultimos),
-            "grafico": charts.columnas(
-                [_mes_corto(m) for m, _ in ultimos],
-                [[{"valor": v, "clase": "col-compras", "detalle": f"{q.formato_mes_anio(m)}\nCompras: S/ {v:,.0f}"}]
-                 for m, v in ultimos],
-                _soles_eje,
-            ),
-        }
+        ultimos = [(m, v) for m, v in meses if m <= rango["fecha_fin"]][-_COMPRAS_MESES:]
+        if ultimos:
+            contexto["compras_mensual"] = {
+                "meses": len(ultimos),
+                "grafico": charts.columnas(
+                    [_mes_corto(m) for m, _ in ultimos],
+                    [[{"valor": v,
+                       "clase": "col-compras" if rango["fecha_ini"] <= m <= rango["fecha_fin"] else "col-compras-fuera",
+                       "detalle": f"{q.formato_mes_anio(m)}\nCompras: S/ {v:,.0f}"}] for m, v in ultimos],
+                    _soles_eje,
+                ),
+            }
 
-    # --- Concentración de Proveedores (Pareto), Fill Rate y Lead Time: año más
-    # reciente, cada uno con su propio segmentador de Mes (independiente) ---
-    anio_indicadores = anios_compras[-1] if anios_compras else None
-    contexto["anio_indicadores"] = anio_indicadores
-    contexto["pareto"] = contexto["fill_rate"] = contexto["lead_time"] = None
-    if anio_indicadores:
-        rango_pareto = _rango_meses(request, "pareto", anio_indicadores)
-        pareto_todas = q.concentracion_proveedores_por_categoria_rango(
-            rango_pareto["fecha_ini"], rango_pareto["fecha_fin"]
-        )
-        contexto["pareto"] = next((r for r in pareto_todas if r["categoria"] == categoria), None)
-        contexto["rango_pareto"] = rango_pareto
-
-        # Fill Rate: solo si esta categoría tiene inventario (a pedido del usuario).
-        if tiene_inventario:
-            rango_fillrate = _rango_meses(request, "fillrate", anio_indicadores)
-            fill_rate_todas = q.fill_rate_por_categoria_rango(rango_fillrate["fecha_ini"], rango_fillrate["fecha_fin"])
-            contexto["fill_rate"] = next((r for r in fill_rate_todas if r["categoria"] == categoria), None)
-            contexto["rango_fillrate"] = rango_fillrate
-
-        # --- Lead Time de proveedores: fecha de pedido -> Entrada de Mercancía real ---
-        rango_leadtime = _rango_meses(request, "leadtime", anio_indicadores)
-        lead_time_todas = q.lead_time_por_categoria_rango(rango_leadtime["fecha_ini"], rango_leadtime["fecha_fin"])
-        contexto["lead_time"] = next((r for r in lead_time_todas if r["categoria"] == categoria), None)
-        contexto["rango_leadtime"] = rango_leadtime
+    pareto_todas = q.concentracion_proveedores_por_categoria_rango(rango["fecha_ini"], rango["fecha_fin"], top=sc["top"])
+    contexto["pareto"] = next((r for r in pareto_todas if r["categoria"] == categoria), None)
+    if tiene_inventario:
+        fill_rate_todas = q.fill_rate_por_categoria_rango(rango["fecha_ini"], rango["fecha_fin"])
+        contexto["fill_rate"] = next((r for r in fill_rate_todas if r["categoria"] == categoria), None)
+    lead_time_todas = q.lead_time_por_categoria_rango(rango["fecha_ini"], rango["fecha_fin"])
+    contexto["lead_time"] = next((r for r in lead_time_todas if r["categoria"] == categoria), None)
     return contexto
 
 
 def _cat_inventario(request, categoria, tiene_inventario):
-    """Pestaña Inventario (solo categorías con inventario): Evolución,
-    Inventario del mes, ABC, Sin movimiento, Rotación, Críticos y %
-    Variación, cada uno con sus propios filtros de Mes/Familia/Centro."""
-    fechas_inv = q.fechas_inventario_disponibles()
-    contexto = {}
+    """Pestaña Inventario (solo categorías con inventario): un solo juego de
+    segmentadores (Corte, Familia, Centro) para Evolución, Inventario del
+    corte, ABC, Sin movimiento, Rotación, Críticos y % Variación. Cada
+    sección conserva solo lo propio: el rango de la Evolución, el mes
+    comparativo de la Variación y el buscador de la Rotación."""
+    si = _segmentadores_inventario(request, categoria)
+    mes, inv = si["mes"], si["inv"]
+    familia, centro = si["familia"], si["centro"]
+    contexto = {"si": si, "evolucion": _evolucion_inventario(request, si, categoria)}
 
-    # --- Evolución de inventario ---
-    anio_max = fechas_inv[-1].year
-    fechas_anio_max = [f for f in fechas_inv if f.year == anio_max]
-    default_inicio_evo = fechas_anio_max[0] if fechas_anio_max else fechas_inv[0]
-
-    mes_inicio_evo = _por_str(request.GET.get("mes_inicio_evo"), fechas_inv) or default_inicio_evo
-    opciones_fin_evo = [f for f in fechas_inv if f >= mes_inicio_evo]
-    mes_fin_evo = _por_str(request.GET.get("mes_fin_evo"), opciones_fin_evo) or opciones_fin_evo[-1]
-
-    serie_cat = q.valor_inventario_mensual_por_categoria(fecha_desde=mes_inicio_evo)
-    serie = serie_cat[
-        (serie_cat["categoria"] == categoria)
-        & (serie_cat["fecha"] >= mes_inicio_evo)
-        & (serie_cat["fecha"] <= mes_fin_evo)
-    ].sort_values("fecha")
-    puntos = [(_mes_abrev_guion(row["fecha"]), float(row["valor_total"])) for _, row in serie.iterrows()]
-
-    contexto["evolucion"] = {
-        "grafico": charts.serie_area(puntos),
-        "mes_inicio": mes_inicio_evo, "mes_fin": mes_fin_evo,
-        "opciones_inicio": fechas_inv, "opciones_fin": opciones_fin_evo,
-    }
-
-    # --- Inventario (foto del mes: métricas, familias, top materiales) ---
-    mes_cierre = _por_str(request.GET.get("mes_cierre"), fechas_inv) or fechas_inv[-1]
-    inv_mat = q.inventario_por_material(mes_cierre)
-    inv = inv_mat[inv_mat["categoria"] == categoria]
-
-    familias_top, centros_top = _opciones_familia_centro(inv)
-    familia_top_sel, centro_top_sel = _selector_familia_centro(request, "top", familias_top, centros_top)
-    inv_top = inv
-    if familia_top_sel != "Todas":
-        inv_top = inv_top[inv_top["familia"] == familia_top_sel]
-    if centro_top_sel != "Todos":
-        inv_top = inv_top[inv_top["centro"] == centro_top_sel]
-
-    familias_df = (
-        inv.groupby("familia", as_index=False)["valor_total"].sum()
-        .sort_values("valor_total", ascending=False).head(10)
-    )
-    familias_items = charts.barras([
-        {"etiqueta": r["familia"], "valor": float(r["valor_total"])}
-        for _, r in familias_df.iterrows()
-    ])
-
+    # --- Inventario del corte: métricas, valor por familia (o por centro si
+    # hay una familia elegida) y top materiales ---
+    eje = "centro" if familia else "familia"
+    agrupado = inv.groupby(eje, as_index=False)["valor_total"].sum().sort_values("valor_total", ascending=False).head(10)
     contexto["inventario"] = {
-        "mes_cierre": mes_cierre, "opciones_mes": fechas_inv,
         "materiales_con_stock": len(inv),
         "stock_total": float(inv["stock_cierre"].sum()) if not inv.empty else 0,
         "valor_total": float(inv["valor_total"].sum()) if not inv.empty else 0,
-        "familias": familias_items,
-        "familias_top": familias_top, "familia_top_sel": familia_top_sel,
-        "centros_top": centros_top, "centro_top_sel": centro_top_sel,
-        "top_materiales": inv_top.sort_values("valor_total", ascending=False).head(15).to_dict("records"),
+        "eje": "Centro" if familia else "Familia",
+        "familias": charts.barras([
+            {"etiqueta": q.nombre_centro(r[eje]) if familia else r[eje], "valor": float(r["valor_total"])}
+            for _, r in agrupado.iterrows()
+        ]),
+        "top_materiales": inv.sort_values("valor_total", ascending=False).head(15).to_dict("records"),
     }
 
-    # --- Clasificación ABC de Inventario: Mes/Familia/Centro propios ---
-    mes_abc = _selector_mes(request, "abc", fechas_inv)
-    inv_abc_cat = q.inventario_por_material(mes_abc)
-    inv_abc_cat = inv_abc_cat[inv_abc_cat["categoria"] == categoria]
-    familias_abc, centros_abc = _opciones_familia_centro(inv_abc_cat)
-    familia_abc_sel, centro_abc_sel = _selector_familia_centro(request, "abc", familias_abc, centros_abc)
-    abc_todas = q.clasificacion_abc_por_categoria(
-        mes_abc,
-        familia=None if familia_abc_sel == "Todas" else familia_abc_sel,
-        centro=None if centro_abc_sel == "Todos" else centro_abc_sel,
-    )
+    abc_todas = q.clasificacion_abc_por_categoria(mes, familia=familia, centro=centro)
     contexto["abc"] = next((r for r in abc_todas if r["categoria"] == categoria), None)
-    contexto["filtros_abc"] = {
-        "mes": mes_abc, "opciones_mes": fechas_inv,
-        "familias": familias_abc, "familia_sel": familia_abc_sel,
-        "centros": centros_abc, "centro_sel": centro_abc_sel,
-    }
-
-    # --- Materiales obsoletos (sin consumo en 6 meses, capital inmovilizado): Mes/Familia/Centro propios ---
-    mes_obsoletos = _selector_mes(request, "obsoletos", fechas_inv)
-    inv_obsoletos_cat = q.inventario_por_material(mes_obsoletos)
-    inv_obsoletos_cat = inv_obsoletos_cat[inv_obsoletos_cat["categoria"] == categoria]
-    familias_obsoletos, centros_obsoletos = _opciones_familia_centro(inv_obsoletos_cat)
-    familia_obsoletos_sel, centro_obsoletos_sel = _selector_familia_centro(
-        request, "obsoletos", familias_obsoletos, centros_obsoletos
-    )
-    obsoletos_todas = q.materiales_obsoletos_por_categoria(
-        mes_obsoletos,
-        familia=None if familia_obsoletos_sel == "Todas" else familia_obsoletos_sel,
-        centro=None if centro_obsoletos_sel == "Todos" else centro_obsoletos_sel,
-    )
+    obsoletos_todas = q.materiales_obsoletos_por_categoria(mes, familia=familia, centro=centro)
     contexto["obsoletos"] = next((r for r in obsoletos_todas if r["categoria"] == categoria), None)
-    contexto["filtros_obsoletos"] = {
-        "mes": mes_obsoletos, "opciones_mes": fechas_inv,
-        "familias": familias_obsoletos, "familia_sel": familia_obsoletos_sel,
-        "centros": centros_obsoletos, "centro_sel": centro_obsoletos_sel,
-    }
 
-    # --- Índice de Rotación ---
-    mes_rotacion = _por_str(request.GET.get("mes_rotacion"), fechas_inv) or fechas_inv[-1]
-    rotacion = q.rotacion_inventario_por_material(mes_rotacion)
-    rot = rotacion[rotacion["categoria"] == categoria]
-
-    familias_rot, centros_rot = _opciones_familia_centro(rot)
-    familia_rot_sel, centro_rot_sel = _selector_familia_centro(request, "rotacion", familias_rot, centros_rot)
-
-    # Rotación anual de la categoría (indicador clásico, en valor): mismo criterio
-    # que el OVERVIEW, en cantidad no sería válido porque los materiales de una
-    # categoría pueden tener distinta UMB. inventario_por_material/catalogo_materiales
-    # están cacheados, así que si mes_rotacion == mes_cierre esto no repite trabajo.
-    # Respeta el mismo Familia/Centro elegido para el detalle por material de arriba.
-    inv_valor_rot = q.inventario_por_material(mes_rotacion)
-    inv_valor_rot = inv_valor_rot[inv_valor_rot["categoria"] == categoria]
-    if familia_rot_sel != "Todas":
-        inv_valor_rot = inv_valor_rot[inv_valor_rot["familia"] == familia_rot_sel]
-    if centro_rot_sel != "Todos":
-        inv_valor_rot = inv_valor_rot[inv_valor_rot["centro"] == centro_rot_sel]
-    valor_stock_cat = float(inv_valor_rot["valor_total"].sum())
-
-    consumo_val = q.consumo_valorizado_6_meses_por_material(mes_rotacion)
+    # --- Índice de Rotación: anual de la categoría en valor (en cantidad no
+    # sería válido: distintas UMB) y detalle por material en cantidad ---
+    valor_stock_cat = float(inv["valor_total"].sum())
+    consumo_val = q.consumo_valorizado_6_meses_por_material(mes)
     catalogo = q.catalogo_materiales()
     consumo_val = consumo_val.merge(
         catalogo[["material_codigo", "categoria", "familia", "centro"]], on="material_codigo", how="left"
     )
-    consumo_val = consumo_val[consumo_val["categoria"] == categoria]
-    if familia_rot_sel != "Todas":
-        consumo_val = consumo_val[consumo_val["familia"] == familia_rot_sel]
-    if centro_rot_sel != "Todos":
-        consumo_val = consumo_val[consumo_val["centro"] == centro_rot_sel]
+    consumo_val = _por_familia_centro(consumo_val[consumo_val["categoria"] == categoria], si)
     consumo_valor_cat = float(consumo_val["consumo_valor_6meses"].sum())
 
     rotacion_anual_cat = cobertura_cat = dias_inventario_cat = None
@@ -3433,77 +3301,31 @@ def _cat_inventario(request, categoria, tiene_inventario):
 
     # Detalle por material: solo la primera página (ver _ROTACION_PAGINA_TAM):
     # el resto se pide por scroll infinito a rotacion_materiales_pagina.
-    rot_ordenado = _rotacion_materiales_filtrado(
-        categoria, mes_rotacion,
-        familia=None if familia_rot_sel == "Todas" else familia_rot_sel,
-        centro=None if centro_rot_sel == "Todos" else centro_rot_sel,
-    )
+    rot_ordenado = _rotacion_materiales_filtrado(categoria, mes, familia=familia, centro=centro)
     total_rot = len(rot_ordenado)
-    pagina_rot = rot_ordenado.iloc[:_ROTACION_PAGINA_TAM]
-
     contexto["rotacion"] = {
-        "mes": mes_rotacion, "opciones_mes": fechas_inv,
-        "familias": familias_rot, "familia_sel": familia_rot_sel,
-        "centros": centros_rot, "centro_sel": centro_rot_sel,
-        "filas": pagina_rot.to_dict("records"),
+        "mes": mes, "familia_sel": familia or "", "centro_sel": centro or "",
+        "filas": rot_ordenado.iloc[:_ROTACION_PAGINA_TAM].to_dict("records"),
         "total": total_rot, "hay_mas": total_rot > _ROTACION_PAGINA_TAM,
         "valor_stock": valor_stock_cat, "consumo_valor_6meses": consumo_valor_cat,
         "rotacion_anual": rotacion_anual_cat, "cobertura_meses_categoria": cobertura_cat,
         "dias_inventario": dias_inventario_cat,
     }
 
-    # --- Cobertura de Materiales Críticos: Mes/Familia/Centro propios ---
-    mes_criticos = _selector_mes(request, "criticos", fechas_inv)
-    rot_criticos_cat = q.rotacion_inventario_por_material(mes_criticos)
-    rot_criticos_cat = rot_criticos_cat[rot_criticos_cat["categoria"] == categoria]
-    familias_criticos, centros_criticos = _opciones_familia_centro(rot_criticos_cat)
-    familia_criticos_sel, centro_criticos_sel = _selector_familia_centro(
-        request, "criticos", familias_criticos, centros_criticos
-    )
-    criticos_todas = q.cobertura_materiales_criticos_por_categoria(
-        mes_criticos,
-        familia=None if familia_criticos_sel == "Todas" else familia_criticos_sel,
-        centro=None if centro_criticos_sel == "Todos" else centro_criticos_sel,
-    )
+    criticos_todas = q.cobertura_materiales_criticos_por_categoria(mes, familia=familia, centro=centro)
     contexto["criticos"] = next((r for r in criticos_todas if r["categoria"] == categoria), None)
-    contexto["filtros_criticos"] = {
-        "mes": mes_criticos, "opciones_mes": fechas_inv,
-        "familias": familias_criticos, "familia_sel": familia_criticos_sel,
-        "centros": centros_criticos, "centro_sel": centro_criticos_sel,
-    }
 
-    # --- % Variación de Inventario ---
-    mes_var_final = _por_str(request.GET.get("mes_var_final"), fechas_inv) or fechas_inv[-1]
-    opciones_var_inicial = [f for f in fechas_inv if f < mes_var_final]
+    # --- % Variación: el corte elegido contra el Mes comparativo (propio de
+    # la sección; por defecto, el corte anterior) ---
+    opciones_var_inicial = [c for c in reversed(si["cortes"]) if c < mes]
     mes_var_inicial = _por_str(request.GET.get("mes_var_inicial"), opciones_var_inicial) or (
         opciones_var_inicial[-1] if opciones_var_inicial else None
     )
-
-    inv_var_cat = q.inventario_por_material(mes_var_final)
-    inv_var_cat = inv_var_cat[inv_var_cat["categoria"] == categoria]
-    familias_var, centros_var = _opciones_familia_centro(inv_var_cat)
-    familia_var_sel, centro_var_sel = _selector_familia_centro(request, "var", familias_var, centros_var)
-
+    contexto["variacion"] = {"mes_inicial": mes_var_inicial, "mes_final": mes,
+                             "opciones_inicial": list(reversed(opciones_var_inicial)), "filas": []}
     if mes_var_inicial:
-        var = q.variacion_inventario_por_material(
-            mes_var_inicial, mes_var_final, categoria=categoria,
-            familia=None if familia_var_sel == "Todas" else familia_var_sel,
-            centro=None if centro_var_sel == "Todos" else centro_var_sel,
-        )
-        contexto["variacion"] = {
-            "mes_inicial": mes_var_inicial, "mes_final": mes_var_final,
-            "opciones_final": fechas_inv, "opciones_inicial": opciones_var_inicial,
-            "familias": familias_var, "familia_sel": familia_var_sel,
-            "centros": centros_var, "centro_sel": centro_var_sel,
-            "filas": var.sort_values("variacion_valor", ascending=False).head(20).to_dict("records"),
-        }
-    else:
-        contexto["variacion"] = {
-            "mes_final": mes_var_final, "opciones_final": fechas_inv,
-            "opciones_inicial": [], "mes_inicial": None,
-            "familias": familias_var, "familia_sel": familia_var_sel,
-            "centros": centros_var, "centro_sel": centro_var_sel,
-        }
+        var = q.variacion_inventario_por_material(mes_var_inicial, mes, categoria=categoria, familia=familia, centro=centro)
+        contexto["variacion"]["filas"] = var.sort_values("variacion_valor", ascending=False).head(20).to_dict("records")
     return contexto
 
 
@@ -3554,27 +3376,39 @@ _IPU_FILAS_TABLA = 15
 
 def _cat_precios(request, categoria, tiene_inventario):
     """Pestaña Precios e IPU de una categoría: IPU (Índice de Precios Unacem)
-    de todos sus materiales comprados, con el mismo cálculo que Planificación
+    de sus materiales comprados, con el mismo cálculo que Planificación
     (precio de compra de MB51, ver queries.precios_entrada_materiales), y los
-    materiales que más subieron y bajaron. Filtros: Período, contra qué se
-    compara (año anterior o mes anterior) y Centro. Una categoría sin
-    materiales con entrada de mercancía (servicios) muestra un aviso."""
+    materiales que más subieron y bajaron. Segmentadores: Período, contra qué
+    se compara, Familia, Centro y Material (varios), en cascada; con un solo
+    material, su detalle mes a mes. Una categoría sin materiales con entrada
+    de mercancía (servicios) muestra un aviso."""
     base = q.precios_entrada_materiales()
     base = base[base["categoria"] == categoria]
     evaluacion_sel = request.GET.get("evaluacion_ipu", "interanual")
     if evaluacion_sel not in _EVALUACIONES_IPU_CATEGORIA:
         evaluacion_sel = "interanual"
     evaluacion = _EVALUACIONES_IPU_CATEGORIA[evaluacion_sel]
-    centros = ["Todos"] + sorted(c for c in base["centro"].unique() if c)
+
+    familias = ["Todas"] + sorted(f for f in base["familia"].unique() if f)
+    familia_sel = request.GET.get("familia_ipu", "Todas")
+    if familia_sel not in familias:
+        familia_sel = "Todas"
+    por_familia = base if familia_sel == "Todas" else base[base["familia"] == familia_sel]
+    centros = ["Todos"] + sorted(c for c in por_familia["centro"].unique() if c)
     centro_sel = request.GET.get("centro_ipu", "Todos")
     if centro_sel not in centros:
         centro_sel = "Todos"
-    df = base if centro_sel == "Todos" else base[base["centro"] == centro_sel]
+    por_centro = por_familia if centro_sel == "Todos" else por_familia[por_familia["centro"] == centro_sel]
+    materiales_op = _opciones_material(por_centro) if not por_centro.empty else [{"codigo": "Todos", "texto": "Todos"}]
+    material_sel = _selector_material(request, "ipu", materiales_op)
+    df = _por_materiales(por_centro, material_sel)
     pr = {
         "evaluaciones": [{"valor": k, "texto": v["texto"]} for k, v in _EVALUACIONES_IPU_CATEGORIA.items()],
         "evaluacion_sel": evaluacion_sel, "contra": evaluacion["contra"], "base_titulo": evaluacion["base_titulo"],
-        "centros": centros, "centro_sel": centro_sel, "periodos": [], "periodo_sel": "desde",
-        "resumen": None, "grafico": None, "puntos": [], "tablas": [], "aviso": "",
+        "familias": familias, "familia_sel": familia_sel, "centros": centros, "centro_sel": centro_sel,
+        "materiales": materiales_op, "material_sel": material_sel,
+        "periodos": [], "periodo_sel": "desde",
+        "resumen": None, "grafico": None, "puntos": [], "tablas": [], "aviso": "", "detalle": [], "grafico_precio": None,
     }
     if base.empty:
         pr["aviso"] = ("Esta categoría no tiene compras de materiales con entrada de mercancía (MB51) para medir su "
@@ -3658,6 +3492,22 @@ def _cat_precios(request, categoria, tiene_inventario):
         "suben": int((materiales["ultima"] > 0).sum()), "bajan": int((materiales["ultima"] < 0).sum()),
         "atipicas": int(inflacion["atipica"].sum()),
     } if meses else None
+
+    # Un solo material (en un solo centro): su precio mes a mes contra el
+    # precio base y el detalle de cada comparación.
+    if inflacion[["material_codigo", "centro"]].drop_duplicates().shape[0] == 1:
+        r0 = inflacion.iloc[0]
+        pr["un_material"] = f"{r0['texto_breve']} ({q.nombre_centro(r0['centro'])}) · S/ por {umb.get(r0['material_codigo'], 'UMB')}"
+        pr["grafico_precio"] = charts.evolucion_precio(
+            [(r.mes, float(r.precio), float(r.toneladas)) for r in inflacion.itertuples()], _mes_corto,
+            base=[(r.mes, float(r.precio_base)) for r in inflacion.itertuples()], ancho=960, alto=300,
+        )
+        pr["detalle"] = [
+            {"mes": _mes_corto(r["mes"]), "cantidad": r["toneladas"], "precio": r["precio"],
+             "base": _mes_corto(r["mes_base"]) + (" (último registrado)" if r["base_sustituida"] else ""),
+             "precio_base": r["precio_base"], "pct": r["variacion"] * 100, "bolsa": r["bolsa"], "atipica": bool(r["atipica"])}
+            for r in reversed(inflacion.to_dict("records"))
+        ]
     return {"pr": pr}
 
 
@@ -3667,24 +3517,34 @@ _TRAMOS_PLAZO_PAGO = [(0, "Contado o anticipado"), (30, "Hasta 30 días"), (60, 
 
 
 def _cat_cuentas(request, categoria, tiene_inventario):
-    """Pestaña Cuentas por pagar: PMP por año y su evolución mensual, y las
-    compras del año por plazo de pago (tramos y condición de pago). El saldo
-    por pagar y su antigüedad quedan pendientes de data (partidas abiertas
-    de proveedores)."""
+    """Pestaña Cuentas por pagar: segmentadores propios (Año, Desde, Hasta;
+    se alinean con los de Compras, ver zonas.js) para el PMP del período,
+    las compras por plazo de pago (tramos y condición) y por proveedor. El
+    PMP por año usa los mismos meses de cada año; la evolución mensual es
+    toda la historia. El saldo por pagar y su antigüedad quedan pendientes
+    de data (partidas abiertas de proveedores)."""
     anios = q.anios_compras_disponibles()
-    cx = {"anios": anios, "anio_sel": None, "pmp_anios": [], "tramos": [], "condiciones": [],
-          "pmp_grafico": None, "pmp_serie": []}
+    cx = {"anios": list(reversed(anios)), "anio_sel": None, "pmp_anios": [], "tramos": [], "condiciones": [],
+          "proveedores": [], "pmp_grafico": None, "pmp_serie": []}
     if not anios:
         return {"cx": cx}
+    anio_sel = _por_str(request.GET.get("anio_cxp"), [str(a) for a in anios])
+    anio_sel = int(anio_sel) if anio_sel else anios[-1]
+    rango = _rango_meses(request, "cxp", anio_sel)
+    cx.update({"anio_sel": anio_sel, "rango": rango, "texto": _texto_rango(rango, anio_sel)})
 
+    # PMP de cada año en los mismos meses del período elegido.
     anterior = None
     for anio in anios:
-        fila = q.pmp_por_categoria(anio)
+        fila = q.pmp_por_categoria_rango(*_rango_en_anio(rango, anio))
         fila = fila[fila["categoria"] == categoria]
         if fila.empty:
+            anterior = None
             continue
         pmp = float(fila["pmp"].iloc[0])
-        cx["pmp_anios"].append({"anio": anio, "pmp": pmp, "diferencia": None if anterior is None else pmp - anterior})
+        cx["pmp_anios"].append({"anio": anio, "periodo": _texto_rango(rango, anio), "pmp": pmp,
+                                "diferencia": None if anterior is None else pmp - anterior,
+                                "seleccionado": anio == anio_sel})
         anterior = pmp
 
     serie = q.pmp_mensual(categoria)
@@ -3692,10 +3552,7 @@ def _cat_cuentas(request, categoria, tiene_inventario):
     cx["pmp_grafico"] = charts.serie_area([(_mes_abrev_guion(m), v) for m, v in cx["pmp_serie"]],
                                           formato_valor=lambda v: f"{v:.0f}")
 
-    anio_sel = _por_str(request.GET.get("anio_cxp"), [str(a) for a in anios])
-    anio_sel = int(anio_sel) if anio_sel else anios[-1]
-    cx["anio_sel"] = anio_sel
-    df = q.compras_por_categoria_y_condicion_pago(anio_sel)
+    df = q.compras_por_categoria_y_condicion_pago_rango(rango["fecha_ini"], rango["fecha_fin"])
     df = df[df["categoria"] == categoria].copy()
     df["valor_total"] = df["valor_total"].astype(float)
     total = float(df["valor_total"].sum())
@@ -3708,12 +3565,31 @@ def _cat_cuentas(request, categoria, tiene_inventario):
         tramos.append({"etiqueta": nombre, "valor": valor, "participacion": valor / total * 100})
         desde = hasta
     cx["tramos"] = charts.barras(tramos)
-    condiciones = df.groupby("condicion_pago", as_index=False, dropna=False).agg(valor_total=("valor_total", "sum"), dias=("dias", "first"))
+    condiciones = df.groupby("condicion_pago", as_index=False, dropna=False).agg(
+        valor_total=("valor_total", "sum"), dias=("dias", "first"))
     condiciones["participacion"] = condiciones["valor_total"] / total * 100
     cx["condiciones"] = condiciones.sort_values("valor_total", ascending=False).to_dict("records")
     cx["valor_total"] = total
     cx["pmp_anio"] = float((df["dias"] * df["valor_total"]).sum() / total)
     cx["pct_60"] = float(df.loc[df["dias"] >= 60, "valor_total"].sum() / total * 100)
+
+    # Por proveedor: valor, PMP (días ponderados por valor) y su condición
+    # de pago principal (la de más valor), en el período elegido.
+    pv = q.compras_por_categoria_proveedor_condicion_rango(rango["fecha_ini"], rango["fecha_fin"])
+    pv = pv[pv["categoria"] == categoria].copy()
+    if not pv.empty:
+        pv["valor_total"] = pv["valor_total"].astype(float)
+        pv["dias"] = pv["condicion_pago"].map(q.dias_ponderados_condicion_pago)
+        pv["peso"] = pv["dias"] * pv["valor_total"]
+        principal = pv.sort_values("valor_total", ascending=False).drop_duplicates("proveedor").set_index("proveedor")
+        agr = pv.groupby("proveedor").agg(valor=("valor_total", "sum"), peso=("peso", "sum"),
+                                          pedidos=("pedidos", "sum")).sort_values("valor", ascending=False)
+        cx["proveedores"] = [{
+            "proveedor": nombre, "valor": float(r["valor"]), "pedidos": int(r["pedidos"]),
+            "pmp": float(r["peso"] / r["valor"]) if r["valor"] else 0.0,
+            "condicion": principal.loc[nombre, "condicion_pago"] or "—",
+            "participacion": float(r["valor"]) / total * 100,
+        } for nombre, r in agr.iterrows()]
     return {"cx": cx}
 
 
@@ -3759,7 +3635,7 @@ def _cat_indicadores(request, categoria, tiene_inventario):
     titulo = "Concentración de proveedores"
     pareto = co["pareto"]
     if not pareto or not pareto["top_proveedores"]:
-        panel("compras", titulo, "—", "", "", None, vacio="Sin compras en el año más reciente.")
+        panel("compras", titulo, "—", "", "", None, vacio="Sin compras en lo que va del año.")
     else:
         pct = float(pareto["pct_concentracion_top"])
         tono, estado = (("alerta", "Alta dependencia") if pct >= 80 else
@@ -3776,7 +3652,7 @@ def _cat_indicadores(request, categoria, tiene_inventario):
                   "detalle": f"{p['proveedor']}\nS/ {float(p['valor']):,.0f} · {float(p['pct']):.1f}% de las compras"}
                  for p in top]
         panel("compras", titulo, f"{pct:.1f}%",
-              f"De las compras de {co['anio_indicadores']} en los 5 proveedores más grandes"
+              f"De las compras de {co['sc']['texto']} en los {co['sc']['top']} proveedores más grandes"
               + (" · " + " · ".join(extras) if extras else ""),
               "escala", charts.barras_escala(filas, 0, tope), tono, estado)
 
@@ -3785,10 +3661,7 @@ def _cat_indicadores(request, categoria, tiene_inventario):
         inv = _cat_inventario(sin_filtros, categoria, tiene_inventario)
         # 3. Valor del inventario: el último corte de cada uno de los últimos
         # 13 meses (desde Set-26 hay cortes diarios: va el último de cada mes).
-        cortes = sorted({(f.year, f.month): f for f in q.fechas_inventario_disponibles()}.values())[-13:]
-        serie = q.valor_inventario_mensual_por_categoria(fecha_desde=cortes[0])
-        serie = serie[(serie["categoria"] == categoria) & serie["fecha"].isin(cortes)].sort_values("fecha")
-        valores = [(f, float(v)) for f, v in zip(serie["fecha"], serie["valor_total"])]
+        valores = _serie_inventario(_cortes_inventario()[-13:], categoria)
         titulo = "Valor del inventario"
         if not valores:
             panel("inventario", titulo, "—", "", "", None, vacio="Sin inventario registrado.")
@@ -3909,7 +3782,7 @@ def _cat_indicadores(request, categoria, tiene_inventario):
         estado = f"{ultimo['diferencia']:+.0f} días vs {ultimo['anio'] - 1}" if ultimo["diferencia"] is not None else ""
         serie = cx["pmp_serie"][-_COMPRAS_MESES:]
         panel("cuentas", titulo, f"{ultimo['pmp']:.0f} días",
-              f"Compras de {ultimo['anio']}"
+              f"Compras de {ultimo['periodo']}, mismos meses que el año anterior"
               + (f" · {cx['pct_60']:.0f}% del valor a 60 días o más" if cx.get("pct_60") is not None else ""),
               "lineas", charts.lineas_mensuales(
                   [{"nombre": "PMP", "clase": "serie-0",
@@ -3997,12 +3870,12 @@ def exportar_excel(request, slug=None):
             raise Http404("Categoría no encontrada")
 
     fechas_inv = q.fechas_inventario_disponibles()
-    anios_compras = q.anios_compras_disponibles()
 
-    anio_sel = _por_str(request.GET.get("anio_compras"), [str(a) for a in anios_compras])
-    anio_sel = int(anio_sel) if anio_sel else (anios_compras[-1] if anios_compras else None)
-    mes_cierre = _por_str(request.GET.get("mes_cierre"), fechas_inv) or (fechas_inv[-1] if fechas_inv else None)
-    mes_rotacion = _por_str(request.GET.get("mes_rotacion"), fechas_inv) or mes_cierre
+    # Los mismos segmentadores que la página: período de compras (Año,
+    # Desde, Hasta, Top) e inventario (Corte, Familia, Centro).
+    sc = _segmentadores_compras(request)
+    si = _segmentadores_inventario(request, categoria) if fechas_inv else None
+    mes_cierre = mes_rotacion = si["mes"] if si else None
 
     buffer = io.BytesIO()
     hojas_escritas = False
@@ -4016,29 +3889,28 @@ def exportar_excel(request, slug=None):
             _centros_por_nombre(df).to_excel(writer, sheet_name=nombre[:31], index=False)
             hojas_escritas = True
 
-        if anio_sel:
+        if sc:
+            rango = sc["rango"]
+            fi, ff = rango["fecha_ini"], rango["fecha_fin"]
+            df_compras = q.compras_por_categoria_contrato_rango(fi, ff)
+            pmp_df = q.pmp_por_categoria_rango(fi, ff)
             if categoria:
-                df_compras = q.compras_por_categoria_contrato(anio_sel)
                 df_compras = df_compras[df_compras["categoria"] == categoria]
-                pmp_df = q.pmp_por_categoria(anio_sel)
-            else:
-                rango = _rango_meses(request, "compras", anio_sel)
-                df_compras = q.compras_por_categoria_contrato_rango(rango["fecha_ini"], rango["fecha_fin"])
-                pmp_df = q.pmp_por_categoria_rango(rango["fecha_ini"], rango["fecha_fin"])
-            hoja("Compras", df_compras.merge(pmp_df, on="categoria", how="left"))
+            hoja("Compras", df_compras.merge(pmp_df, on="categoria", how="left").assign(periodo=sc["texto"]))
 
-            pareto_todas = q.concentracion_proveedores_por_categoria(anio_sel)
+            pareto_todas = q.concentracion_proveedores_por_categoria_rango(fi, ff, top=sc["top"])
             if categoria:
                 pareto_todas = [r for r in pareto_todas if r["categoria"] == categoria]
             hoja("Pareto Proveedores", [
                 {
-                    "categoria": r["categoria"], "pct_concentracion_top5": r["pct_concentracion_top"],
+                    "periodo": sc["texto"], "categoria": r["categoria"],
+                    f"pct_concentracion_top{sc['top']}": r["pct_concentracion_top"],
                     "proveedor": p["proveedor"], "valor": p["valor"], "pct_del_total": p["pct"],
                 }
                 for r in pareto_todas for p in r["top_proveedores"]
             ])
 
-            fill_rate_todas = q.fill_rate_por_categoria(anio_sel)
+            fill_rate_todas = q.fill_rate_por_categoria_rango(fi, ff)
             if categoria:
                 fill_rate_todas = [r for r in fill_rate_todas if r["categoria"] == categoria]
             else:
@@ -4046,40 +3918,36 @@ def exportar_excel(request, slug=None):
                 fill_rate_todas = [r for r in fill_rate_todas if r["categoria"] in categorias_con_inv]
             hoja("Fill Rate", fill_rate_todas)
 
-            lead_time_todas = q.lead_time_por_categoria(anio_sel)
+            lead_time_todas = q.lead_time_por_categoria_rango(fi, ff)
             if categoria:
                 lead_time_todas = [r for r in lead_time_todas if r["categoria"] == categoria]
             hoja("Lead Time", lead_time_todas)
 
-        if categoria is None or categoria in set(q.categorias_inventario_disponibles()):
-            if mes_cierre:
-                inv = q.inventario_por_material(mes_cierre)
-                if categoria:
-                    inv = inv[inv["categoria"] == categoria]
-                columnas_inv = [
-                    "material_codigo", "texto_breve", "categoria", "familia", "centro",
-                    "unidad_medida_base", "stock_cierre", "valor_total",
-                ]
-                hoja("Inventario", inv[columnas_inv].sort_values("valor_total", ascending=False))
+        if si and (categoria is None or categoria in set(q.categorias_inventario_disponibles())):
+            familia, centro = si["familia"], si["centro"]
+            columnas_inv = [
+                "material_codigo", "texto_breve", "categoria", "familia", "centro",
+                "unidad_medida_base", "stock_cierre", "valor_total",
+            ]
+            hoja("Inventario", si["inv"][columnas_inv].sort_values("valor_total", ascending=False).assign(corte=mes_cierre))
 
-                abc_todas = q.clasificacion_abc_por_categoria(mes_cierre)
-                if categoria:
-                    abc_todas = [r for r in abc_todas if r["categoria"] == categoria]
-                hoja("ABC", [
-                    {"categoria": r["categoria"], "clase": c["clase"], "materiales": c["materiales"], "valor": c["valor"]}
-                    for r in abc_todas for c in r["clases"]
-                ])
+            abc_todas = q.clasificacion_abc_por_categoria(mes_cierre, familia=familia, centro=centro)
+            if categoria:
+                abc_todas = [r for r in abc_todas if r["categoria"] == categoria]
+            hoja("ABC", [
+                {"categoria": r["categoria"], "clase": c["clase"], "materiales": c["materiales"], "valor": c["valor"]}
+                for r in abc_todas for c in r["clases"]
+            ])
 
-                obsoletos_todas = q.materiales_obsoletos_por_categoria(mes_cierre)
-                if categoria:
-                    obsoletos_todas = [r for r in obsoletos_todas if r["categoria"] == categoria]
-                hoja("Sin Movimiento", obsoletos_todas)
+            obsoletos_todas = q.materiales_obsoletos_por_categoria(mes_cierre, familia=familia, centro=centro)
+            if categoria:
+                obsoletos_todas = [r for r in obsoletos_todas if r["categoria"] == categoria]
+            hoja("Sin Movimiento", obsoletos_todas)
 
-            if mes_rotacion:
-                criticos_todas = q.cobertura_materiales_criticos_por_categoria(mes_rotacion)
-                if categoria:
-                    criticos_todas = [r for r in criticos_todas if r["categoria"] == categoria]
-                hoja("Críticos", criticos_todas)
+            criticos_todas = q.cobertura_materiales_criticos_por_categoria(mes_rotacion, familia=familia, centro=centro)
+            if categoria:
+                criticos_todas = [r for r in criticos_todas if r["categoria"] == categoria]
+            hoja("Críticos", criticos_todas)
 
         if not hojas_escritas:
             hoja("Aviso", [{"Aviso": "No hay datos para exportar con los filtros actuales."}])
