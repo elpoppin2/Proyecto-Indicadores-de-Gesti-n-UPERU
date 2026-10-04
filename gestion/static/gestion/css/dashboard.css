@@ -12,11 +12,16 @@
   --line: #d9d9d9;
   --table-line: #adadad;
   --table-header: #4d4d4d;
-  --accent: #e34948;
+  /* Rojo UNACEM (el de unacem.pe, #D00303; el logo es #FF0000 puro, que
+     sobre blanco no llega al contraste mínimo para texto). Es el acento y
+     también el rojo de "malo" (bajo el plan, quiebre, precio que sube), a
+     pedido del usuario: un solo rojo en todo el reporte. En oscuro, el mismo
+     rojo aclarado para que se lea sobre el fondo. */
+  --accent: #d00303;
   --accent-ink: #ffffff;
   --up: #3f7d54;
-  --down: #b5502a;
-  --alerta-bg: #fbe9e3;
+  --down: #d00303;
+  --alerta-bg: #fde6e6;
   --warn: #9a6400;
   --shadow: 0 1px 2px rgba(0, 0, 0, .05), 0 6px 20px -8px rgba(0, 0, 0, .12);
   /* Proveedores (Evolución de entregas): orden fijo por peso, nunca ciclado;
@@ -30,9 +35,9 @@
     --bg: #1b1b1b; --surface: #242424; --surface-2: #2d2d2d;
     --ink: #f1f1f1; --muted: #a8a8a8; --line: #3a3a3a;
     --table-line: #5a5a5a; --table-header: #c7c7c7;
-    --accent: #e66767; --accent-ink: #1b1b1b;
-    --up: #74c090; --down: #e0864c;
-    --alerta-bg: #3a2620; --warn: #e3ad4f;
+    --accent: #ff4d4d; --accent-ink: #1b1b1b;
+    --up: #74c090; --down: #ff4d4d;
+    --alerta-bg: #3a1f1f; --warn: #e3ad4f;
     --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 28px -10px rgba(0, 0, 0, .5);
     --prov-0: #6f9fe0; --prov-1: #eab34a; --prov-2: #4fc2ac; --prov-3: #b08ddc;
     --prov-4: #e88bb0; --prov-5: #a8bf55; --prov-6: #8fcaf0; --prov-otros: #6a6a6a;
@@ -42,9 +47,9 @@
   --bg: #1b1b1b; --surface: #242424; --surface-2: #2d2d2d;
   --ink: #f1f1f1; --muted: #a8a8a8; --line: #3a3a3a;
   --table-line: #5a5a5a; --table-header: #c7c7c7;
-  --accent: #e66767; --accent-ink: #1b1b1b;
-  --up: #74c090; --down: #e0864c;
-  --alerta-bg: #3a2620; --warn: #e3ad4f;
+  --accent: #ff4d4d; --accent-ink: #1b1b1b;
+  --up: #74c090; --down: #ff4d4d;
+  --alerta-bg: #3a1f1f; --warn: #e3ad4f;
   --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 28px -10px rgba(0, 0, 0, .5);
   --prov-0: #6f9fe0; --prov-1: #eab34a; --prov-2: #4fc2ac; --prov-3: #b08ddc;
   --prov-4: #e88bb0; --prov-5: #a8bf55; --prov-6: #8fcaf0; --prov-otros: #6a6a6a;
@@ -289,12 +294,12 @@ table thead th[data-orden="desc"]::after { content: "\25BC"; }
 .leyenda-marca.banda-minmax { height: 10px; width: 14px; border-radius: 2px; background: var(--up); opacity: .45; }
 .leyenda-nota { font-style: italic; }
 .dato-alerta { color: var(--warn); }
-td.estado-quiebre { background: rgba(214, 64, 52, .32); color: var(--down); font-weight: 600; }
-td.estado-bajo_minimo { background: rgba(214, 64, 52, .14); color: var(--down); }
+td.estado-quiebre { background: color-mix(in srgb, var(--down) 32%, transparent); color: var(--down); font-weight: 600; }
+td.estado-bajo_minimo { background: color-mix(in srgb, var(--down) 14%, transparent); color: var(--down); }
 td.estado-en_rango { background: rgba(63, 160, 100, .14); }
 td.estado-sobre_maximo { background: rgba(214, 160, 40, .2); }
-.leyenda-marca.estado-quiebre { height: 10px; width: 14px; background: rgba(214, 64, 52, .6); }
-.leyenda-marca.estado-bajo_minimo { height: 10px; width: 14px; background: rgba(214, 64, 52, .28); }
+.leyenda-marca.estado-quiebre { height: 10px; width: 14px; background: color-mix(in srgb, var(--down) 60%, transparent); }
+.leyenda-marca.estado-bajo_minimo { height: 10px; width: 14px; background: color-mix(in srgb, var(--down) 28%, transparent); }
 .leyenda-marca.estado-en_rango { height: 10px; width: 14px; background: rgba(63, 160, 100, .35); }
 .leyenda-marca.estado-sobre_maximo { height: 10px; width: 14px; background: rgba(214, 160, 40, .45); }
 .pill-diagnostico {
