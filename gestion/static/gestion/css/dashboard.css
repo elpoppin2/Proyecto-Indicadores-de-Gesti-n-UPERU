@@ -73,6 +73,16 @@ body {
 /* --- Encabezado --- */
 header.pagina { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
 .encabezado-texto { display: flex; flex-direction: column; gap: 4px; }
+/* Logo de UNACEM a la izquierda del título (de unacem.pe), separado por una
+   línea fina. Pedido por el usuario. */
+.marca { display: flex; align-items: center; gap: 18px; min-width: 0; }
+.logo-empresa { display: block; height: 44px; width: auto; flex: none; }
+.marca-separador { width: 1px; align-self: stretch; background: var(--line); }
+.login-card .logo-empresa { height: 36px; margin-bottom: 4px; align-self: flex-start; }
+@media (max-width: 600px) {
+  .marca { gap: 12px; }
+  .logo-empresa { height: 30px; }
+}
 .eyebrow {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 11px; letter-spacing: .12em; text-transform: uppercase;

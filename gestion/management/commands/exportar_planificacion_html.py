@@ -231,6 +231,10 @@ class Command(BaseCommand):
             css = f.read()
         with open(os.path.join(ESTATICOS, "js", "zonas.js"), encoding="utf-8") as f:
             zonas_js = f.read()
+        # Logo de UNACEM incrustado (el archivo se abre sin servidor).
+        import base64
+        with open(os.path.join(ESTATICOS, "img", "unacem-logo.svg"), "rb") as f:
+            logo = "data:image/svg+xml;base64," + base64.b64encode(f.read()).decode("ascii")
         # Gráficos de la pestaña Indicadores: los dibuja el mismo código del
         # localhost (vista por defecto de cada pestaña, sin filtros), así
         # quedan idénticos. El filtro Mes trae ya dibujados los últimos
@@ -256,6 +260,7 @@ class Command(BaseCommand):
         datos_json = json.dumps(datos, ensure_ascii=False).replace("</", "<\\/")
         html = (plantilla.replace("/*__DASHBOARD_CSS__*/", css)
                 .replace("/*__ZONAS_JS__*/", zonas_js)
+                .replace("__LOGO_UNACEM__", logo)
                 .replace("<!--__INDICADORES_HTML__-->", indicadores)
                 .replace("__DATA_JSON__", datos_json))
 
