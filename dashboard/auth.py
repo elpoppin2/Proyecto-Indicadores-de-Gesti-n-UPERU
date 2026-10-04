@@ -20,7 +20,7 @@ def _rol_de(user):
 
 
 def _formulario_login():
-    st.title("📊 Indicadores de Gestión")
+    st.title("📊 Indicadores de Gestión Supply Chain")
     st.subheader("Iniciar sesión")
 
     with st.form("login_form"):

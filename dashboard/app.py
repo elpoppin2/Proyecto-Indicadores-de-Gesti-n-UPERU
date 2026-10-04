@@ -7,7 +7,7 @@ import queries as q
 import vista_categoria
 from auth import es_admin, requerir_login
 
-st.set_page_config(page_title="Indicadores de Gestión", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Indicadores de Gestión Supply Chain", page_icon="📊", layout="wide")
 
 requerir_login()
 

@@ -1,6 +1,6 @@
 {% extends "gestion/base.html" %}
 {% load static %}
-{% block titulo %}Ingresar — Indicadores UPERU{% endblock %}
+{% block titulo %}Ingresar — Indicadores Supply Chain{% endblock %}
 {% block contenido %}
 <div class="login-shell">
   <form class="login-card" method="post">
@@ -8,7 +8,7 @@
     <img class="logo-empresa" src="{% static 'gestion/img/unacem-logo.svg' %}" alt="UNACEM" width="256" height="58">
     <div>
       <span class="eyebrow">Indicadores de Gestión</span>
-      <h1>UPERU</h1>
+      <h1>SUPPLY CHAIN</h1>
     </div>
     {% if form.errors %}
       <p class="error">Usuario o contraseña incorrectos.</p>
