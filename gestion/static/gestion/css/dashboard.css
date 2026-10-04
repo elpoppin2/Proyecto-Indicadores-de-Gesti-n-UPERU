@@ -17,6 +17,12 @@
      plan, quiebre, precio que sube): un solo rojo en todo el reporte. */
   --accent: #ff0000;
   --accent-ink: #ffffff;
+  /* Rojo para TEXTO (y fondos con texto blanco encima): el mismo rojo un poco
+     más oscuro, para que los textos chicos se lean bien (#FF0000 sobre blanco
+     no llega a 4.5:1). Gráficos, rellenos y bordes siguen en #FF0000. Pedido
+     por el usuario: lo más visible posible. */
+  --accent-texto: #d00303;
+  --down-texto: #d00303;
   --up: #3f7d54;
   --down: #ff0000;
   --alerta-bg: #fde6e6;
@@ -33,7 +39,7 @@
     --bg: #1b1b1b; --surface: #242424; --surface-2: #2d2d2d;
     --ink: #f1f1f1; --muted: #a8a8a8; --line: #3a3a3a;
     --table-line: #5a5a5a; --table-header: #c7c7c7;
-    --accent: #ff0000; --accent-ink: #1b1b1b;
+    --accent: #ff0000; --accent-ink: #1b1b1b; --accent-texto: #ff4d4d; --down-texto: #ff4d4d;
     --up: #74c090; --down: #ff0000;
     --alerta-bg: #3a1f1f; --warn: #e3ad4f;
     --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 28px -10px rgba(0, 0, 0, .5);
@@ -45,7 +51,7 @@
   --bg: #1b1b1b; --surface: #242424; --surface-2: #2d2d2d;
   --ink: #f1f1f1; --muted: #a8a8a8; --line: #3a3a3a;
   --table-line: #5a5a5a; --table-header: #c7c7c7;
-  --accent: #ff0000; --accent-ink: #1b1b1b;
+  --accent: #ff0000; --accent-ink: #1b1b1b; --accent-texto: #ff4d4d; --down-texto: #ff4d4d;
   --up: #74c090; --down: #ff0000;
   --alerta-bg: #3a1f1f; --warn: #e3ad4f;
   --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 28px -10px rgba(0, 0, 0, .5);
@@ -89,7 +95,7 @@ header.pagina { display: flex; justify-content: space-between; align-items: flex
 .eyebrow {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
-  color: var(--accent); font-weight: 600;
+  color: var(--accent-texto); font-weight: 600;
 }
 h1 {
   font-family: "Big Shoulders Display", ui-sans-serif, sans-serif;
@@ -97,10 +103,10 @@ h1 {
   line-height: .95; margin: 0; text-wrap: balance; letter-spacing: .01em;
 }
 .sesion { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
-.sesion a { color: var(--accent); text-decoration: none; font-weight: 600; }
+.sesion a { color: var(--accent-texto); text-decoration: none; font-weight: 600; }
 .sesion a:hover { text-decoration: underline; }
 .btn-link {
-  background: none; border: none; color: var(--accent); font: inherit;
+  background: none; border: none; color: var(--accent-texto); font: inherit;
   font-weight: 600; cursor: pointer; padding: 0;
 }
 .btn-link:hover { text-decoration: underline; }
@@ -113,7 +119,7 @@ h1 {
   font: 600 15px/1 "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; cursor: pointer;
   transition: color .15s, border-color .15s, transform .3s;
 }
-.btn-reiniciar:hover { color: var(--accent); border-color: var(--accent); transform: rotate(-90deg); }
+.btn-reiniciar:hover { color: var(--accent-texto); border-color: var(--accent); transform: rotate(-90deg); }
 .btn-reiniciar:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .btn-reiniciar, .btn-reiniciar:hover { transition: none; transform: none; } }
 @media print { .btn-reiniciar { display: none !important; } }
@@ -140,7 +146,7 @@ h1 {
   padding: 6px 12px; border-radius: 20px; border: 1px solid transparent;
 }
 .nav-link:hover { color: var(--ink); border-color: var(--line); }
-.nav-link.activo { color: var(--accent-ink); background: var(--accent); font-weight: 600; }
+.nav-link.activo { color: var(--accent-ink); background: var(--accent-texto); font-weight: 600; }
 
 /* --- Secciones --- */
 section.bloque {
@@ -199,9 +205,9 @@ tbody tr:hover { background: var(--line); }
    numéricas (ver _ROTACION_COLUMNAS_ORDENABLES en views.py), así que ahí se
    deja el cursor solo en esas. Definido por el usuario. */
 table:not([data-paginado]) thead th { cursor: pointer; user-select: none; }
-table:not([data-paginado]) thead th:hover { color: var(--accent); }
+table:not([data-paginado]) thead th:hover { color: var(--accent-texto); }
 table[data-paginado] th.num[data-columna] { cursor: pointer; user-select: none; }
-table[data-paginado] th.num[data-columna]:hover { color: var(--accent); }
+table[data-paginado] th.num[data-columna]:hover { color: var(--accent-texto); }
 table thead th[data-orden]::after { margin-left: 5px; font-size: 8px; vertical-align: middle; }
 table thead th[data-orden="asc"]::after { content: "\25B2"; }
 table thead th[data-orden="desc"]::after { content: "\25BC"; }
@@ -292,8 +298,8 @@ table thead th[data-orden="desc"]::after { content: "\25BC"; }
 .leyenda-marca.banda-minmax { height: 10px; width: 14px; border-radius: 2px; background: var(--up); opacity: .45; }
 .leyenda-nota { font-style: italic; }
 .dato-alerta { color: var(--warn); }
-td.estado-quiebre { background: color-mix(in srgb, var(--down) 32%, transparent); color: var(--down); font-weight: 600; }
-td.estado-bajo_minimo { background: color-mix(in srgb, var(--down) 14%, transparent); color: var(--down); }
+td.estado-quiebre { background: color-mix(in srgb, var(--down) 32%, transparent); color: var(--down-texto); font-weight: 600; }
+td.estado-bajo_minimo { background: color-mix(in srgb, var(--down) 14%, transparent); color: var(--down-texto); }
 td.estado-en_rango { background: rgba(63, 160, 100, .14); }
 td.estado-sobre_maximo { background: rgba(214, 160, 40, .2); }
 .leyenda-marca.estado-quiebre { height: 10px; width: 14px; background: color-mix(in srgb, var(--down) 60%, transparent); }
@@ -304,7 +310,7 @@ td.estado-sobre_maximo { background: rgba(214, 160, 40, .2); }
   display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap;
   border: 1px solid currentColor;
 }
-.diag-quiebre, .diag-bajo_minimo { color: var(--down); }
+.diag-quiebre, .diag-bajo_minimo { color: var(--down-texto); }
 .diag-sobrecubierto, .diag-sobre_maximo_puntual { color: var(--warn); }
 .diag-equilibrado { color: var(--up); }
 .diag-sin_parametro { color: var(--muted); }
@@ -370,7 +376,7 @@ td.celda-atipica {
   color: var(--muted);
   background: repeating-linear-gradient(135deg, var(--surface-2) 0 4px, transparent 4px 8px);
 }
-.marca-atipica { color: var(--down); font-weight: 700; margin-left: 2px; }
+.marca-atipica { color: var(--down-texto); font-weight: 700; margin-left: 2px; }
 .tabla-inflacion th, .tabla-inflacion td { padding-inline: 8px; }
 .tabla-inflacion th { white-space: nowrap; }
 .tabla-inflacion td:first-child { min-width: 240px; }
@@ -386,14 +392,14 @@ td.celda-atipica {
 .marca-sube { fill: var(--down); background: var(--down); }
 .marca-baja { fill: var(--up); background: var(--up); }
 .leyenda-marca.marca-sube, .leyenda-marca.marca-baja { width: 9px; height: 9px; border-radius: 50%; }
-.chart-ipu .etiqueta-ipu { color: var(--accent); font-size: 9.5px; }
+.chart-ipu .etiqueta-ipu { color: var(--accent-texto); font-size: 9.5px; }
 .chart-ipu .etiqueta-individual { color: var(--muted); font-size: 9px; font-weight: 500; }
 .rotulo-anio {
   position: absolute; top: 0; transform: translateX(6px); font-family: "IBM Plex Mono", monospace;
   font-size: 10.5px; font-weight: 600; color: var(--muted); pointer-events: none;
 }
 .metrica .prefijo-ipu { font-size: .55em; letter-spacing: .04em; color: var(--muted); }
-tr.fila-ipu td:first-child { color: var(--accent); }
+tr.fila-ipu td:first-child { color: var(--accent-texto); }
 
 /* Ver precio: la variación va debajo del precio, más chica. */
 .celda-subtexto { display: block; font-size: 10px; color: var(--muted); line-height: 1.2; }
@@ -518,7 +524,7 @@ tr.fila-total td { font-weight: 600; border-top: 2px solid var(--table-line); }
    para que nunca se toquen aunque las dos líneas casi se crucen. Los gráficos
    de una sola serie (PMP, Inventario, barras de Cumplimiento) no agregan
    ninguna de estas dos y se quedan con el transform por defecto de arriba. */
-.etiqueta-valor-plan { color: var(--accent); }
+.etiqueta-valor-plan { color: var(--accent-texto); }
 .etiqueta-valor-real { color: var(--ink); }
 .etiqueta-arriba { transform: translate(-50%, calc(-100% - 9px)); }
 .etiqueta-abajo { transform: translate(-50%, 9px); }
@@ -544,7 +550,7 @@ tr.fila-total td { font-weight: 600; border-top: 2px solid var(--table-line); }
 
 /* --- Estados --- */
 .dato-positivo { color: var(--up); }
-.dato-negativo { color: var(--down); }
+.dato-negativo { color: var(--down-texto); }
 .aviso { color: var(--muted); font-size: 13.5px; padding: 10px 0; }
 /* Sección pidiendo datos nuevos (cambió un filtro): su contenido se atenúa y
    una línea de acento recorre el borde de arriba mientras espera. */
@@ -560,7 +566,7 @@ section.bloque.cargando::before {
 /* --- Alerta (materiales críticos en riesgo) --- */
 .alerta {
   display: flex; align-items: center; gap: 12px;
-  background: var(--alerta-bg); border: 1px solid var(--down); color: var(--down);
+  background: var(--alerta-bg); border: 1px solid var(--down); color: var(--down-texto);
   border-radius: 10px; padding: 12px 16px; font-size: 13.5px; font-weight: 600;
 }
 .alerta-num {
@@ -585,12 +591,12 @@ section.bloque.cargando::before {
 }
 .login-card .campo input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .login-card button {
-  background: var(--accent); color: var(--accent-ink); border: none; border-radius: 8px;
+  background: var(--accent-texto); color: var(--accent-ink); border: none; border-radius: 8px;
   padding: 11px; font-family: "IBM Plex Sans", sans-serif; font-weight: 600; font-size: 14.5px;
   cursor: pointer;
 }
 .login-card button:hover { filter: brightness(1.05); }
-.login-card .error { color: var(--down); font-size: 13px; }
+.login-card .error { color: var(--down-texto); font-size: 13px; }
 
 @media (max-width: 640px) {
   .barra-fila { grid-template-columns: 96px 1fr 70px; }
@@ -679,14 +685,14 @@ section.bloque.cargando::before {
 .leyenda-marca.barra-consumo-real { width: 10px; height: 10px; border-radius: 2px; }
 .chart-consumo .linea-plan-consumo { fill: none; stroke: var(--accent); stroke-width: 2.2; stroke-linejoin: round; }
 .chart-consumo .punto-plan-consumo { fill: var(--accent); }
-.chart-consumo .etiqueta-plan-consumo { color: var(--accent); font-size: 9px; }
+.chart-consumo .etiqueta-plan-consumo { color: var(--accent-texto); font-size: 9px; }
 .etiqueta-consumo-dentro { color: #ffffff; }
 .pill-consumo {
   display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap;
   border: 1px solid currentColor;
 }
 .consumo-sobre { color: var(--warn); }
-.consumo-bajo { color: var(--down); }
+.consumo-bajo { color: var(--down-texto); }
 .consumo-en_linea { color: var(--up); }
 
 /* --- Zonas (pestañas) de Planificación: barra fija arriba al bajar, con el
@@ -715,7 +721,7 @@ section.bloque.cargando::before {
   font-family: "Big Shoulders Display", sans-serif; font-weight: 700;
   font-size: 19px; line-height: 1; letter-spacing: .02em; white-space: nowrap;
 }
-.zona-tab[aria-selected="true"] .zona-nombre { color: var(--accent); }
+.zona-tab[aria-selected="true"] .zona-nombre { color: var(--accent-texto); }
 .zona-desc {
   font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: .05em;
   text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
@@ -823,7 +829,7 @@ tbody.tabla-ordenada { animation: filas-asentar .25s ease-out; }
 .panel-titulos { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .panel-zona {
   font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--accent); font-weight: 600;
+  color: var(--accent-texto); font-weight: 600;
 }
 .panel-cabecera h2 {
   font-family: "Big Shoulders Display", sans-serif; font-weight: 700; font-size: 20px; line-height: 1.1;
@@ -843,7 +849,7 @@ tbody.tabla-ordenada { animation: filas-asentar .25s ease-out; }
 }
 .pill-estado::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; margin-right: 6px; vertical-align: 1px; }
 .estado-ok { color: var(--up); background: color-mix(in srgb, var(--up) 10%, transparent); }
-.estado-alerta { color: var(--down); background: color-mix(in srgb, var(--down) 10%, transparent); }
+.estado-alerta { color: var(--down-texto); background: color-mix(in srgb, var(--down) 10%, transparent); }
 .estado-aviso { color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); }
 .estado-neutro { color: var(--muted); }
 .panel-pie { display: flex; flex-direction: column; gap: 6px; margin-top: auto; }
@@ -869,7 +875,7 @@ tbody.tabla-ordenada { animation: filas-asentar .25s ease-out; }
 .escala-negativa.escala-recortada { -webkit-mask-image: linear-gradient(270deg, #000 88%, transparent); mask-image: linear-gradient(270deg, #000 88%, transparent); }
 .escala-valor { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
 .escala-fila.con-detalle:hover .escala-pista { box-shadow: 0 0 0 1px var(--table-line); }
-.escala-fila.con-detalle:hover .escala-nombre { color: var(--accent); }
+.escala-fila.con-detalle:hover .escala-nombre { color: var(--accent-texto); }
 .escala-eje .escala-pista { background: none; height: 12px; }
 .escala-ref-texto {
   position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap;
@@ -978,7 +984,7 @@ tbody.tabla-ordenada { animation: filas-asentar .25s ease-out; }
 }
 .chip-grupo .chip-cuenta { font-family: "IBM Plex Mono", monospace; font-size: 10px; color: var(--muted); }
 .chip-grupo:hover { border-color: var(--accent); }
-.chip-grupo[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.chip-grupo[aria-pressed="true"] { background: var(--accent-texto); border-color: var(--accent-texto); color: var(--accent-ink); }
 .chip-grupo[aria-pressed="true"] .chip-cuenta { color: inherit; opacity: .8; }
 .chip-grupo:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .filtro-multi-lista { overflow-y: auto; min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
@@ -998,7 +1004,7 @@ tbody.tabla-ordenada { animation: filas-asentar .25s ease-out; }
 .filtro-multi-pie .btn-link { font-size: 12.5px; }
 .filtro-multi-aplicar {
   font: 600 12.5px "IBM Plex Sans", sans-serif; padding: 6px 14px; border-radius: 7px; border: 0; cursor: pointer;
-  background: var(--accent); color: var(--accent-ink); transition: transform .12s ease-out;
+  background: var(--accent-texto); color: var(--accent-ink); transition: transform .12s ease-out;
 }
 .filtro-multi-aplicar:active { transform: scale(.97); }
 .filtro-multi-aplicar:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
@@ -1013,7 +1019,7 @@ tbody.tabla-ordenada { animation: filas-asentar .25s ease-out; }
 }
 .btn-proveedores::before { content: "\25B8"; display: inline-block; margin-right: 4px; transition: transform .15s; }
 .btn-proveedores[aria-expanded="true"]::before { transform: rotate(90deg); }
-.btn-proveedores:hover { color: var(--accent); border-color: var(--accent); }
+.btn-proveedores:hover { color: var(--accent-texto); border-color: var(--accent); }
 .btn-proveedores:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .tabla-con-hijas tr.fila-hija td { font-size: 12.5px; background: color-mix(in srgb, var(--surface-2) 55%, var(--surface)); }
 .tabla-con-hijas .celda-proveedor { padding-left: 24px; position: relative; }
@@ -1046,7 +1052,7 @@ tbody.tabla-ordenada { animation: filas-asentar .25s ease-out; }
 .chart-lineas .punto-serie.serie-0 { fill: var(--accent); }
 .chart-lineas .punto-serie.serie-1 { fill: var(--table-header); }
 .chart-lineas .referencia-lineas { stroke-width: 1.3; stroke-dasharray: 5 4; opacity: .75; }
-.chart-lineas .etiqueta-serie-0 { color: var(--accent); }
+.chart-lineas .etiqueta-serie-0 { color: var(--accent-texto); }
 .chart-lineas .etiqueta-serie-1 { color: var(--table-header); }
 .chart-lineas .etiqueta-valor.etiqueta-derecha { transform: translate(7px, -50%); }
 .etiqueta-grilla {
@@ -1067,7 +1073,7 @@ tbody.tabla-ordenada { animation: filas-asentar .25s ease-out; }
 .asistente-lanzador {
   position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 55;
   display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px 10px 13px; border: 0; border-radius: 999px;
-  background: var(--accent); color: var(--accent-ink); font: 600 13.5px "IBM Plex Sans", sans-serif;
+  background: var(--accent-texto); color: var(--accent-ink); font: 600 13.5px "IBM Plex Sans", sans-serif;
   box-shadow: var(--shadow), 0 4px 14px -4px color-mix(in srgb, var(--accent) 55%, transparent); cursor: pointer;
   transition: transform .15s ease;
 }
@@ -1136,7 +1142,7 @@ body.asistente-abierto .asistente-lanzador { display: none; }
 .asistente-tabla td { padding: 5px 7px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .asistente-tabla td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .asistente-fuentes { margin-top: 4px; font: 10.5px/1.4 "IBM Plex Mono", monospace; color: var(--muted); }
-.asistente-error { color: var(--down); border-left: 3px solid var(--down); padding-left: 10px; }
+.asistente-error { color: var(--down-texto); border-left: 3px solid var(--down); padding-left: 10px; }
 .asistente-pensando { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12.5px; }
 .asistente-puntos { display: inline-flex; gap: 4px; }
 .asistente-puntos i {
@@ -1160,7 +1166,7 @@ body.asistente-abierto .asistente-lanzador { display: none; }
 .asistente-formulario textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent); }
 .asistente-formulario textarea:disabled { background: var(--surface-2); cursor: not-allowed; }
 .asistente-enviar {
-  height: 38px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-ink);
+  height: 38px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--accent-texto); color: var(--accent-ink);
   font: 600 13px "IBM Plex Sans", sans-serif; cursor: pointer;
 }
 .asistente-enviar:disabled { opacity: .45; cursor: default; }
