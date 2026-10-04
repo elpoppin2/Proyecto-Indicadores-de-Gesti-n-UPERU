@@ -188,18 +188,11 @@ def nombre_mes(numero_mes):
 # Regla de negocio para el apartado de Compras: excluir grupos de compra que no
 # son relevantes para los indicadores (GCp), descartar líneas marcadas como "L"
 # en el campo B, excluir el proveedor 4000002 y las líneas sin proveedor.
-# Definido por el usuario, no se deduce de los datos.
-FILTRO_COMPRAS_VALIDAS = (
-    "grupo_compras NOT IN ('G67','G60','G59','G52','G29','G20','G14','G15')"
-    " AND campo_b != 'L'"
-    " AND proveedor != '4000002'"
-    " AND NOT (proveedor = '' AND cuenta_proveedor = '')"
-)
-
-# Misma regla, calificada con el alias "lc" para consultas con JOIN donde
-# "grupo_compras" existe en más de una tabla (p.ej. gestion_categoriaservicio).
-# G02 ya no está aquí: se excluye por categoría (ENERGÍA ELÉCTRICA, ver
-# FILTRO_CATEGORIA_VALIDA_LC) en vez de por código de grupo de compras.
+# Definido por el usuario, no se deduce de los datos. Calificada con el alias
+# "lc" porque "grupo_compras" existe en más de una tabla de los JOIN (p.ej.
+# gestion_categoriaservicio). G02 ya no está aquí: se excluye por categoría
+# (ENERGÍA ELÉCTRICA, ver FILTRO_CATEGORIA_VALIDA_LC) en vez de por código de
+# grupo de compras.
 FILTRO_COMPRAS_VALIDAS_LC = (
     "lc.grupo_compras NOT IN ('G67','G60','G59','G52','G29','G20','G14','G15')"
     " AND lc.campo_b != 'L'"
@@ -487,71 +480,6 @@ def valor_inventario_mensual_por_categoria(fecha_desde=None):
     """, params)
 
 
-def valor_inventario_por_grupo(fecha, top=15):
-    # Solo materiales con categoría designada: excluye NO APLICA además del filtro
-    # general de Inventario (FILTRO_INVENTARIO_CON_CATEGORIA).
-    return _query(f"""
-        SELECT i.denominacion_grupo_articulos AS grupo, SUM(i.valor_final) AS valor_total
-        FROM gestion_inventariomensual i
-        LEFT JOIN gestion_material m ON m.codigo = i.material_codigo
-        LEFT JOIN gestion_categoria c ON c.grupo_articulo = m.categoria_id
-        WHERE i.fecha = %s AND {FILTRO_INVENTARIO_CON_CATEGORIA}
-              AND {FILTRO_CATEGORIA_INVENTARIO_VALIDA}
-        GROUP BY i.denominacion_grupo_articulos
-        ORDER BY valor_total DESC
-        LIMIT %s
-    """, [fecha, top])
-
-
-def valor_inventario_por_familia(fecha, top=15):
-    # Solo materiales con categoría designada: excluye NO APLICA, y usa la misma
-    # FAMILIA_INVENTARIO_EFECTIVA del segmentador (los dos materiales de la excepción
-    # van a MP CEMENTO en vez de "Sin categoría").
-    return _query(f"""
-        SELECT {FAMILIA_INVENTARIO_EFECTIVA} AS familia, SUM(i.valor_final) AS valor_total
-        FROM gestion_inventariomensual i
-        LEFT JOIN gestion_material m ON m.codigo = i.material_codigo
-        LEFT JOIN gestion_categoria c ON c.grupo_articulo = m.categoria_id
-        WHERE i.fecha = %s AND {FILTRO_INVENTARIO_CON_CATEGORIA}
-              AND {FILTRO_CATEGORIA_INVENTARIO_VALIDA}
-        GROUP BY {FAMILIA_INVENTARIO_EFECTIVA}
-        ORDER BY valor_total DESC
-        LIMIT %s
-    """, [fecha, top])
-
-
-def top_materiales_inventario(fecha, top=20):
-    # La descripción de MB5B (texto_breve) viene vacía en ~9% de las filas; se prioriza
-    # la descripción del material en ZMM060 (gestion_material.descripcion) y se usa
-    # MB5B solo como respaldo. La unidad de medida base (UMB) también viene de ZMM060.
-    return _query(f"""
-        SELECT i.material_codigo,
-               COALESCE(NULLIF(m.descripcion, ''), NULLIF(i.texto_breve, '')) AS texto_breve,
-               m.unidad_medida_base AS unidad_medida_base,
-               SUM(i.stock_cierre) AS stock, SUM(i.valor_final) AS valor_total
-        FROM gestion_inventariomensual i
-        LEFT JOIN gestion_material m ON m.codigo = i.material_codigo
-        LEFT JOIN gestion_categoria c ON c.grupo_articulo = m.categoria_id
-        WHERE i.fecha = %s AND {FILTRO_INVENTARIO_CON_CATEGORIA}
-        GROUP BY i.material_codigo, COALESCE(NULLIF(m.descripcion, ''), NULLIF(i.texto_breve, '')),
-                 m.unidad_medida_base
-        ORDER BY valor_total DESC
-        LIMIT %s
-    """, [fecha, top])
-
-
-def resumen_inventario(fecha):
-    df = _query(f"""
-        SELECT COUNT(DISTINCT i.material_codigo) AS materiales, SUM(i.valor_final) AS valor_total,
-               SUM(i.stock_cierre) AS stock_total
-        FROM gestion_inventariomensual i
-        LEFT JOIN gestion_material m ON m.codigo = i.material_codigo
-        LEFT JOIN gestion_categoria c ON c.grupo_articulo = m.categoria_id
-        WHERE i.fecha = %s AND {FILTRO_INVENTARIO_CON_CATEGORIA}
-    """, [fecha])
-    return df.iloc[0]
-
-
 def categorias_inventario_disponibles():
     """Categorías disponibles para el segmentador de % Variación de Inventario. Usa
     CATEGORIA_INVENTARIO_EFECTIVA: los materiales de la excepción van a MATERIAS
@@ -571,22 +499,6 @@ def categorias_inventario_disponibles():
         ORDER BY categoria
     """)
     return df["categoria"].tolist()
-
-
-def familias_inventario_disponibles(categoria=None):
-    """Familias disponibles para el segmentador de Familia. Si se indica `categoria`,
-    solo devuelve las familias que pertenecen a esa categoría (segmentador en cascada)."""
-    filtro_categoria = f"AND {CATEGORIA_INVENTARIO_EFECTIVA} = %s" if categoria else ""
-    params = [categoria] if categoria else []
-    df = _query(f"""
-        SELECT DISTINCT {FAMILIA_INVENTARIO_EFECTIVA} AS familia
-        FROM gestion_inventariomensual i
-        LEFT JOIN gestion_material m ON m.codigo = i.material_codigo
-        LEFT JOIN gestion_categoria c ON c.grupo_articulo = m.categoria_id
-        WHERE {FILTRO_INVENTARIO_CON_CATEGORIA} {filtro_categoria}
-        ORDER BY familia
-    """, params)
-    return df["familia"].tolist()
 
 
 @_cacheado
@@ -669,22 +581,6 @@ def top_proveedores(anio, top=15):
         WHERE lc.anio_origen = %s AND {FILTRO_COMPRAS_VALIDAS_LC}
               AND {FILTRO_CATEGORIA_VALIDA_LC}
         GROUP BY proveedor
-        ORDER BY valor_total DESC
-        LIMIT %s
-    """, [anio, top])
-
-
-def top_materiales_comprados(anio, top=20):
-    return _query(f"""
-        SELECT lc.material_codigo, lc.texto_breve, SUM(lc.cantidad_pedido) AS cantidad,
-               SUM({VALOR_COMPRA_EXPR_LC}) AS valor_total
-        FROM gestion_lineacompra lc
-        LEFT JOIN gestion_categoria c ON c.grupo_articulo = lc.grupo_articulo
-        LEFT JOIN gestion_categoriaservicio cs ON cs.grupo_compras = lc.grupo_compras
-        WHERE lc.anio_origen = %s AND lc.material_codigo != ''
-              AND {FILTRO_COMPRAS_VALIDAS_LC}
-              AND {FILTRO_CATEGORIA_VALIDA_LC}
-        GROUP BY lc.material_codigo, lc.texto_breve
         ORDER BY valor_total DESC
         LIMIT %s
     """, [anio, top])
@@ -1345,47 +1241,6 @@ def cobertura_materiales_criticos_por_categoria(fecha, familia=None, centro=None
             "en_riesgo": int((grupo["cobertura_meses"] < 1).sum()),
         })
     return sorted(resultado, key=lambda r: r["en_riesgo"], reverse=True)
-
-
-def resumen_compras_contrato(anio):
-    """Valor de Compras (Tp.cambio * Valor neto) bajo contrato vs. el total del modelo."""
-    df = _query(f"""
-        SELECT
-            SUM(CASE WHEN {FILTRO_BAJO_CONTRATO_LC} THEN {VALOR_COMPRA_EXPR_LC} ELSE 0 END) AS valor_bajo_contrato,
-            SUM({VALOR_COMPRA_EXPR_LC}) AS valor_total
-        FROM gestion_lineacompra lc
-        LEFT JOIN gestion_categoria c ON c.grupo_articulo = lc.grupo_articulo
-        LEFT JOIN gestion_categoriaservicio cs ON cs.grupo_compras = lc.grupo_compras
-        WHERE lc.anio_origen = %s AND {FILTRO_COMPRAS_VALIDAS_LC} AND {FILTRO_CATEGORIA_VALIDA_LC}
-    """, [anio])
-    return df.iloc[0]
-
-
-def cumplimiento_entrega(anio):
-    """% de líneas cuya fecha de entrega real llegó a tiempo respecto a la estimada."""
-    df = _query(f"""
-        SELECT
-            SUM(CASE WHEN fecha_entrega <= fecha_entrega_estimada THEN 1 ELSE 0 END) AS a_tiempo,
-            SUM(CASE WHEN fecha_entrega > fecha_entrega_estimada THEN 1 ELSE 0 END) AS tarde,
-            COUNT(*) AS total
-        FROM gestion_lineacompra
-        WHERE anio_origen = %s AND fecha_entrega IS NOT NULL AND fecha_entrega_estimada IS NOT NULL
-              AND {FILTRO_COMPRAS_VALIDAS}
-    """, [anio])
-    return df.iloc[0]
-
-
-def pendientes_por_entregar(anio, top=20):
-    return _query(f"""
-        SELECT COALESCE(NULLIF(cuenta_proveedor, ''), proveedor) AS proveedor,
-               material_codigo, texto_breve, doc_compra,
-               cantidad_por_entregar, valor_por_entregar
-        FROM gestion_lineacompra
-        WHERE anio_origen = %s AND valor_por_entregar > 0
-              AND {FILTRO_COMPRAS_VALIDAS}
-        ORDER BY valor_por_entregar DESC
-        LIMIT %s
-    """, [anio, top])
 
 
 def resumen_materiales():
