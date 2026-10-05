@@ -78,6 +78,8 @@
     </section>
   {% endif %}
 
+  {% if otif %}{% include "gestion/_otif.html" with o=otif sc=sc por_categoria=False %}{% endif %}
+
   <section class="bloque" id="sec-leadtime">
     <h2>Lead Time de Proveedores · {{ sc.texto }}</h2>
     <p class="nota">Días entre la fecha del pedido y la primera Entrada de Mercancía real (MB51), para líneas de material/importación (Cl. ZNAC/ZIMP).</p>

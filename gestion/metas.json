@@ -8,9 +8,13 @@
     "inmovilizado_pct": {"meta": 15, "sentido": "menor", "tolerancia": 10, "confirmada": false},
     "cumplimiento_sop_pct": {"meta": 95, "sentido": "mayor", "tolerancia": 10, "confirmada": false},
     "proveedor_unico_pct": {"meta": 40, "sentido": "menor", "tolerancia": 15, "confirmada": false},
-    "criticos_en_riesgo": {"meta": 0, "sentido": "menor", "tolerancia": 5, "confirmada": false}
+    "criticos_en_riesgo": {"meta": 0, "sentido": "menor", "tolerancia": 5, "confirmada": false},
+    "otif_pct": {"meta": 90, "sentido": "mayor", "tolerancia": 10, "confirmada": false}
   },
   "supuestos": {
+    "otif_dias_tolerancia": 5,
+    "otif_cantidad_tolerancia_pct": 5,
+    "otif_categorias": ["REPUESTOS", "SUMINISTROS INDUSTRIALES"],
     "ahorro_contrato_marco_pct": 5,
     "inmovilizado_recuperable_pct": 20,
     "monto_minimo_proveedor_plazo": 100000,

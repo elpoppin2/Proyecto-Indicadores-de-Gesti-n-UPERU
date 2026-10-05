@@ -169,6 +169,96 @@ def proveedor_unico(inicio, fin, categoria=None, meses_minimos=3, excluir=("CAPE
     }
 
 
+# --- OTIF -------------------------------------------------------------------
+
+def _evaluar_otif(df, dias, tolerancia):
+    """Marca cada línea: a tiempo (primera entrada hasta la fecha prometida +
+    `dias`; antes de la fecha no penaliza), completa (lo recibido en total
+    entre −/+ `tolerancia` de lo pedido) y OTIF (lo recibido HASTA la fecha
+    límite dentro de esa banda), con el motivo de la falla."""
+    limite = [f + datetime.timedelta(days=dias) for f in df["fecha_entrega"]]
+    minimo, maximo = df["cantidad_pedido"] * (1 - tolerancia), df["cantidad_pedido"] * (1 + tolerancia)
+    primera = df["primera_entrada"]
+    df = df.assign(
+        limite=limite,
+        a_tiempo=[pd.notna(p) and p <= li for p, li in zip(primera, limite)],
+        completo=(df["recibido_total"] >= minimo) & (df["recibido_total"] <= maximo),
+        otif=(df["recibido_a_tiempo"] >= minimo) & (df["recibido_a_tiempo"] <= maximo),
+    )
+    motivos = []
+    for r in df.itertuples():
+        if r.otif:
+            motivos.append("")
+        elif pd.isna(r.primera_entrada) or r.recibido_total <= 0:
+            motivos.append("Sin entrega")
+        elif not r.a_tiempo:
+            motivos.append(f"Llegó {(r.primera_entrada - r.fecha_entrega).days} días después de la fecha")
+        elif r.recibido_a_tiempo > r.cantidad_pedido * (1 + tolerancia):
+            motivos.append(f"Excedido: {r.recibido_a_tiempo / r.cantidad_pedido * 100:.0f}% de lo pedido")
+        else:
+            motivos.append(f"Incompleto a la fecha: {r.recibido_a_tiempo / r.cantidad_pedido * 100:.0f}% de lo pedido")
+    return df.assign(motivo=motivos)
+
+
+def _pct_valor(df, columna):
+    total = float(df["valor"].sum())
+    return float(df.loc[df[columna], "valor"].sum() / total * 100) if total else None
+
+
+def otif(inicio, fin, categoria=None):
+    """OTIF (On Time In Full) ponderado por valor de las líneas de pedido de
+    Repuestos y Suministros Industriales (o de `categoria`) con fecha de
+    entrega prometida en el período, definido por el usuario el 2026-10-04:
+    a tiempo = hasta 5 días después de la fecha prometida; completo = ±5% de
+    lo pedido; por valor. Una línea se evalúa recién cuando venció su plazo
+    con tolerancia. Devuelve el % OTIF, a tiempo y completo, el detalle por
+    categoría y proveedor, la evolución mensual y las fallas de más valor."""
+    config = cargar_metas()
+    supuestos, meta = config["supuestos"], config["metas"]["otif_pct"]["meta"]
+    dias, tolerancia = supuestos["otif_dias_tolerancia"], supuestos["otif_cantidad_tolerancia_pct"] / 100
+    categorias = tuple(supuestos["otif_categorias"]) if categoria is None else (categoria,)
+    if categoria is not None and categoria not in supuestos["otif_categorias"]:
+        return None
+    hoy = datetime.date.today()
+    df = q.otif_lineas(inicio, fin, categorias, dias)
+    if df.empty:
+        return None
+    cerradas = pd.Series([f + datetime.timedelta(days=dias) < hoy for f in df["fecha_entrega"]], index=df.index)
+    pendientes = int((~cerradas).sum())
+    df = df[cerradas]
+    if df.empty or not df["valor"].sum():
+        return None
+    df = _evaluar_otif(df, dias, tolerancia)
+
+    def resumen(g):
+        return {"otif": _pct_valor(g, "otif"), "a_tiempo": _pct_valor(g, "a_tiempo"), "completo": _pct_valor(g, "completo"),
+                "lineas": int(len(g)), "valor": float(g["valor"].sum()),
+                "valor_falla": float(g.loc[~g["otif"], "valor"].sum())}
+
+    proveedores = []
+    for nombre, g in df.groupby("proveedor"):
+        tarde = g[~g["a_tiempo"] & g["primera_entrada"].notna()]
+        atraso = [(p - f).days for p, f in zip(tarde["primera_entrada"], tarde["fecha_entrega"])]
+        proveedores.append({"proveedor": nombre, **resumen(g),
+                            "atraso": sum(atraso) / len(atraso) if atraso else None})
+    proveedores.sort(key=lambda p: -p["valor"])
+    fallas = df[~df["otif"]].sort_values("valor", ascending=False).head(15)
+    meses = {}
+    for r in df.itertuples():
+        meses.setdefault(r.fecha_entrega.replace(day=1), []).append(r.Index)
+    serie = [(m, _pct_valor(df.loc[idx], "otif")) for m, idx in sorted(meses.items())]
+    return {
+        **resumen(df), "pendientes": pendientes, "dias": dias, "tolerancia": supuestos["otif_cantidad_tolerancia_pct"],
+        "categorias": [{"categoria": c, **resumen(g)} for c, g in df.groupby("categoria")],
+        "proveedores": proveedores[:25], "proveedores_total": len(proveedores),
+        "fallas": [{"pedido": r.pedido, "posicion": r.posicion, "material_codigo": r.material_codigo,
+                    "texto_breve": r.texto_breve, "proveedor": r.proveedor, "fecha_entrega": r.fecha_entrega,
+                    "valor": r.valor, "motivo": r.motivo, "categoria": r.categoria} for r in fallas.itertuples()],
+        "serie": serie, "spark": _sparkline(serie),
+        "grafico": charts.barras_mensuales([(_mes_corto(m), v) for m, v in serie], alto=220, meta=meta),
+    }
+
+
 # --- Portada ----------------------------------------------------------------
 
 def contexto(mes):
@@ -212,10 +302,10 @@ def _calcular(mes, config):
     serie_compras = serie_compras.assign(mes=pd.to_datetime(serie_compras["mes"]).dt.date).groupby("mes")["valor_total"].sum()
     spark_compras = [(m, v) for m, v in serie_compras.items() if q._sumar_meses(mes, -12) <= m <= mes]
     variacion = (total / total_ant - 1) * 100 if total_ant else None
-    kpi("compras", "Compras del año", soles(total),
-        f"{tramo} · {_pct(variacion, True)} vs el mismo tramo de {mes.year - 1}" if variacion is not None else tramo,
-        impacto=f"{soles(diario)} por día en promedio", spark=_sparkline(spark_compras),
-        enlace=f"{url_overview}#bloque-compras", valor=total)
+    # Compras del año: cifra de contexto en la cabecera (no tiene meta); la
+    # grilla queda para los indicadores que se evalúan contra una meta.
+    compras = {"total": total, "variacion": variacion, "diario": diario, "anio_anterior": mes.year - 1,
+               "spark": _sparkline(spark_compras)}
 
     con_formula = df[~df["categoria"].isin(excluidas)]
     base_contrato = float(con_formula["valor_total"].sum())
@@ -329,6 +419,28 @@ def _calcular(mes, config):
             resumen_categorias.setdefault(cat, {})["inventario"] = float(g["valor_total"].sum())
             resumen_categorias[cat]["doh"] = float(g["valor_total"].sum()) / c_mes * _DIAS_MES if c_mes > 0 else None
 
+    # OTIF de Repuestos y Suministros Industriales (del año, por valor), con
+    # su evolución de los últimos 12 meses.
+    cfg = metas["otif_pct"]
+    otif_anio = otif(inicio, fin)
+    if otif_anio:
+        serie_otif = otif(inicio_12, fin)
+        estado = _estado(otif_anio["otif"], cfg)
+        kpi("otif", "OTIF · a tiempo y completo", _pct(otif_anio["otif"]),
+            f"{tramo} · Repuestos y Suministros · a tiempo {otif_anio['a_tiempo']:.0f}% · completo {otif_anio['completo']:.0f}%",
+            estado, _texto_meta(cfg, lambda v: f"{v:.0f}%"),
+            f"{soles(otif_anio['valor_falla'])} entregados fuera de plazo o incompletos",
+            serie_otif["spark"] if serie_otif else None,
+            reverse("categoria_detalle", kwargs={"slug": "repuestos"}) + "#sec-otif", otif_anio["otif"])
+        if estado != "ok":
+            problema = "la puntualidad" if otif_anio["a_tiempo"] < otif_anio["completo"] else "las cantidades"
+            mensaje(estado, otif_anio["valor_falla"],
+                    f"Solo el {otif_anio['otif']:.0f}% del valor de Repuestos y Suministros llegó a tiempo y completo en "
+                    f"{tramo} (meta {cfg['meta']:.0f}%); el problema es {problema} "
+                    f"(a tiempo {otif_anio['a_tiempo']:.0f}%, completo {otif_anio['completo']:.0f}%).")
+    else:
+        kpi("otif", "OTIF · a tiempo y completo", "—", "Sin entregas evaluables en el período")
+
     # 7. Cumplimiento del plan de abastecimiento S&OP del mes.
     cfg = metas["cumplimiento_sop_pct"]
     if mes in set(q.meses_planificacion_disponibles()):
@@ -416,7 +528,7 @@ def _calcular(mes, config):
     elegidos += malos[:1] + buenos[:1]
     elegidos += [m for m in malos[1:] if m not in elegidos][:3 - len(elegidos)]
     return {
-        "mes": mes, "tramo": tramo, "corte": corte, "kpis": kpis, "mensajes": elegidos[:3],
+        "mes": mes, "tramo": tramo, "corte": corte, "kpis": kpis, "mensajes": elegidos[:3], "compras": compras,
         "cartera": cartera, "categorias": categorias, "unico": unico,
         "metas_propuestas": any(not m.get("confirmada") for m in metas.values()), "supuestos": supuestos,
         "generado": datetime.datetime.now(),

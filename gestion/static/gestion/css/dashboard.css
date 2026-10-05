@@ -562,7 +562,7 @@ tr.fila-total td { font-weight: 600; border-top: 2px solid var(--table-line); }
    valor por familia del Inventario de cada categoría. */
 .barras-anchas .barra-fila { grid-template-columns: 170px 1fr 230px; }
 @media (max-width: 600px) { .barras-anchas .barra-fila { grid-template-columns: 96px 1fr 120px; } }
-td.col-codigo { white-space: nowrap; }
+td.col-codigo, td[data-valor] { white-space: nowrap; }
 
 /* --- Estados --- */
 .dato-positivo { color: var(--up); }
@@ -965,6 +965,9 @@ tbody.tabla-ordenada { animation: filas-asentar .25s ease-out; }
 }
 .portada-titulo h2 { font-family: "Big Shoulders Display", sans-serif; font-weight: 800; font-size: 40px; line-height: 1; margin: 4px 0 6px; }
 .portada-nota { margin: 0; font-size: 12.5px; color: var(--muted); max-width: 70ch; }
+.portada-compras { margin: 0 0 6px; font-size: 14px; }
+.portada-compras a { color: inherit; text-decoration: none; }
+.portada-compras strong { font-family: "Big Shoulders Display", sans-serif; font-weight: 800; font-size: 24px; color: var(--accent-texto); }
 .portada-acciones { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
 .portada-acciones form.filtros { margin: 0; }
 .btn-primario {

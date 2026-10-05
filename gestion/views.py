@@ -452,9 +452,12 @@ def overview(request):
         )
         # Fill Rate: solo categorías con inventario (a pedido del usuario).
         fill_rate_todas = q.fill_rate_por_categoria_rango(rango["fecha_ini"], rango["fecha_fin"])
-        contexto["fill_rate"] = [r for r in fill_rate_todas if r["categoria"] in categorias_con_inv]
+        # Repuestos y Suministros Industriales se miden con OTIF (sección aparte).
+        con_otif = set(ejecutivo.cargar_metas()["supuestos"]["otif_categorias"])
+        contexto["fill_rate"] = [r for r in fill_rate_todas if r["categoria"] in categorias_con_inv - con_otif]
         contexto["lead_time"] = q.lead_time_por_categoria_rango(rango["fecha_ini"], rango["fecha_fin"])
         contexto["unico"] = _proveedor_unico_periodo(sc)
+        contexto["otif"] = ejecutivo.otif(rango["fecha_ini"], rango["fecha_fin"])
     contexto["compras"] = compras_filas
 
     # --- Evolución de PMP (general, todas las categorías) ---
@@ -3203,7 +3206,7 @@ def _contexto_proyeccion_sop(request):
 _ZONAS_CATEGORIA = [
     ("indicadores", "Indicadores", "Resumen de la categoría", ["sec-indicadores-categoria"], None),
     ("compras", "Compras", "Proveedores, Fill Rate y Lead Time",
-     ["bloque-compras", "sec-compras", "sec-pareto", "sec-fillrate", "sec-leadtime", "sec-unico"], None),
+     ["bloque-compras", "sec-compras", "sec-pareto", "sec-fillrate", "sec-otif", "sec-leadtime", "sec-unico"], None),
     ("inventario", "Inventario", "Stock, ABC, rotación y críticos",
      ["bloque-inventario", "sec-evolucion", "sec-inventario", "sec-abc", "sec-obsoletos", "sec-rotacion",
       "sec-criticos", "sec-variacion"], "inventario"),
@@ -3247,8 +3250,13 @@ def _cat_compras(request, categoria, tiene_inventario):
     Top de proveedores) para Compras por año, Compras por mes, Pareto, Fill
     Rate (solo con inventario, a pedido del usuario) y Lead Time."""
     sc = _segmentadores_compras(request)
+    # Repuestos y Suministros Industriales miden OTIF en lugar de Fill Rate
+    # (pedido por el usuario el 2026-10-04); el resto con inventario sigue
+    # con Fill Rate.
+    con_otif = categoria in ejecutivo.cargar_metas()["supuestos"]["otif_categorias"]
     contexto = {"sc": sc, "compras": [], "compras_mensual": None, "compras_por_mes": [],
-                "pareto": None, "fill_rate": None, "lead_time": None, "con_fill_rate": tiene_inventario}
+                "pareto": None, "fill_rate": None, "lead_time": None, "otif": None,
+                "con_fill_rate": tiene_inventario and not con_otif}
     if not sc:
         return contexto
     rango = sc["rango"]
@@ -3301,12 +3309,14 @@ def _cat_compras(request, categoria, tiene_inventario):
 
     pareto_todas = q.concentracion_proveedores_por_categoria_rango(rango["fecha_ini"], rango["fecha_fin"], top=sc["top"])
     contexto["pareto"] = next((r for r in pareto_todas if r["categoria"] == categoria), None)
-    if tiene_inventario:
+    if contexto["con_fill_rate"]:
         fill_rate_todas = q.fill_rate_por_categoria_rango(rango["fecha_ini"], rango["fecha_fin"])
         contexto["fill_rate"] = next((r for r in fill_rate_todas if r["categoria"] == categoria), None)
     lead_time_todas = q.lead_time_por_categoria_rango(rango["fecha_ini"], rango["fecha_fin"])
     contexto["lead_time"] = next((r for r in lead_time_todas if r["categoria"] == categoria), None)
     contexto["unico"] = None if categoria == "CAPEX" else _proveedor_unico_periodo(sc, categoria)
+    if con_otif:
+        contexto["otif"] = ejecutivo.otif(rango["fecha_ini"], rango["fecha_fin"], categoria)
     return contexto
 
 
@@ -3738,6 +3748,8 @@ def _cat_indicadores(request, categoria, tiene_inventario):
             extras.append(f"lead time {co['lead_time']['lead_time_promedio']:.0f} días")
         if co["fill_rate"] and co["fill_rate"].get("fill_rate_pct") is not None:
             extras.append(f"fill rate {co['fill_rate']['fill_rate_pct']:.1f}%")
+        if co["otif"]:
+            extras.append(f"OTIF {co['otif']['otif']:.0f}%")
         top = pareto["top_proveedores"]
         tope = max(float(p["pct"]) for p in top) * 1.1 or 100
         filas = [{"nombre": _nombre_corto(str(p["proveedor"])), "sub": "", "valor": float(p["pct"]),

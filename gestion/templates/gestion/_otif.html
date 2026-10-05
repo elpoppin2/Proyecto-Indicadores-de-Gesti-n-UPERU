@@ -1,0 +1,103 @@
+{% load dashboard_extras %}
+{# OTIF (ejecutivo.otif): pestaña Compras de Repuestos y Suministros Industriales (en lugar del Fill Rate) y bloque Compras del Overview (por_categoria=True). Definido por el usuario: 5 días de tolerancia, ±5% en cantidad, por valor, solo esas dos categorías. #}
+<section class="bloque" id="sec-otif">
+  <h2>OTIF · entregas a tiempo y completas · {{ sc.texto }}</h2>
+  <p class="nota">
+    Líneas de pedido de material/importación (ZNAC/ZIMP) de Repuestos y Suministros Industriales con fecha de entrega en el período, ponderadas por valor.
+    <strong>A tiempo</strong>: la primera entrada (MB51) llega hasta {{ o.dias }} días después de la fecha prometida (antes no penaliza).
+    <strong>Completo</strong>: lo recibido está entre −{{ o.tolerancia }}% y +{{ o.tolerancia }}% de lo pedido.
+    <strong>OTIF</strong>: lo recibido hasta esa fecha límite ya está completo. Una línea se evalúa recién cuando vence su plazo{% if o.pendientes %} ({{ o.pendientes|numero }} línea{{ o.pendientes|pluralize }} del período todavía en plazo){% endif %}.
+  </p>
+  <div class="metricas">
+    <div class="metrica"><span class="valor {% if o.otif < 80 %}dato-negativo{% endif %}">{{ o.otif|numero:1 }}%</span><span class="etiqueta">OTIF (por valor)</span></div>
+    <div class="metrica"><span class="valor">{{ o.a_tiempo|numero:1 }}%</span><span class="etiqueta">A tiempo</span></div>
+    <div class="metrica"><span class="valor">{{ o.completo|numero:1 }}%</span><span class="etiqueta">Completo</span></div>
+    <div class="metrica"><span class="valor">{{ o.valor|soles_mm }}</span><span class="etiqueta">Valor evaluado ({{ o.lineas|numero }} líneas)</span></div>
+    <div class="metrica"><span class="valor">{{ o.valor_falla|soles_mm }}</span><span class="etiqueta">Valor entregado fuera de OTIF</span></div>
+  </div>
+
+  {% with g=o.grafico %}{% if g %}
+    <h3 class="subtitulo">OTIF mes a mes (por fecha de entrega prometida)</h3>
+    <div class="chart-scroll">
+    <div class="chart-wrap chart-barras">
+      <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="OTIF por mes">
+        <line class="linea-meta" x1="0" y1="{{ g.y_meta }}" x2="{{ g.ancho }}" y2="{{ g.y_meta }}"></line>
+        {% for b in g.barras %}{% if b.valor %}<rect class="{{ b.valor.clase }}" x="{{ b.valor.x }}" y="{{ b.valor.y }}" width="{{ b.valor.ancho }}" height="{{ b.valor.alto }}" rx="2"></rect>{% endif %}{% endfor %}
+      </svg>
+      {% for b in g.barras %}
+        {% if b.valor %}<span class="etiqueta-valor" style="left:{{ b.valor.x_pct }}%; top:{{ b.valor.y_pct }}%;">{{ b.valor.etiqueta_valor }}</span>{% endif %}
+        {% if b.mostrar_etiqueta %}<span class="etiqueta-mes" style="left:{{ b.x_pct }}%;">{{ b.etiqueta }}</span>{% endif %}
+      {% endfor %}
+    </div>
+    </div>
+    <div class="leyenda-curva">
+      <span class="leyenda-item"><span class="leyenda-marca leyenda-meta"></span>Meta — {{ g.meta_texto }}</span>
+      <span class="leyenda-item"><span class="leyenda-marca barra-buena"></span>En meta</span>
+      <span class="leyenda-item"><span class="leyenda-marca barra-regular"></span>Entre 80% y la meta</span>
+      <span class="leyenda-item"><span class="leyenda-marca barra-mala"></span>&lt; 80%</span>
+    </div>
+  {% endif %}{% endwith %}
+
+  {% if por_categoria and o.categorias %}
+    <div class="tabla-scroll">
+      <table>
+        <thead><tr><th>Categoría</th><th class="num">Líneas</th><th class="num">Valor evaluado</th><th class="num">OTIF</th><th class="num">A tiempo</th><th class="num">Completo</th></tr></thead>
+        <tbody>
+          {% for c in o.categorias %}
+            <tr><td>{{ c.categoria }}</td><td class="num">{{ c.lineas|numero }}</td><td class="num" data-valor="{{ c.valor|stringformat:'.2f' }}">{{ c.valor|soles_mm }}</td><td class="num"><strong>{{ c.otif|numero:1 }}%</strong></td><td class="num">{{ c.a_tiempo|numero:1 }}%</td><td class="num">{{ c.completo|numero:1 }}%</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  <h3 class="subtitulo">Por proveedor (los {{ o.proveedores|length }} de más valor{% if o.proveedores_total > o.proveedores|length %} de {{ o.proveedores_total|numero }}{% endif %})</h3>
+  <div class="tabla-buscable">
+    <div class="buscador">
+      <div class="campo">
+        <label for="buscar-proveedor-otif">Buscar proveedor</label>
+        <input type="text" id="buscar-proveedor-otif" data-buscar="descripcion" placeholder="ej. fuller">
+      </div>
+    </div>
+    <div class="tabla-scroll">
+      <table>
+        <thead><tr><th>Proveedor</th><th class="num">Líneas</th><th class="num" data-orden="desc">Valor evaluado</th><th class="num">OTIF</th><th class="num">A tiempo</th><th class="num">Completo</th><th class="num">Atraso promedio</th></tr></thead>
+        <tbody>
+          {% for p in o.proveedores %}
+            <tr>
+              <td class="col-descripcion">{{ p.proveedor }}</td>
+              <td class="num">{{ p.lineas|numero }}</td>
+              <td class="num" data-valor="{{ p.valor|stringformat:'.2f' }}">{{ p.valor|soles_mm }}</td>
+              <td class="num {% if p.otif < 80 %}dato-negativo{% endif %}"><strong>{{ p.otif|numero:0 }}%</strong></td>
+              <td class="num">{{ p.a_tiempo|numero:0 }}%</td>
+              <td class="num">{{ p.completo|numero:0 }}%</td>
+              <td class="num">{% if p.atraso is not None %}{{ p.atraso|numero:0 }} días{% else %}—{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if o.fallas %}
+    <h3 class="subtitulo">Entregas fuera de OTIF de más valor</h3>
+    <div class="tabla-scroll">
+      <table>
+        <thead><tr><th>Pedido / pos.</th><th>Material</th>{% if por_categoria %}<th>Categoría</th>{% endif %}<th>Proveedor</th><th>Fecha prometida</th><th class="num">Valor</th><th>Motivo</th></tr></thead>
+        <tbody>
+          {% for f in o.fallas %}
+            <tr>
+              <td class="col-codigo">{{ f.pedido }} / {{ f.posicion }}</td>
+              <td>{{ f.texto_breve }} <span class="celda-codigo texto-tenue">{{ f.material_codigo }}</span></td>
+              {% if por_categoria %}<td>{{ f.categoria }}</td>{% endif %}
+              <td>{{ f.proveedor }}</td>
+              <td>{{ f.fecha_entrega|date:"d/m/Y" }}</td>
+              <td class="num" data-valor="{{ f.valor|stringformat:'.2f' }}">{{ f.valor|soles_mm }}</td>
+              <td>{{ f.motivo }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</section>

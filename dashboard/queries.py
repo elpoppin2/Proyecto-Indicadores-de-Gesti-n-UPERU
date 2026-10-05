@@ -1139,6 +1139,49 @@ def compras_lead_time_lineas_rango(fecha_inicio, fecha_fin):
     """, [fecha_inicio, fecha_fin])
 
 
+@_cacheado
+def otif_lineas(fecha_inicio, fecha_fin, categorias, dias_tolerancia):
+    """Líneas de pedido de material/importación (Cl. ZNAC/ZIMP) de las
+    `categorias` con fecha de entrega prometida entre `fecha_inicio` y
+    `fecha_fin`, con lo recibido (MB51 101 menos 102, en la unidad del
+    pedido: cantidad_um_entrada) hasta la fecha prometida + `dias_tolerancia`
+    y en total, y la primera y última entrada. Insumo del OTIF (ver
+    gestion/ejecutivo.otif). Definido por el usuario el 2026-10-04: solo
+    Repuestos y Suministros Industriales, 5 días de tolerancia."""
+    marcas = ",".join(["%s"] * len(categorias))
+    cantidad = ("CASE WHEN mm.clase_movimiento = '102' THEN -ABS(mm.cantidad_um_entrada) "
+                "ELSE ABS(mm.cantidad_um_entrada) END")
+    df = _query(f"""
+        SELECT {CATEGORIA_COMPRA_CONSOLIDADA_LC} AS categoria,
+               lc.doc_compra AS pedido, lc.pos_doc_compra AS posicion, lc.material_codigo AS material_codigo,
+               lc.texto_breve AS texto_breve, {PROVEEDOR_EFECTIVO_LC} AS proveedor,
+               lc.fecha_entrega AS fecha_entrega, lc.cantidad_pedido AS cantidad_pedido,
+               {VALOR_COMPRA_EXPR_LC} AS valor,
+               SUM(CASE WHEN mm.fecha_contabilizacion <= date(lc.fecha_entrega, '+' || %s || ' days')
+                        THEN {cantidad} ELSE 0 END) AS recibido_a_tiempo,
+               SUM(CASE WHEN mm.pedido IS NOT NULL THEN {cantidad} ELSE 0 END) AS recibido_total,
+               MIN(CASE WHEN mm.clase_movimiento = '101' THEN mm.fecha_contabilizacion END) AS primera_entrada,
+               MAX(CASE WHEN mm.clase_movimiento = '101' THEN mm.fecha_contabilizacion END) AS ultima_entrada
+        FROM gestion_lineacompra lc
+        LEFT JOIN gestion_movimientomaterial mm
+             ON mm.pedido = lc.doc_compra AND mm.posicion = lc.pos_doc_compra
+             AND +mm.clase_movimiento IN ('101', '102')
+        LEFT JOIN gestion_categoria c ON c.grupo_articulo = lc.grupo_articulo
+        LEFT JOIN gestion_categoriaservicio cs ON cs.grupo_compras = lc.grupo_compras
+        WHERE lc.fecha_entrega BETWEEN %s AND %s AND {FILTRO_COMPRAS_VALIDAS_LC}
+              AND {FILTRO_CATEGORIA_VALIDA_LC}
+              AND lc.clase_documento IN ({_IN_CLASES_DOCUMENTO_FILL_RATE})
+              AND lc.cantidad_pedido > 0
+              AND {CATEGORIA_COMPRA_CONSOLIDADA_LC} IN ({marcas})
+        GROUP BY lc.doc_compra, lc.pos_doc_compra
+    """, [int(dias_tolerancia), fecha_inicio, fecha_fin, *categorias])
+    for columna in ("cantidad_pedido", "valor", "recibido_a_tiempo", "recibido_total"):
+        df[columna] = df[columna].astype(float).fillna(0.0)
+    for columna in ("fecha_entrega", "primera_entrada", "ultima_entrada"):
+        df[columna] = pd.to_datetime(df[columna]).dt.date
+    return df
+
+
 def _lead_time(df):
     """Cálculo de Lead Time compartido por lead_time_por_categoria (año) y su
     variante _rango (mes). Se descartan los pocos casos (~0.25% de las líneas)

@@ -93,7 +93,7 @@
 
       <section class="bloque" id="sec-fillrate">
         <h2>Fill Rate · {{ sc.texto }}</h2>
-        <p class="nota">% del valor de líneas de compra de material/importación (Cl. ZNAC/ZIMP, las únicas donde la cantidad pedida y recibida son comparables) entregado completo. Solo categorías con inventario.</p>
+        <p class="nota">% del valor de líneas de compra de material/importación (Cl. ZNAC/ZIMP, las únicas donde la cantidad pedida y recibida son comparables) entregado completo. Solo categorías con inventario; Repuestos y Suministros Industriales se miden con OTIF (abajo).</p>
         {% if fill_rate %}
           <div class="tabla-scroll">
             <table>
@@ -113,6 +113,8 @@
           <p class="aviso">Sin datos suficientes para calcular el Fill Rate en el período seleccionado.</p>
         {% endif %}
       </section>
+
+      {% if otif %}{% include "gestion/_otif.html" with o=otif sc=sc por_categoria=True %}{% endif %}
 
       <section class="bloque" id="sec-leadtime">
         <h2>Lead Time de Proveedores · {{ sc.texto }}</h2>
