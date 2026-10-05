@@ -229,6 +229,9 @@
       function valorNumerico(fila, indice) {
         var celda = fila.children[indice];
         if (!celda) return null;
+        // Celdas con montos abreviados (S/ 52.0 MM, S/ 970 K): ordenan por su
+        // valor exacto en data-valor, no por el texto.
+        if (celda.dataset.valor) return parseFloat(celda.dataset.valor);
         var texto = celda.textContent.trim();
         if (!texto || texto === '—') return null;
         var limpio = texto.replace(/[^0-9,.-]/g, '').replace(/,/g, '');

@@ -1,0 +1,8 @@
+{# Barra de navegación entre páginas (views._construir_nav): Portada, Overview, Planificación y cada categoría. #}
+{% if categorias_nav %}
+  <nav class="nav-categorias">
+    {% for c in categorias_nav %}
+      <a href="{{ c.url }}" class="nav-link {% if c.activo %}activo{% endif %}">{{ c.nombre }}</a>
+    {% endfor %}
+  </nav>
+{% endif %}

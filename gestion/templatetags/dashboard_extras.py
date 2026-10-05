@@ -30,6 +30,23 @@ def soles(valor):
 
 
 @register.filter
+def soles_mm(valor):
+    """Soles abreviados de la portada y el informe: S/ 12.3 MM, S/ 450 K."""
+    try:
+        valor = float(valor)
+    except (TypeError, ValueError):  # sin dato (p.ej. inventario de CAPEX)
+        return "—"
+    if valor != valor:
+        return "—"
+    v, signo = abs(valor), "−" if valor < 0 else ""
+    if v >= 1e6:
+        return f"{signo}S/ {v / 1e6:,.1f} MM"
+    if v >= 1e3:
+        return f"{signo}S/ {v / 1e3:,.0f} K"
+    return f"{signo}S/ {v:,.0f}"
+
+
+@register.filter
 def mesanio(fecha):
     return q.formato_mes_anio(fecha) if fecha else ""
 

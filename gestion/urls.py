@@ -7,6 +7,8 @@ urlpatterns = [
     path("", views.inicio, name="inicio"),
     path("login/", auth_views.LoginView.as_view(template_name="gestion/login.html"), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
+    path("portada/", views.portada, name="portada"),
+    path("informe-mensual/", views.informe_mensual, name="informe_mensual"),
     path("overview/", views.overview, name="overview"),
     path("overview/exportar/", views.exportar_excel, name="exportar_excel_overview"),
     path("planificacion/", views.planificacion, name="planificacion"),

@@ -15,6 +15,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpResponse, JsonResponse, QueryDict
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
+from django.urls import reverse
 from django.utils.safestring import mark_safe
 from django.views.decorators.http import require_POST
 
@@ -24,7 +25,7 @@ from django.views.decorators.http import require_POST
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dashboard"))
 import queries as q  # noqa: E402
 
-from . import asistente, charts  # noqa: E402
+from . import asistente, charts, ejecutivo  # noqa: E402
 from .models import ConsultaAsistente  # noqa: E402
 
 # Formato de mes abreviado con guion ("Ene - 2025") solo para el gráfico de
@@ -61,15 +62,20 @@ def _categorias_disponibles():
 
 
 def _construir_nav(slug_activo):
-    """Barra de navegación compartida entre OVERVIEW, Planificación y las páginas
-    de categoría: OVERVIEW siempre primero, luego Planificación (S&OP, no es una
-    categoría de compras/inventario), luego las categorías con datos."""
+    """Barra de navegación compartida por todas las páginas: PORTADA (resumen
+    ejecutivo) primero, luego OVERVIEW, Planificación (S&OP, no es una
+    categoría de compras/inventario) y las categorías con datos. Cada entrada
+    trae su url."""
     categorias = _categorias_disponibles()
     nav = [
-        {"nombre": "OVERVIEW", "slug": "overview", "activo": slug_activo == "overview"},
-        {"nombre": "PLANIFICACIÓN", "slug": "planificacion", "activo": slug_activo == "planificacion"},
+        {"nombre": "PORTADA", "slug": "portada", "url": reverse("portada")},
+        {"nombre": "OVERVIEW", "slug": "overview", "url": reverse("overview")},
+        {"nombre": "PLANIFICACIÓN", "slug": "planificacion", "url": reverse("planificacion")},
     ]
-    nav += [{"nombre": c, "slug": s, "activo": s == slug_activo} for c, s in ((c, _slug(c)) for c in categorias)]
+    nav += [{"nombre": c, "slug": s, "url": reverse("categoria_detalle", kwargs={"slug": s})}
+            for c, s in ((c, _slug(c)) for c in categorias)]
+    for entrada in nav:
+        entrada["activo"] = entrada["slug"] == slug_activo
     return nav, categorias
 
 
@@ -144,6 +150,16 @@ def _segmentadores_compras(request):
             # Para abrir una categoría desde el Overview con el mismo período.
             "qs": urlencode({"anio_compras": anio, "mes_compras_desde": rango["mes_desde"],
                              "mes_compras_hasta": rango["mes_hasta"], "top_compras": top})}
+
+
+def _proveedor_unico_periodo(sc, categoria=None):
+    """Dependencia de proveedor único en el período de los segmentadores de
+    compras (ver ejecutivo.proveedor_unico): un material es recurrente si se
+    compró en 3 meses o más (o en todos, si el período es más corto)."""
+    rango = sc["rango"]
+    meses = rango["mes_hasta"] - rango["mes_desde"] + 1
+    minimo = min(ejecutivo.cargar_metas()["supuestos"]["meses_compra_recurrente"], meses)
+    return {**ejecutivo.proveedor_unico(rango["fecha_ini"], rango["fecha_fin"], categoria, minimo), "meses_minimos": minimo}
 
 
 def _cortes_inventario():
@@ -323,7 +339,50 @@ def _rotacion_materiales_filtrado(categoria, mes, familia=None, centro=None, bus
 
 @login_required
 def inicio(request):
-    return redirect("overview")
+    return redirect("portada")
+
+
+def _mes_ejecutivo(request):
+    meses = ejecutivo.meses_disponibles()
+    return meses, _por_str(request.GET.get("mes"), meses) or ejecutivo.mes_defecto()
+
+
+@login_required
+def portada(request):
+    """Portada ejecutiva (ver gestion/ejecutivo.py): los indicadores clave con
+    meta, semáforo y tendencia, los 3 mensajes del mes, la cartera de
+    oportunidades y el resumen por categoría, todo en soles, para el mes
+    elegido (por defecto, el último cerrado)."""
+    categorias_nav, _ = _construir_nav("portada")
+    meses, mes = _mes_ejecutivo(request)
+    contexto = {"categoria": "PORTADA", "categorias_nav": categorias_nav, "meses": meses, "mes_sel": mes,
+                "en_curso": mes == datetime.date.today().replace(day=1)}
+    if not q.anios_compras_disponibles():
+        contexto["sin_datos"] = True
+    else:
+        contexto["e"] = ejecutivo.contexto(mes)
+    return render(request, "gestion/portada.html", contexto)
+
+
+@login_required
+def informe_mensual(request):
+    """Informe mensual de Supply Chain: la portada del mes en formato de
+    documento (A4 horizontal), autocontenido (estilos y logo dentro). Con
+    ?pdf=1 se descarga en PDF, generado con Edge en el servidor (un clic);
+    sin él, se ve en el navegador."""
+    _, mes = _mes_ejecutivo(request)
+    html = render_to_string("gestion/informe_mensual.html", {
+        "e": ejecutivo.contexto(mes), "logo": ejecutivo.logo_data_uri(), "usuario": request.user.get_username(),
+    })
+    if request.GET.get("pdf"):
+        pdf = ejecutivo.pdf_desde_html(html)
+        if pdf:
+            respuesta = HttpResponse(pdf, content_type="application/pdf")
+            respuesta["Content-Disposition"] = f'attachment; filename="Informe_Supply_Chain_{mes:%Y-%m}.pdf"'
+            return respuesta
+        # Sin Edge en el servidor: el mismo informe para imprimir desde el navegador.
+        html = html.replace("</body>", "<script>window.print()</script></body>")
+    return HttpResponse(html)
 
 
 @login_required
@@ -395,6 +454,7 @@ def overview(request):
         fill_rate_todas = q.fill_rate_por_categoria_rango(rango["fecha_ini"], rango["fecha_fin"])
         contexto["fill_rate"] = [r for r in fill_rate_todas if r["categoria"] in categorias_con_inv]
         contexto["lead_time"] = q.lead_time_por_categoria_rango(rango["fecha_ini"], rango["fecha_fin"])
+        contexto["unico"] = _proveedor_unico_periodo(sc)
     contexto["compras"] = compras_filas
 
     # --- Evolución de PMP (general, todas las categorías) ---
@@ -3143,7 +3203,7 @@ def _contexto_proyeccion_sop(request):
 _ZONAS_CATEGORIA = [
     ("indicadores", "Indicadores", "Resumen de la categoría", ["sec-indicadores-categoria"], None),
     ("compras", "Compras", "Proveedores, Fill Rate y Lead Time",
-     ["bloque-compras", "sec-compras", "sec-pareto", "sec-fillrate", "sec-leadtime"], None),
+     ["bloque-compras", "sec-compras", "sec-pareto", "sec-fillrate", "sec-leadtime", "sec-unico"], None),
     ("inventario", "Inventario", "Stock, ABC, rotación y críticos",
      ["bloque-inventario", "sec-evolucion", "sec-inventario", "sec-abc", "sec-obsoletos", "sec-rotacion",
       "sec-criticos", "sec-variacion"], "inventario"),
@@ -3246,6 +3306,7 @@ def _cat_compras(request, categoria, tiene_inventario):
         contexto["fill_rate"] = next((r for r in fill_rate_todas if r["categoria"] == categoria), None)
     lead_time_todas = q.lead_time_por_categoria_rango(rango["fecha_ini"], rango["fecha_fin"])
     contexto["lead_time"] = next((r for r in lead_time_todas if r["categoria"] == categoria), None)
+    contexto["unico"] = None if categoria == "CAPEX" else _proveedor_unico_periodo(sc, categoria)
     return contexto
 
 
@@ -3571,6 +3632,10 @@ def _cat_cuentas(request, categoria, tiene_inventario):
     condiciones["participacion"] = condiciones["valor_total"] / total * 100
     cx["condiciones"] = condiciones.sort_values("valor_total", ascending=False).to_dict("records")
     cx["valor_total"] = total
+    # En soles: cada día más de plazo de pago es un día de compras que se
+    # queda en caja (compras del período ÷ días del período).
+    fin_caja = min(rango["fecha_fin"], datetime.date.today())
+    cx["caja_por_dia"] = total / max((fin_caja - rango["fecha_ini"]).days + 1, 1)
     cx["pmp_anio"] = float((df["dias"] * df["valor_total"]).sum() / total)
     cx["pct_60"] = float(df.loc[df["dias"] >= 60, "valor_total"].sum() / total * 100)
 
@@ -3811,7 +3876,8 @@ def _cat_indicadores(request, categoria, tiene_inventario):
         serie = cx["pmp_serie"][-_COMPRAS_MESES:]
         panel("cuentas", titulo, f"{ultimo['pmp']:.0f} días",
               f"Compras de {ultimo['periodo']}, mismos meses que el año anterior"
-              + (f" · {cx['pct_60']:.0f}% del valor a 60 días o más" if cx.get("pct_60") is not None else ""),
+              + (f" · {cx['pct_60']:.0f}% del valor a 60 días o más" if cx.get("pct_60") is not None else "")
+              + (f" · cada día más de plazo = {_soles_mm(cx['caja_por_dia'])} de caja" if cx.get("caja_por_dia") else ""),
               "lineas", charts.lineas_mensuales(
                   [{"nombre": "PMP", "clase": "serie-0",
                     "puntos": [(m, v, f"{q.formato_mes_anio(m)}\nPMP: {v:.0f} días") for m, v in serie]}],

@@ -91,4 +91,6 @@
       <p class="aviso">Sin datos suficientes para calcular el Lead Time en el período elegido.</p>
     {% endif %}
   </section>
+
+  {% if unico %}{% include "gestion/_proveedor_unico.html" with un=unico sc=sc por_categoria=False %}{% endif %}
 </div>

@@ -1,0 +1,65 @@
+{% load dashboard_extras %}
+{# Dependencia de proveedor único (views._proveedor_unico_periodo / ejecutivo.proveedor_unico), en el bloque Compras del Overview (por_categoria=True) y de cada categoría. #}
+<section class="bloque" id="sec-unico">
+  <h2>Dependencia de proveedor único · {{ sc.texto }}</h2>
+  <p class="nota">De los materiales que se compran de forma recurrente (en {{ un.meses_minimos }} mes{{ un.meses_minimos|pluralize:"es" }} o más del período), cuánto del valor se le compra a un solo proveedor: un riesgo de abastecimiento y de poder de negociación. Se mide sobre recurrentes porque un repuesto o equipo comprado una sola vez casi siempre es de un único fabricante. No incluye CAPEX.</p>
+  {% if un.pct is not None %}
+    <div class="metricas">
+      <div class="metrica"><span class="valor">{{ un.pct|numero:0 }}%</span><span class="etiqueta">Del valor recurrente con un solo proveedor</span></div>
+      <div class="metrica"><span class="valor">{{ un.valor_unico|soles }}</span><span class="etiqueta">Comprado a proveedor único</span></div>
+      <div class="metrica"><span class="valor">{{ un.materiales_unicos|numero }} de {{ un.materiales_recurrentes|numero }}</span><span class="etiqueta">Materiales recurrentes con un solo proveedor</span></div>
+    </div>
+    {% if por_categoria %}
+      <div class="tabla-scroll">
+        <table>
+          <thead><tr><th>Categoría</th><th class="num">Materiales recurrentes</th><th class="num">Con un solo proveedor</th><th class="num">Valor recurrente</th><th class="num">Valor con proveedor único</th><th class="num" data-orden="desc">% del valor</th></tr></thead>
+          <tbody>
+            {% for r in un.por_categoria %}
+              <tr>
+                <td>{{ r.categoria }}</td>
+                <td class="num">{{ r.materiales|numero }}</td>
+                <td class="num">{{ r.unicos|numero }}</td>
+                <td class="num">{{ r.valor|soles }}</td>
+                <td class="num">{{ r.valor_unico|soles }}</td>
+                <td class="num">{{ r.pct|numero:1 }}%</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+    <h3 class="subtitulo">Materiales de más valor con un solo proveedor</h3>
+    <div class="tabla-buscable">
+      <div class="buscador">
+        <div class="campo">
+          <label for="buscar-codigo-unico">Buscar por código</label>
+          <input type="text" id="buscar-codigo-unico" data-buscar="codigo" placeholder="ej. 06-00000023">
+        </div>
+        <div class="campo">
+          <label for="buscar-desc-unico">Buscar por descripción</label>
+          <input type="text" id="buscar-desc-unico" data-buscar="descripcion" placeholder="ej. carbón">
+        </div>
+      </div>
+      <div class="tabla-scroll">
+        <table>
+          <thead><tr><th>Material</th><th>Descripción</th>{% if por_categoria %}<th>Categoría</th>{% endif %}<th>Proveedor</th><th class="num">Meses con compra</th><th class="num">Pedidos</th><th class="num" data-orden="desc">Valor</th></tr></thead>
+          <tbody>
+            {% for m in un.materiales %}
+              <tr>
+                <td class="col-codigo">{{ m.material_codigo }}</td>
+                <td class="col-descripcion">{{ m.texto_breve }}</td>
+                {% if por_categoria %}<td>{{ m.categoria }}</td>{% endif %}
+                <td>{{ m.proveedor }}</td>
+                <td class="num">{{ m.meses|numero }}</td>
+                <td class="num">{{ m.pedidos|numero }}</td>
+                <td class="num">{{ m.valor|soles }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% else %}
+    <p class="aviso">Sin materiales comprados de forma recurrente en el período elegido.</p>
+  {% endif %}
+</section>

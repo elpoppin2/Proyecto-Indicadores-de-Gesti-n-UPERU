@@ -914,6 +914,37 @@ def compras_por_categoria_proveedor_condicion_rango(fecha_inicio, fecha_fin):
     """, [fecha_inicio, fecha_fin])
 
 
+def compras_por_material_proveedor_rango(fecha_inicio, fecha_fin):
+    """Compras de materiales (con código) por categoría, material y proveedor
+    en un rango de fecha_documento: valor total, valor bajo contrato, meses
+    distintos con compra y pedidos. Insumo de "proveedor único" (materiales
+    comprados a un solo proveedor) y de la oportunidad de contratos marco
+    (compras recurrentes fuera de contrato)."""
+    return _query(f"""
+        SELECT CASE {CATEGORIA_EFECTIVA_LC}
+                   {_CASE_CONSOLIDACION_CATEGORIAS}
+                   ELSE {CATEGORIA_EFECTIVA_LC}
+               END AS categoria,
+               lc.material_codigo AS material_codigo, MAX(lc.texto_breve) AS texto_breve,
+               {PROVEEDOR_EFECTIVO_LC} AS proveedor,
+               SUM({VALOR_COMPRA_EXPR_LC}) AS valor_total,
+               SUM(CASE WHEN {FILTRO_BAJO_CONTRATO_LC} THEN {VALOR_COMPRA_EXPR_LC} ELSE 0 END) AS valor_contrato,
+               COUNT(DISTINCT strftime('%%Y-%%m', lc.fecha_documento)) AS meses,
+               COUNT(DISTINCT lc.doc_compra) AS pedidos
+        FROM gestion_lineacompra lc
+        LEFT JOIN gestion_categoria c ON c.grupo_articulo = lc.grupo_articulo
+        LEFT JOIN gestion_categoriaservicio cs ON cs.grupo_compras = lc.grupo_compras
+        WHERE lc.fecha_documento BETWEEN %s AND %s AND {FILTRO_COMPRAS_VALIDAS_LC}
+              AND {FILTRO_CATEGORIA_VALIDA_LC}
+              AND lc.material_codigo != '' AND {PROVEEDOR_EFECTIVO_LC} != ''
+        GROUP BY CASE {CATEGORIA_EFECTIVA_LC}
+                   {_CASE_CONSOLIDACION_CATEGORIAS}
+                   ELSE {CATEGORIA_EFECTIVA_LC}
+               END,
+                 lc.material_codigo, {PROVEEDOR_EFECTIVO_LC}
+    """, [fecha_inicio, fecha_fin])
+
+
 def _concentracion_proveedores(df, top):
     """Cálculo de concentración de proveedores compartido por
     concentracion_proveedores_por_categoria (año) y su variante _rango (mes)."""
@@ -1155,7 +1186,7 @@ MATERIALES_SIN_MOVIMIENTO_ANIOS = 3
 @_cacheado
 def materiales_obsoletos_por_categoria(fecha, familia=None, centro=None):
     """Materiales con stock de cierre > 0 pero sin ningún consumo (MB51,
-    CLASES_MOVIMIENTO_CONSUMO) en los últimos MATERIALES_SIN_MOVIMIENTO_ANIOS
+    FILTRO_CLASE_MOVIMIENTO_CONSUMO) en los últimos MATERIALES_SIN_MOVIMIENTO_ANIOS
     años (3) que terminan en `fecha` — "Materiales sin Movimiento": capital
     inmovilizado por categoría. Se compara cantidad consumida con 0 (no
     cantidad contra cantidad de distinta UMB), así que no hay problema de
@@ -1275,12 +1306,21 @@ def materiales_por_fabricante(top=20):
     """, [top])
 
 
-# Clases de movimiento de MB51 que cuentan como "consumo" en todos los indicadores
-# de consumo (Índice de Rotación de Inventario, Materiales sin Movimiento): Z01
-# (SM Vta.Relacionadas), Z04 (EM AnulTransf.Gratui) y 353 (aún no presente en la
-# data cargada, se deja programada). Definido por el usuario.
+# Clases de movimiento de MB51 que cuentan como "consumo" en TODAS las pestañas
+# (Rotación, Materiales sin Movimiento, Críticos, Planificación): Z01 (SM
+# Vta.Relacionadas), Z04 (EM AnulTransf.Gratui), 353 (aún sin datos) y todas
+# las que empiezan con "2", de la 200 a la 299 (201/202 a centro de costo,
+# 221/222 a proyecto, 261/262 a orden, 281/282 a red...). Las anulaciones
+# (202, 262...) vienen con el signo contrario y se restan solas. Definido por
+# el usuario el 2026-10-04: antes solo Z01/Z04/353 fuera de Planificación, y
+# la 261 (1.5 M movimientos, el grueso de los repuestos) no contaba.
 CLASES_MOVIMIENTO_CONSUMO = ("Z01", "Z04", "353")
 _IN_CLASES_MOVIMIENTO_CONSUMO = ",".join(f"'{c}'" for c in CLASES_MOVIMIENTO_CONSUMO)
+# BETWEEN (no substr/LIKE) para que SQLite use el índice idx_mov_consumo_rotacion;
+# todas las clases "2xx" cargadas son numéricas.
+FILTRO_CLASE_MOVIMIENTO_CONSUMO = (
+    f"(clase_movimiento BETWEEN '200' AND '299' OR clase_movimiento IN ({_IN_CLASES_MOVIMIENTO_CONSUMO}))"
+)
 
 # Para REPUESTOS (categorías origen MROE/MROM), los movimientos con Lote "USADO"
 # son repuestos reacondicionados que reingresan a almacén, no consumo real: se
@@ -1318,7 +1358,7 @@ def consumo_6_meses_por_material(fecha):
         SELECT material_codigo AS material_codigo,
                -SUM(cantidad) AS consumo_total
         FROM gestion_movimientomaterial
-        WHERE clase_movimiento IN ({_IN_CLASES_MOVIMIENTO_CONSUMO})
+        WHERE {FILTRO_CLASE_MOVIMIENTO_CONSUMO}
               AND fecha_contabilizacion BETWEEN %s AND %s
               AND material_codigo != ''
               AND {FILTRO_EXCLUYE_LOTE_USADO_REPUESTOS}
@@ -1350,7 +1390,7 @@ def consumo_periodo_por_material(fecha_inicio, fecha_fin):
         SELECT material_codigo AS material_codigo,
                -SUM(cantidad) AS consumo_total
         FROM gestion_movimientomaterial
-        WHERE clase_movimiento IN ({_IN_CLASES_MOVIMIENTO_CONSUMO})
+        WHERE {FILTRO_CLASE_MOVIMIENTO_CONSUMO}
               AND fecha_contabilizacion BETWEEN %s AND %s
               AND material_codigo != ''
               AND {FILTRO_EXCLUYE_LOTE_USADO_REPUESTOS}
@@ -1370,7 +1410,7 @@ def consumo_valorizado_6_meses_por_material(fecha):
         SELECT material_codigo AS material_codigo,
                -SUM(importe_moneda_local) AS consumo_valor_6meses
         FROM gestion_movimientomaterial
-        WHERE clase_movimiento IN ({_IN_CLASES_MOVIMIENTO_CONSUMO})
+        WHERE {FILTRO_CLASE_MOVIMIENTO_CONSUMO}
               AND fecha_contabilizacion BETWEEN %s AND %s
               AND material_codigo != ''
               AND {FILTRO_EXCLUYE_LOTE_USADO_REPUESTOS}
@@ -1794,18 +1834,14 @@ def cumplimiento_mensual_abastecimiento(categoria=None, centro=None):
     return filas
 
 
-# Consumo real para Cobertura de Stock de Planificación (Materias Primas/
-# Combustibles): el Índice de Rotación de Inventario general usa Z01/Z04/353
-# como "consumo" (pensado para Repuestos), pero esas clases casi no tienen
-# movimientos para estos materiales en Atocongo/Condorcocha. Acá el consumo
-# real es la salida del material hacia el proceso: TODAS las clases de
-# movimiento MB51 que empiezan con "2" (201/202 costo, 221 proyecto, 261/262
-# orden de producción, 281/282 red...) más Z01/Z04/353, estas últimas
-# agregadas siempre aunque no tengan datos para estos materiales/plantas, por
-# consistencia con el indicador general. Definido por el usuario.
+# Consumo real de Planificación (Materias Primas/Combustibles): la misma regla
+# de todo el reporte (FILTRO_CLASE_MOVIMIENTO_CONSUMO: clases 2xx más
+# Z01/Z04/353). Planificación la usaba desde antes; el 2026-10-04 el usuario
+# la extendió a todas las pestañas. Escrita con substr (mismo resultado que
+# el BETWEEN, todas las clases "2" son numéricas) para no cambiar el plan de
+# SQLite de estas consultas, que filtran primero por material o centro; un
+# "%" literal (LIKE '2%') chocaría con el "%s" de los parámetros en el log.
 _FILTRO_CLASE_MOVIMIENTO_CONSUMO_SOP = (
-    # substr(...) = '2' en vez de LIKE '2%': un "%" literal en el SQL choca con
-    # el "%s" de los parámetros cuando Django arma el log de la consulta.
     f"(substr(clase_movimiento, 1, 1) = '2' OR clase_movimiento IN ({_IN_CLASES_MOVIMIENTO_CONSUMO}))"
 )
 

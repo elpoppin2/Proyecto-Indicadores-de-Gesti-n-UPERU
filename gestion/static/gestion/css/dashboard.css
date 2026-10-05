@@ -953,6 +953,88 @@ tbody.tabla-ordenada { animation: filas-asentar .25s ease-out; }
 }
 .pila-segmento.con-detalle:hover { filter: brightness(1.08); box-shadow: inset 0 0 0 1px var(--ink); }
 .zona-panel[class*="entrando"] .pila-pista { animation: barra-crecer .55s cubic-bezier(.2, .8, .2, 1) both; animation-delay: 140ms; transform-origin: left center; }
+/* Portada ejecutiva (views.portada): cabecera con el mes y el informe, los 3
+   mensajes del mes, la grilla de indicadores con semáforo (filete superior),
+   la cartera de oportunidades y el resumen por categoría. Pedido por el usuario. */
+.wrap-portada { max-width: 1240px; }
+.portada { display: flex; flex-direction: column; gap: 22px; }
+.portada-cabecera { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 14px 24px; }
+.portada-eyebrow {
+  font-family: "IBM Plex Mono", monospace; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--accent-texto); font-weight: 600;
+}
+.portada-titulo h2 { font-family: "Big Shoulders Display", sans-serif; font-weight: 800; font-size: 40px; line-height: 1; margin: 4px 0 6px; }
+.portada-nota { margin: 0; font-size: 12.5px; color: var(--muted); max-width: 70ch; }
+.portada-acciones { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
+.portada-acciones form.filtros { margin: 0; }
+.btn-primario {
+  display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px; border-radius: 8px;
+  background: var(--accent-texto); color: #fff; font-weight: 600; font-size: 13.5px; text-decoration: none;
+  transition: filter .15s, transform .1s;
+}
+.btn-primario:hover { filter: brightness(1.08); }
+.btn-primario:active { transform: translateY(1px); }
+.btn-primario:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.btn-primario.ocupado { opacity: .7; pointer-events: none; }
+.mensajes-mes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.mensaje {
+  display: flex; gap: 12px; align-items: flex-start; background: var(--surface); border: 1px solid var(--line);
+  border-left: 4px solid var(--warn); border-radius: 10px; padding: 14px 16px; box-shadow: var(--shadow);
+}
+.mensaje p { margin: 0; font-size: 14px; line-height: 1.45; }
+.mensaje-num { font-family: "Big Shoulders Display", sans-serif; font-weight: 800; font-size: 26px; line-height: 1; color: var(--muted); }
+.mensaje-oportunidad, .mensaje-alerta { border-left-color: var(--accent); }
+.mensaje-oportunidad .mensaje-num { color: var(--accent-texto); }
+.mensaje-ok { border-left-color: var(--up); }
+.kpi-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.kpi-tarjeta {
+  background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--table-header);
+  border-radius: 10px; padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 6px; box-shadow: var(--shadow); min-width: 0;
+}
+.kpi-tarjeta.kpi-ok { border-top-color: var(--up); }
+.kpi-tarjeta.kpi-aviso { border-top-color: var(--warn); }
+.kpi-tarjeta.kpi-alerta { border-top-color: var(--accent); }
+.kpi-cabecera { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.kpi-cabecera h3 {
+  margin: 0; font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--muted);
+}
+.kpi-cuerpo { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.kpi-cifra { font-family: "Big Shoulders Display", sans-serif; font-weight: 800; font-size: 36px; line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kpi-spark { width: 42%; max-width: 160px; height: 38px; }
+.kpi-sub { margin: 0; font-size: 12px; color: var(--muted); }
+.kpi-impacto { margin: 0; font-size: 13px; font-weight: 600; }
+.kpi-pie { margin-top: auto; padding-top: 6px; border-top: 1px dashed var(--line); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.kpi-meta { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; color: var(--muted); }
+.kpi-pie .btn-link { font-size: 12px; white-space: nowrap; }
+.cartera-totales { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.cartera-total { border: 1px solid var(--line); border-left: 5px solid var(--accent); border-radius: 10px; padding: 14px 18px; display: flex; flex-direction: column; gap: 2px; }
+.cartera-ahorro { border-left-color: var(--up); }
+.cartera-cifra { font-family: "Big Shoulders Display", sans-serif; font-weight: 800; font-size: 42px; line-height: 1; font-variant-numeric: tabular-nums; }
+.cartera-etiqueta { font-size: 12.5px; color: var(--muted); }
+.palancas { display: flex; flex-direction: column; gap: 14px; }
+.palanca { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr) 110px; align-items: center; gap: 4px 14px; }
+.palanca-titulo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13.5px; }
+.palanca-casos { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; color: var(--muted); }
+.palanca-valor { font-family: "Big Shoulders Display", sans-serif; font-weight: 700; font-size: 20px; text-align: right; font-variant-numeric: tabular-nums; }
+.palanca-desc { grid-column: 1 / -1; margin: 0; font-size: 12px; }
+.palanca .barra-pista { height: 14px; }
+.barra-relleno.palanca-ahorro { background: var(--up); }
+.chip-tipo {
+  display: inline-block; font-family: "IBM Plex Mono", monospace; font-size: 10px; font-weight: 600; letter-spacing: .06em;
+  text-transform: uppercase; padding: 1px 8px; border-radius: 999px; color: #fff; background: var(--accent-texto);
+}
+.chip-tipo.chip-ahorro { background: var(--up); }
+@media (max-width: 980px) {
+  .kpi-grid, .mensajes-mes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .kpi-grid, .mensajes-mes, .cartera-totales { grid-template-columns: minmax(0, 1fr); }
+  .palanca { grid-template-columns: minmax(0, 1fr) 90px; }
+  .palanca .barra-pista { grid-column: 1 / -1; grid-row: 2; }
+  .portada-titulo h2 { font-size: 32px; }
+}
+
 /* Segmentadores de bloque (Overview y pestañas de categoría): una barra que
    rige todas las secciones del bloque (Compras: Año/Desde/Hasta/Top;
    Inventario: Corte/Familia/Centro). Se distingue de las secciones por el

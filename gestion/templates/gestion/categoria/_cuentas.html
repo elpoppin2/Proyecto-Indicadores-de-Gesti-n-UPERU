@@ -82,6 +82,7 @@
         <div class="metrica"><span class="valor">{{ cx.valor_total|soles }}</span><span class="etiqueta">Compras del período</span></div>
         <div class="metrica"><span class="valor">{{ cx.pmp_anio|numero:0 }} <small class="prefijo-ipu">días</small></span><span class="etiqueta">PMP del período</span></div>
         <div class="metrica"><span class="valor">{{ cx.pct_60|numero:1 }}%</span><span class="etiqueta">Comprado a 60 días o más</span></div>
+        <div class="metrica"><span class="valor">{{ cx.caja_por_dia|soles_mm }}</span><span class="etiqueta">De caja por cada día más de plazo (compras de un día)</span></div>
       </div>
       <div class="barras barras-anchas">
         {% for t in cx.tramos %}

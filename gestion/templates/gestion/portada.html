@@ -1,0 +1,181 @@
+{% extends "gestion/base.html" %}
+{% load static dashboard_extras %}
+{% block titulo %}Portada — Indicadores Supply Chain{% endblock %}
+{% block contenido %}
+<div class="wrap wrap-portada">
+
+  <header class="pagina">
+    <div class="marca">
+      <img class="logo-empresa" src="{% static 'gestion/img/unacem-logo.svg' %}" alt="UNACEM" width="256" height="58">
+      <span class="marca-separador" aria-hidden="true"></span>
+    <div class="encabezado-texto">
+      <span class="eyebrow">Indicadores de Gestión Supply Chain</span>
+      <h1>PORTADA</h1>
+    </div>
+    </div>
+    <div class="sesion">
+      <button type="button" id="theme-toggle" class="btn-link">Modo oscuro</button>
+      <span>{{ request.user.username }}</span>
+      <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" class="btn-link">Cerrar sesión</button></form>
+    </div>
+  </header>
+
+  {% include "gestion/_nav.html" %}
+
+  {% if sin_datos %}
+    <p class="aviso">Todavía no hay datos cargados.</p>
+  {% else %}
+  {# Portada ejecutiva (views.portada / gestion/ejecutivo.py): lo que el gerente lee en 60 segundos. Pedido por el usuario. Al cambiar el Mes se vuelve a pedir todo este bloque. #}
+  <div id="portada-cuerpo" class="portada">
+
+    <div class="portada-cabecera">
+      <div class="portada-titulo">
+        <span class="portada-eyebrow">Resumen ejecutivo{% if en_curso %} · mes en curso{% endif %}</span>
+        <h2>{{ e.mes|mesanio }}</h2>
+        <p class="portada-nota">Compras y plazo de pago de {{ e.tramo }} · inventario al {{ e.corte|date:"d/m/Y" }} · riesgos y oportunidades de los últimos 12 meses.{% if e.metas_propuestas %} Las metas marcadas "propuesta" están pendientes de confirmar.{% endif %}</p>
+      </div>
+      <div class="portada-acciones">
+        <form class="filtros" method="get" data-target="portada-cuerpo" data-sin-reinicio>
+          <div class="campo">
+            <label for="mes">Mes</label>
+            <select name="mes" id="mes">
+              {% for m in meses %}
+                <option value="{{ m|fechaiso }}" {% if m == mes_sel %}selected{% endif %}>{{ m|mesanio }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <noscript><button type="submit">Aplicar</button></noscript>
+        </form>
+        <a class="btn-primario" href="{% url 'informe_mensual' %}?mes={{ mes_sel|fechaiso }}&amp;pdf=1" data-descarga-informe>Descargar informe mensual (PDF)</a>
+        <a class="btn-link" href="{% url 'informe_mensual' %}?mes={{ mes_sel|fechaiso }}" target="_blank" rel="noopener">Ver informe en el navegador</a>
+      </div>
+    </div>
+
+    <section class="mensajes-mes" aria-label="Mensajes del mes">
+      {% for m in e.mensajes %}
+        <article class="mensaje mensaje-{{ m.estado }}">
+          <span class="mensaje-num">{{ forloop.counter }}</span>
+          <p>{{ m.texto }}</p>
+        </article>
+      {% endfor %}
+    </section>
+
+    <section class="kpi-grid" aria-label="Indicadores clave">
+      {% for k in e.kpis %}
+        <article class="kpi-tarjeta kpi-{{ k.estado }}">
+          <header class="kpi-cabecera">
+            <h3>{{ k.titulo }}</h3>
+            {% if k.estado_texto %}<span class="pill-estado estado-{{ k.estado }}">{{ k.estado_texto }}</span>{% endif %}
+          </header>
+          <div class="kpi-cuerpo">
+            <span class="kpi-cifra">{{ k.cifra }}</span>
+            {% with m=k.spark %}{% if m %}
+              <svg class="minigrafico kpi-spark" viewBox="0 0 {{ m.ancho }} {{ m.alto }}" preserveAspectRatio="none" aria-hidden="true"><path d="{{ m.linea }}"></path><circle cx="{{ m.fin_x }}" cy="{{ m.fin_y }}" r="2.6"></circle></svg>
+            {% endif %}{% endwith %}
+          </div>
+          <p class="kpi-sub">{{ k.sub }}</p>
+          {% if k.impacto %}<p class="kpi-impacto">{{ k.impacto }}</p>{% endif %}
+          <footer class="kpi-pie">
+            <span class="kpi-meta">{{ k.meta }}</span>
+            {% if k.enlace %}<a class="btn-link" href="{{ k.enlace }}">Ver detalle <span aria-hidden="true">→</span></a>{% endif %}
+          </footer>
+        </article>
+      {% endfor %}
+    </section>
+
+    {% with c=e.cartera %}
+    <section class="bloque" id="sec-cartera">
+      <div class="bloque-cabecera">
+        <h2>Cartera de oportunidades · {{ c.periodo }}</h2>
+        <button type="button" class="btn-link" data-imprimir="sec-cartera">Descargar / Imprimir</button>
+      </div>
+      <p class="nota"><strong>Caja</strong> = capital de trabajo que se libera una vez (plazo de pago, stock). <strong>Ahorro</strong> = menor costo anual (contratos, precio). Cada palanca muestra su supuesto; los supuestos se editan en metas.json.</p>
+      <div class="cartera-totales">
+        <div class="cartera-total cartera-caja"><span class="cartera-cifra">{{ c.total_caja|soles_mm }}</span><span class="cartera-etiqueta">Caja que se puede liberar</span></div>
+        <div class="cartera-total cartera-ahorro"><span class="cartera-cifra">{{ c.total_ahorro|soles_mm }}</span><span class="cartera-etiqueta">Ahorro potencial al año</span></div>
+      </div>
+      <div class="palancas">
+        {% for p in c.palancas %}
+          <div class="palanca">
+            <div class="palanca-titulo">
+              <span class="chip-tipo chip-{{ p.tipo|lower }}">{{ p.tipo }}</span>
+              <strong>{{ p.nombre }}</strong>
+              <span class="palanca-casos">{{ p.casos|numero }} caso{{ p.casos|pluralize }}</span>
+            </div>
+            <span class="barra-pista"><span class="barra-relleno palanca-{{ p.tipo|lower }}" style="width:{{ p.pct }}%"></span></span>
+            <span class="palanca-valor">{{ p.valor|soles_mm }}</span>
+            <p class="palanca-desc">{{ p.descripcion }} <span class="texto-tenue">{{ p.supuesto }}</span></p>
+          </div>
+        {% endfor %}
+      </div>
+      <h3 class="subtitulo">Los casos de más valor</h3>
+      <div class="tabla-buscable">
+        <div class="buscador">
+          <div class="campo">
+            <label for="buscar-cartera">Buscar</label>
+            <input type="text" id="buscar-cartera" data-buscar="descripcion" placeholder="proveedor, material o categoría">
+          </div>
+        </div>
+        <div class="tabla-scroll">
+          <table>
+            <thead><tr><th>Palanca</th><th>Tipo</th><th>Categoría</th><th>Caso</th><th class="num" data-orden="desc">Oportunidad</th></tr></thead>
+            <tbody>
+              {% for i in c.casos %}
+                <tr>
+                  <td>{{ i.palanca }}</td>
+                  <td><span class="chip-tipo chip-{{ i.tipo|lower }}">{{ i.tipo }}</span></td>
+                  <td>{{ i.categoria }}</td>
+                  <td class="col-descripcion">{{ i.detalle }} <span class="texto-tenue">· {{ i.categoria|lower }}</span></td>
+                  <td class="num" data-valor="{{ i.valor }}">{{ i.valor|soles_mm }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+    {% endwith %}
+
+    <section class="bloque" id="sec-resumen-categorias">
+      <h2>Resumen por categoría · {{ e.tramo }}</h2>
+      <p class="nota">Haz clic en una categoría para ver su detalle. "% bajo contrato" no aplica a CAPEX ni Empaques (la fórmula de contrato no los alcanza y se ajustan a mano). Días de inventario = valor del inventario ÷ consumo valorizado promedio de los últimos 6 meses.</p>
+      <div class="tabla-scroll">
+        <table>
+          <thead>
+            <tr><th>Categoría</th><th class="num">Compras</th><th class="num">Var. vs año anterior</th><th class="num">Bajo contrato</th><th class="num">PMP</th><th class="num">Inventario</th><th class="num">Días de inventario</th><th class="num">IPU</th><th class="num">Proveedor único</th></tr>
+          </thead>
+          <tbody>
+            {% for f in e.categorias %}
+              <tr>
+                <td><a class="enlace-tabla" href="{% url 'categoria_detalle' slug=f.slug %}">{{ f.categoria }}</a></td>
+                <td class="num">{{ f.compras|soles_mm|default:"—" }}</td>
+                <td class="num {% if f.variacion > 0 %}dato-positivo{% elif f.variacion < 0 %}dato-negativo{% endif %}">{% if f.variacion is not None %}{% if f.variacion > 0 %}+{% endif %}{{ f.variacion|numero:1 }}%{% else %}—{% endif %}</td>
+                <td class="num">{% if f.contrato is not None %}{{ f.contrato|numero:0 }}%{% else %}<span class="texto-tenue" title="La fórmula de contrato no aplica a esta categoría">n.a.</span>{% endif %}</td>
+                <td class="num">{% if f.pmp is not None %}{{ f.pmp|numero:0 }} d{% else %}—{% endif %}</td>
+                <td class="num">{{ f.inventario|soles_mm|default:"—" }}</td>
+                <td class="num">{% if f.doh %}{{ f.doh|numero:0 }}{% else %}—{% endif %}</td>
+                <td class="num {% if f.ipu > 0 %}dato-negativo{% elif f.ipu < 0 %}dato-positivo{% endif %}">{% if f.ipu is not None %}{% if f.ipu > 0 %}+{% endif %}{{ f.ipu|numero:1 }}%{% else %}—{% endif %}</td>
+                <td class="num">{% if f.unico is not None %}{{ f.unico|numero:0 }}%{% else %}—{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+  {% endif %}
+</div>
+<script>
+  /* Descargar el informe: el PDF se arma en el servidor (unos segundos); el
+     botón avisa mientras tanto. */
+  document.addEventListener('click', function (evento) {
+    var boton = evento.target.closest('[data-descarga-informe]');
+    if (!boton) return;
+    var texto = boton.textContent;
+    boton.textContent = 'Preparando el PDF…';
+    boton.classList.add('ocupado');
+    setTimeout(function () { boton.textContent = texto; boton.classList.remove('ocupado'); }, 12000);
+  });
+</script>
+{% endblock %}

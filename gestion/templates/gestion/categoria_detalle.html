@@ -23,19 +23,7 @@
     </div>
   </header>
 
-  {% if categorias_nav %}
-    <nav class="nav-categorias">
-      {% for c in categorias_nav %}
-        {% if c.slug == "overview" %}
-          <a href="{% url 'overview' %}" class="nav-link {% if c.activo %}activo{% endif %}">{{ c.nombre }}</a>
-        {% elif c.slug == "planificacion" %}
-          <a href="{% url 'planificacion' %}" class="nav-link {% if c.activo %}activo{% endif %}">{{ c.nombre }}</a>
-        {% else %}
-          <a href="{% url 'categoria_detalle' slug=c.slug %}" class="nav-link {% if c.activo %}activo{% endif %}">{{ c.nombre }}</a>
-        {% endif %}
-      {% endfor %}
-    </nav>
-  {% endif %}
+  {% include "gestion/_nav.html" %}
 
 
   {% if total_criticos_en_riesgo %}

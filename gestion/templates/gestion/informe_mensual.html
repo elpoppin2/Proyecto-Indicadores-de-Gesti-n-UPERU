@@ -1,0 +1,224 @@
+{% load dashboard_extras %}<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Informe Supply Chain — {{ e.mes|mesanio }}</title>
+{# Informe mensual de Supply Chain (views.informe_mensual / gestion/ejecutivo.py): la portada del mes en formato de documento A4 horizontal, autocontenido (estilos y logo dentro) para que Edge lo convierta en PDF igual en cualquier equipo. Pedido por el usuario: "informe mensual con un clic". #}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+  @page { size: A4 landscape; margin: 11mm 12mm; }
+  :root { --ink: #1a1a1a; --muted: #5f6368; --line: #d9d9d9; --suave: #f4f4f4; --rojo: #ff0000; --rojo-texto: #c40000; --verde: #2f7a4a; --ambar: #9a6400; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html { background: #fff; }
+  body { margin: 0; color: var(--ink); background: #fff; font: 10.5px/1.4 "IBM Plex Sans", "Segoe UI", Arial, sans-serif; }
+  .hoja { width: 273mm; min-height: 186mm; margin: 0 auto; padding: 0; display: flex; flex-direction: column; gap: 5mm; break-after: page; }
+  .hoja:last-child { break-after: auto; }
+  @media screen { body { background: #e9e9e9; padding: 16px; } .hoja { background: #fff; padding: 11mm 12mm; margin-bottom: 16px; box-shadow: 0 2px 10px rgba(0,0,0,.15); width: 297mm; min-height: 210mm; } }
+  .cabecera { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid var(--rojo); padding-bottom: 3mm; }
+  .marca { display: flex; align-items: center; gap: 5mm; }
+  .marca img { height: 11mm; width: auto; }
+  .marca .sep { width: 1px; height: 10mm; background: var(--line); }
+  .eyebrow { font: 600 8.5px "IBM Plex Mono", Consolas, monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--rojo-texto); }
+  h1 { font: 800 25px/1.05 "Big Shoulders Display", "Arial Narrow", sans-serif; margin: 1mm 0 0; letter-spacing: .01em; }
+  h2 { font: 700 16px/1.1 "Big Shoulders Display", "Arial Narrow", sans-serif; margin: 0; letter-spacing: .01em; }
+  .meta-doc { text-align: right; font: 500 8.5px "IBM Plex Mono", Consolas, monospace; color: var(--muted); line-height: 1.6; }
+  .pagina-num { margin-top: auto; display: flex; justify-content: space-between; color: var(--muted); font: 500 8px "IBM Plex Mono", Consolas, monospace; border-top: 1px solid var(--line); padding-top: 2mm; }
+  .mensajes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
+  .mensaje { border-left: 3px solid var(--ambar); background: var(--suave); padding: 3mm 4mm; font-size: 10.5px; line-height: 1.45; }
+  .mensaje b { display: block; font: 600 8px "IBM Plex Mono", Consolas, monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 1mm; }
+  .mensaje-oportunidad { border-left-color: var(--rojo); }
+  .mensaje-alerta { border-left-color: var(--rojo); }
+  .mensaje-ok { border-left-color: var(--verde); }
+  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3.5mm; }
+  .kpi { border: 1px solid var(--line); border-top: 3px solid #b4b4b4; padding: 2.6mm 3.5mm 2.4mm; display: flex; flex-direction: column; gap: 1mm; }
+  .kpi-ok { border-top-color: var(--verde); } .kpi-aviso { border-top-color: #d99a1c; } .kpi-alerta { border-top-color: var(--rojo); }
+  .kpi-fila { display: flex; justify-content: space-between; align-items: baseline; gap: 2mm; }
+  .kpi-titulo { font: 600 8.5px "IBM Plex Mono", Consolas, monospace; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .estado { font: 600 7.5px "IBM Plex Mono", Consolas, monospace; letter-spacing: .05em; text-transform: uppercase; padding: .3mm 1.8mm; border-radius: 99px; border: 1px solid currentColor; white-space: nowrap; }
+  .estado-ok { color: var(--verde); } .estado-aviso { color: var(--ambar); } .estado-alerta { color: var(--rojo-texto); }
+  .kpi-cifra { font: 800 22px/1 "Big Shoulders Display", "Arial Narrow", sans-serif; font-variant-numeric: tabular-nums; }
+  .kpi-sub { color: var(--muted); font-size: 9px; }
+  .kpi-impacto { font-weight: 600; font-size: 9.5px; }
+  .kpi-meta { font: 500 8px "IBM Plex Mono", Consolas, monospace; color: var(--muted); }
+  svg.spark { width: 34mm; height: 8mm; overflow: visible; }
+  svg.spark path { fill: none; stroke: var(--rojo); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+  svg.spark circle { fill: var(--rojo); }
+  .totales { display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 4mm; align-items: stretch; }
+  .total { border: 1px solid var(--line); border-left: 4px solid var(--rojo); padding: 3mm 4mm; }
+  .total-ahorro { border-left-color: var(--verde); }
+  .total .cifra { font: 800 28px/1 "Big Shoulders Display", "Arial Narrow", sans-serif; display: block; }
+  .total .etq { color: var(--muted); font-size: 9.5px; }
+  .lectura { background: var(--suave); padding: 3mm 4mm; font-size: 10px; line-height: 1.5; }
+  table { width: 100%; border-collapse: collapse; font-size: 9.2px; }
+  th { text-align: left; font: 600 7.8px "IBM Plex Mono", Consolas, monospace; letter-spacing: .05em; text-transform: uppercase; color: #fff; background: #4d4d4d; padding: 1.6mm 2mm; }
+  td { padding: 1.1mm 2mm; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .codigo { white-space: nowrap; }
+  tr:nth-child(even) td { background: #fafafa; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  th.num { text-align: right; }
+  .barra { display: inline-block; height: 2.6mm; background: var(--rojo); vertical-align: middle; }
+  .barra-ahorro { background: var(--verde); }
+  .chip { font: 600 7.5px "IBM Plex Mono", Consolas, monospace; text-transform: uppercase; letter-spacing: .05em; padding: .2mm 1.5mm; border-radius: 99px; color: #fff; background: var(--rojo); }
+  .chip-ahorro { background: var(--verde); }
+  .sube { color: var(--rojo-texto); } .baja { color: var(--verde); } .tenue { color: var(--muted); }
+  .dos-col { display: grid; grid-template-columns: 1.15fr 1fr; gap: 5mm; }
+  .nota { color: var(--muted); font-size: 8.5px; line-height: 1.5; }
+  .bloque { display: flex; flex-direction: column; gap: 2mm; }
+  .barra-imprimir { position: fixed; top: 10px; right: 16px; }
+  .barra-imprimir button { font: 600 12px "IBM Plex Sans", Arial, sans-serif; background: var(--rojo); color: #fff; border: 0; border-radius: 6px; padding: 8px 14px; cursor: pointer; }
+  @media print { .barra-imprimir { display: none; } }
+</style>
+</head>
+<body>
+<div class="barra-imprimir"><button type="button" onclick="window.print()">Imprimir / Guardar PDF</button></div>
+
+{# ---------------- Página 1: resumen ejecutivo ---------------- #}
+<section class="hoja">
+  <header class="cabecera">
+    <div class="marca">
+      <img src="{{ logo }}" alt="UNACEM">
+      <span class="sep"></span>
+      <div>
+        <div class="eyebrow">Informe mensual · Supply Chain</div>
+        <h1>{{ e.mes|mesanio }}</h1>
+      </div>
+    </div>
+    <div class="meta-doc">
+      Compras y PMP: {{ e.tramo }}<br>
+      Inventario al {{ e.corte|date:"d/m/Y" }}<br>
+      Generado el {{ e.generado|date:"d/m/Y H:i" }}{% if usuario %} · {{ usuario }}{% endif %}
+    </div>
+  </header>
+
+  <div class="mensajes">
+    {% for m in e.mensajes %}
+      <div class="mensaje mensaje-{{ m.estado }}"><b>Mensaje {{ forloop.counter }}</b>{{ m.texto }}</div>
+    {% endfor %}
+  </div>
+
+  <div class="kpis">
+    {% for k in e.kpis %}
+      <div class="kpi kpi-{{ k.estado }}">
+        <div class="kpi-fila"><span class="kpi-titulo">{{ k.titulo }}</span>{% if k.estado_texto %}<span class="estado estado-{{ k.estado }}">{{ k.estado_texto }}</span>{% endif %}</div>
+        <div class="kpi-fila">
+          <span class="kpi-cifra">{{ k.cifra }}</span>
+          {% with m=k.spark %}{% if m %}<svg class="spark" viewBox="0 0 {{ m.ancho }} {{ m.alto }}" preserveAspectRatio="none"><path d="{{ m.linea }}"></path><circle cx="{{ m.fin_x }}" cy="{{ m.fin_y }}" r="2.4"></circle></svg>{% endif %}{% endwith %}
+        </div>
+        <span class="kpi-sub">{{ k.sub }}</span>
+        {% if k.impacto %}<span class="kpi-impacto">{{ k.impacto }}</span>{% endif %}
+        {% if k.meta %}<span class="kpi-meta">{{ k.meta }}</span>{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="pagina-num"><span>UNACEM · Indicadores de Gestión Supply Chain</span><span>{% if e.metas_propuestas %}Metas "propuesta": pendientes de confirmar por la gerencia · {% endif %}1 / 3</span></div>
+</section>
+
+{# ---------------- Página 2: cartera de oportunidades ---------------- #}
+{% with c=e.cartera %}
+<section class="hoja">
+  <header class="cabecera">
+    <div><div class="eyebrow">Cartera de oportunidades · {{ c.periodo }}</div><h1>Dónde está el valor</h1></div>
+    <div class="meta-doc">{{ e.mes|mesanio }}</div>
+  </header>
+
+  <div class="totales">
+    <div class="total"><span class="cifra">{{ c.total_caja|soles_mm }}</span><span class="etq">Caja que se puede liberar (una vez)</span></div>
+    <div class="total total-ahorro"><span class="cifra">{{ c.total_ahorro|soles_mm }}</span><span class="etq">Ahorro potencial (al año)</span></div>
+    <div class="lectura"><strong>Cómo leerlo.</strong> Caja = capital de trabajo que se libera una vez: plazo de pago y stock. Ahorro = menor costo anual: contratos marco y precios. Cada palanca indica su supuesto; los porcentajes supuestos se ajustan en metas.json y el informe se recalcula.</div>
+  </div>
+
+  <div class="bloque">
+    <h2>Palancas</h2>
+    <table>
+      <thead><tr><th>Palanca</th><th>Tipo</th><th class="num">Valor</th><th style="width:22%"></th><th class="num">Casos</th><th>Qué hacer · supuesto</th></tr></thead>
+      <tbody>
+        {% for p in c.palancas %}
+          <tr>
+            <td><strong>{{ p.nombre }}</strong></td>
+            <td><span class="chip{% if p.tipo == 'Ahorro' %} chip-ahorro{% endif %}">{{ p.tipo }}</span></td>
+            <td class="num"><strong>{{ p.valor|soles_mm }}</strong></td>
+            <td><span class="barra{% if p.tipo == 'Ahorro' %} barra-ahorro{% endif %}" style="width:{{ p.pct }}%"></span></td>
+            <td class="num">{{ p.casos|numero }}</td>
+            <td>{{ p.descripcion }} <span class="tenue">{{ p.supuesto }}</span></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="bloque">
+    <h2>Los 10 casos de más valor</h2>
+    <table>
+      <thead><tr><th>Palanca</th><th>Categoría</th><th>Caso</th><th class="num">Oportunidad</th></tr></thead>
+      <tbody>
+        {% for i in c.casos|slice:":10" %}
+          <tr><td>{{ i.palanca }}</td><td>{{ i.categoria }}</td><td>{{ i.detalle }}</td><td class="num">{{ i.valor|soles_mm }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="pagina-num"><span>UNACEM · Indicadores de Gestión Supply Chain</span><span>2 / 3</span></div>
+</section>
+{% endwith %}
+
+{# ---------------- Página 3: categorías y riesgos ---------------- #}
+<section class="hoja">
+  <header class="cabecera">
+    <div><div class="eyebrow">Detalle · {{ e.tramo }}</div><h1>Categorías y riesgos</h1></div>
+    <div class="meta-doc">{{ e.mes|mesanio }}</div>
+  </header>
+
+  <div class="bloque">
+    <h2>Resumen por categoría</h2>
+    <table>
+      <thead><tr><th>Categoría</th><th class="num">Compras</th><th class="num">Var. año ant.</th><th class="num">Bajo contrato</th><th class="num">PMP</th><th class="num">Inventario</th><th class="num">Días inv.</th><th class="num">IPU</th><th class="num">Prov. único</th></tr></thead>
+      <tbody>
+        {% for f in e.categorias %}
+          <tr>
+            <td><strong>{{ f.categoria }}</strong></td>
+            <td class="num">{{ f.compras|soles_mm }}</td>
+            <td class="num">{% if f.variacion is not None %}{% if f.variacion > 0 %}+{% endif %}{{ f.variacion|numero:1 }}%{% else %}—{% endif %}</td>
+            <td class="num">{% if f.contrato is not None %}{{ f.contrato|numero:0 }}%{% else %}<span class="tenue">n.a.</span>{% endif %}</td>
+            <td class="num">{% if f.pmp is not None %}{{ f.pmp|numero:0 }} d{% else %}—{% endif %}</td>
+            <td class="num">{{ f.inventario|soles_mm }}</td>
+            <td class="num">{% if f.doh %}{{ f.doh|numero:0 }}{% else %}—{% endif %}</td>
+            <td class="num {% if f.ipu > 0 %}sube{% elif f.ipu < 0 %}baja{% endif %}">{% if f.ipu is not None %}{% if f.ipu > 0 %}+{% endif %}{{ f.ipu|numero:1 }}%{% else %}—{% endif %}</td>
+            <td class="num">{% if f.unico is not None %}{{ f.unico|numero:0 }}%{% else %}—{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="dos-col">
+    <div class="bloque">
+      <h2>Materiales de más valor con un solo proveedor</h2>
+      <table>
+        <thead><tr><th>Material</th><th>Categoría</th><th>Proveedor</th><th class="num">Valor 12 meses</th></tr></thead>
+        <tbody>
+          {% for m in e.unico.materiales|slice:":7" %}
+            <tr><td>{{ m.texto_breve }} <span class="tenue codigo">{{ m.material_codigo }}</span></td><td>{{ m.categoria }}</td><td>{{ m.proveedor }}</td><td class="num">{{ m.valor|soles_mm }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="bloque">
+      <h2>Metodología</h2>
+      <p class="nota">
+        <strong>Compras</strong>: órdenes de compra por fecha del documento, en soles (tipo de cambio × valor neto). <strong>Bajo contrato</strong>: pedidos marco 47xx/40xx o con contrato; no aplica a CAPEX ni Empaques.
+        <strong>PMP</strong>: días de cada condición de pago ponderados por valor. <strong>IPU</strong>: precio de compra (MB51) del mes contra el mismo mes del año anterior, acumulado desde enero y ponderado por cantidad.
+        <strong>Inventario</strong>: valor MB5B al último corte del mes; días de inventario = valor ÷ consumo valorizado promedio de 6 meses. <strong>Consumo</strong>: salidas MB51 clases 2xx, Z01, Z04 y 353.
+        <strong>Inmovilizado</strong>: stock sin consumo en 3 años. <strong>Proveedor único</strong>: materiales comprados en {{ e.supuestos.meses_compra_recurrente }} meses o más de los últimos 12 a un solo proveedor, sin CAPEX.
+        <strong>Críticos en riesgo</strong>: materiales marcados críticos con menos de 1 mes de cobertura.
+        Las metas y supuestos están en metas.json; las marcadas "propuesta" están pendientes de confirmar.
+      </p>
+    </div>
+  </div>
+
+  <div class="pagina-num"><span>UNACEM · Indicadores de Gestión Supply Chain</span><span>3 / 3</span></div>
+</section>
+</body>
+</html>
