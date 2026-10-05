@@ -13,7 +13,7 @@
     <div class="metrica"><span class="valor">{{ o.a_tiempo|numero:1 }}%</span><span class="etiqueta">A tiempo</span></div>
     <div class="metrica"><span class="valor">{{ o.completo|numero:1 }}%</span><span class="etiqueta">Completo</span></div>
     <div class="metrica"><span class="valor">{{ o.valor|soles_mm }}</span><span class="etiqueta">Valor evaluado ({{ o.lineas|numero }} líneas)</span></div>
-    <div class="metrica"><span class="valor">{{ o.valor_falla|soles_mm }}</span><span class="etiqueta">Valor entregado fuera de OTIF</span></div>
+    <div class="metrica"{% if not por_categoria %} data-filtrar="f_estado=No cumple" tabindex="0" title="Ver las líneas que no cumplieron"{% endif %}><span class="valor">{{ o.valor_falla|soles_mm }}</span><span class="etiqueta">Valor entregado fuera de OTIF</span></div>
   </div>
 
   {% with g=o.grafico %}{% if g %}
@@ -64,7 +64,7 @@
         <thead><tr><th>Proveedor</th><th class="num">Líneas</th><th class="num" data-orden="desc">Valor evaluado</th><th class="num">OTIF</th><th class="num">A tiempo</th><th class="num">Completo</th><th class="num">Atraso promedio</th></tr></thead>
         <tbody>
           {% for p in o.proveedores %}
-            <tr>
+            <tr{% if not por_categoria %} data-filtrar="f_proveedor={{ p.proveedor|urlencode }}" tabindex="0" title="Ver las líneas evaluadas de este proveedor"{% endif %}>
               <td class="col-descripcion">{{ p.proveedor }}</td>
               <td class="num">{{ p.lineas|numero }}</td>
               <td class="num" data-valor="{{ p.valor|stringformat:'.2f' }}">{{ p.valor|soles_mm }}</td>
@@ -100,4 +100,5 @@
       </table>
     </div>
   {% endif %}
+  {% if not por_categoria %}{% include "gestion/_desglose.html" with clave="otif" fuente="Líneas ZNAC/ZIMP (ME2N) contra sus entradas (MB51 101/102)" pista="o haz clic en un proveedor" %}{% endif %}
 </section>

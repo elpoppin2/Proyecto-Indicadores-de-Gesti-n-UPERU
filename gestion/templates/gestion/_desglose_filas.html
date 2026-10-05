@@ -1,0 +1,2 @@
+{% for fila in filas %}<tr>{% for c in fila %}<td{% if c.clase %} class="{{ c.clase }}"{% endif %}>{{ c.texto }}</td>{% endfor %}</tr>
+{% endfor %}

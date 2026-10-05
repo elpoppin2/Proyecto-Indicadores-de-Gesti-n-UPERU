@@ -25,8 +25,9 @@ from django.views.decorators.http import require_POST
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dashboard"))
 import queries as q  # noqa: E402
 
-from . import asistente, charts, ejecutivo  # noqa: E402
+from . import asistente, charts, desglose, ejecutivo  # noqa: E402
 from .models import ConsultaAsistente  # noqa: E402
+from .templatetags.dashboard_extras import corte as _texto_corte  # noqa: E402
 
 # Formato de mes abreviado con guion ("Ene - 2025") solo para el gráfico de
 # Evolución de esta página HTML; el dashboard de Streamlit usa su propio
@@ -3302,7 +3303,8 @@ def _cat_compras(request, categoria, tiene_inventario):
                     [_mes_corto(m) for m, _ in ultimos],
                     [[{"valor": v,
                        "clase": "col-compras" if rango["fecha_ini"] <= m <= rango["fecha_fin"] else "col-compras-fuera",
-                       "detalle": f"{q.formato_mes_anio(m)}\nCompras: S/ {v:,.0f}"}] for m, v in ultimos],
+                       "detalle": f"{q.formato_mes_anio(m)}\nCompras: S/ {v:,.0f}",
+                       "filtrar": desglose.filtro(f_mes=desglose.mes_param(m))}] for m, v in ultimos],
                     _soles_eje,
                 ),
             }
@@ -3318,6 +3320,14 @@ def _cat_compras(request, categoria, tiene_inventario):
     if con_otif:
         contexto["otif"] = ejecutivo.otif(rango["fecha_ini"], rango["fecha_fin"], categoria)
     return contexto
+
+
+def _mes_variacion(request, si):
+    """Cortes anteriores al de los segmentadores y el Mes comparativo elegido
+    de % Variación (por defecto, el corte anterior)."""
+    opciones = [c for c in reversed(si["cortes"]) if c < si["mes"]]
+    elegido = _por_str(request.GET.get("mes_var_inicial"), opciones) or (opciones[-1] if opciones else None)
+    return opciones, elegido
 
 
 def _cat_inventario(request, categoria, tiene_inventario):
@@ -3341,7 +3351,8 @@ def _cat_inventario(request, categoria, tiene_inventario):
         "valor_total": float(inv["valor_total"].sum()) if not inv.empty else 0,
         "eje": "Centro" if familia else "Familia",
         "familias": charts.barras([
-            {"etiqueta": q.nombre_centro(r[eje]) if familia else r[eje], "valor": float(r["valor_total"])}
+            {"etiqueta": q.nombre_centro(r[eje]) if familia else r[eje], "valor": float(r["valor_total"]),
+             "filtrar": desglose.filtro(f_centro=r[eje]) if familia else desglose.filtro(f_familia=r[eje])}
             for _, r in agrupado.iterrows()
         ]),
         "top_materiales": inv.sort_values("valor_total", ascending=False).head(15).to_dict("records"),
@@ -3389,10 +3400,7 @@ def _cat_inventario(request, categoria, tiene_inventario):
 
     # --- % Variación: el corte elegido contra el Mes comparativo (propio de
     # la sección; por defecto, el corte anterior) ---
-    opciones_var_inicial = [c for c in reversed(si["cortes"]) if c < mes]
-    mes_var_inicial = _por_str(request.GET.get("mes_var_inicial"), opciones_var_inicial) or (
-        opciones_var_inicial[-1] if opciones_var_inicial else None
-    )
+    opciones_var_inicial, mes_var_inicial = _mes_variacion(request, si)
     contexto["variacion"] = {"mes_inicial": mes_var_inicial, "mes_final": mes,
                              "opciones_inicial": list(reversed(opciones_var_inicial)), "filas": []}
     if mes_var_inicial:
@@ -3401,17 +3409,24 @@ def _cat_inventario(request, categoria, tiene_inventario):
     return contexto
 
 
+def _mes_sop_categoria(request):
+    """Meses del Plan S&OP y el elegido en la pestaña Abastecimiento de una
+    categoría: por defecto, el último mes cerrado (el mes en curso recién
+    empieza), igual que la pestaña Indicadores de Planificación."""
+    meses, mes_defecto = _meses_plan()
+    if not meses:
+        return meses, None
+    cerrado = q._sumar_meses(datetime.date.today().replace(day=1), -1)
+    return meses, _por_str(request.GET.get("mes_sopcat"), meses) or (cerrado if cerrado in meses else mes_defecto)
+
+
 def _cat_abastecimiento(request, categoria, tiene_inventario):
     """Pestaña Abastecimiento S&OP (Materias Primas y Combustibles): Plan de
     Abastecimiento vs ingresos físicos del mes por centro y cumplimiento mes
     a mes, de esta categoría. El detalle sigue en Planificación."""
-    meses, mes_defecto = _meses_plan()
+    meses, mes = _mes_sop_categoria(request)
     if not meses:
         return {"ab": None}
-    # Por defecto, el último mes cerrado (el mes en curso recién empieza),
-    # igual que la pestaña Indicadores de Planificación.
-    cerrado = q._sumar_meses(datetime.date.today().replace(day=1), -1)
-    mes = _por_str(request.GET.get("mes_sopcat"), meses) or (cerrado if cerrado in meses else mes_defecto)
     detalle = q.plan_vs_real_abastecimiento_por_material(mes, categoria=categoria)
     centros = []
     if not detalle.empty:
@@ -3446,14 +3461,12 @@ _EVALUACIONES_IPU_CATEGORIA = {
 _IPU_FILAS_TABLA = 15
 
 
-def _cat_precios(request, categoria, tiene_inventario):
-    """Pestaña Precios e IPU de una categoría: IPU (Índice de Precios Unacem)
-    de sus materiales comprados, con el mismo cálculo que Planificación
-    (precio de compra de MB51, ver queries.precios_entrada_materiales), y los
-    materiales que más subieron y bajaron. Segmentadores: Período, contra qué
-    se compara, Familia, Centro y Material (varios), en cascada; con un solo
-    material, su detalle mes a mes. Una categoría sin materiales con entrada
-    de mercancía (servicios) muestra un aviso."""
+def _seleccion_precios(request, categoria):
+    """Segmentadores de Precios e IPU de una categoría (Comparar contra,
+    Familia, Centro, Material en cascada y Período) y los datos que dejan:
+    base (compras de la categoría), df (filtrado), inflacion_total (todas
+    las comparaciones) e inflacion (las del período). Lo usan la pestaña y
+    su detalle fila por fila."""
     base = q.precios_entrada_materiales()
     base = base[base["categoria"] == categoria]
     evaluacion_sel = request.GET.get("evaluacion_ipu", "interanual")
@@ -3474,6 +3487,36 @@ def _cat_precios(request, categoria, tiene_inventario):
     materiales_op = _opciones_material(por_centro) if not por_centro.empty else [{"codigo": "Todos", "texto": "Todos"}]
     material_sel = _selector_material(request, "ipu", materiales_op)
     df = _por_materiales(por_centro, material_sel)
+    s = {"base": base, "df": df, "evaluacion": evaluacion, "evaluacion_sel": evaluacion_sel,
+         "familias": familias, "familia_sel": familia_sel, "centros": centros, "centro_sel": centro_sel,
+         "materiales_op": materiales_op, "material_sel": material_sel,
+         "inflacion_total": pd.DataFrame(), "inflacion": pd.DataFrame(), "periodos": [], "periodo_sel": "desde"}
+    if base.empty:
+        return s
+    s["inflacion_total"] = inflacion_total = q.inflacion_precios(df, evaluacion["desfase"])
+    if inflacion_total.empty:
+        return s
+    s["periodos"] = periodos = _periodos_inflacion(sorted(inflacion_total["mes"].unique()))
+    periodo_sel = request.GET.get("periodo_ipu", "desde")
+    if periodo_sel not in {v for v, _ in periodos}:
+        periodo_sel = "desde"
+    s["periodo_sel"] = periodo_sel
+    s["inflacion"] = _filtrar_periodo_inflacion(inflacion_total, periodo_sel)
+    return s
+
+
+def _cat_precios(request, categoria, tiene_inventario):
+    """Pestaña Precios e IPU de una categoría: IPU (Índice de Precios Unacem)
+    de sus materiales comprados, con el mismo cálculo que Planificación
+    (precio de compra de MB51, ver queries.precios_entrada_materiales), y los
+    materiales que más subieron y bajaron. Segmentadores: Período, contra qué
+    se compara, Familia, Centro y Material (varios), en cascada; con un solo
+    material, su detalle mes a mes. Una categoría sin materiales con entrada
+    de mercancía (servicios) muestra un aviso."""
+    s = _seleccion_precios(request, categoria)
+    base, evaluacion, evaluacion_sel = s["base"], s["evaluacion"], s["evaluacion_sel"]
+    familias, familia_sel, centros, centro_sel = s["familias"], s["familia_sel"], s["centros"], s["centro_sel"]
+    materiales_op, material_sel = s["materiales_op"], s["material_sel"]
     pr = {
         "evaluaciones": [{"valor": k, "texto": v["texto"]} for k, v in _EVALUACIONES_IPU_CATEGORIA.items()],
         "evaluacion_sel": evaluacion_sel, "contra": evaluacion["contra"], "base_titulo": evaluacion["base_titulo"],
@@ -3487,16 +3530,11 @@ def _cat_precios(request, categoria, tiene_inventario):
                        "precio unitario; las compras de servicios o proyectos se evaluarán cuando se defina con qué "
                        "dato medirlas.")
         return {"pr": pr}
-    inflacion_total = q.inflacion_precios(df, evaluacion["desfase"])
+    inflacion_total, inflacion = s["inflacion_total"], s["inflacion"]
     if inflacion_total.empty:
         return {"pr": pr}
-    periodos = _periodos_inflacion(sorted(inflacion_total["mes"].unique()))
-    periodo_sel = request.GET.get("periodo_ipu", "desde")
-    if periodo_sel not in {v for v, _ in periodos}:
-        periodo_sel = "desde"
-    pr["periodos"] = [{"valor": v, "texto": t} for v, t in periodos]
-    pr["periodo_sel"] = periodo_sel
-    inflacion = _filtrar_periodo_inflacion(inflacion_total, periodo_sel)
+    pr["periodos"] = [{"valor": v, "texto": t} for v, t in s["periodos"]]
+    pr["periodo_sel"] = s["periodo_sel"]
     if inflacion.empty:
         return {"pr": pr}
 
@@ -3588,6 +3626,18 @@ _TRAMOS_PLAZO_PAGO = [(0, "Contado o anticipado"), (30, "Hasta 30 días"), (60, 
                       (90, "61 a 90 días"), (float("inf"), "Más de 90 días")]
 
 
+def _tramo_plazo(dias):
+    """Nombre del tramo de plazo de pago (_TRAMOS_PLAZO_PAGO) de unos días."""
+    return next(nombre for hasta, nombre in _TRAMOS_PLAZO_PAGO if dias <= hasta)
+
+
+def _periodo_cuentas(request, anios):
+    """Año y rango (Desde/Hasta) de los segmentadores de Cuentas por pagar."""
+    anio_sel = _por_str(request.GET.get("anio_cxp"), [str(a) for a in anios])
+    anio_sel = int(anio_sel) if anio_sel else anios[-1]
+    return anio_sel, _rango_meses(request, "cxp", anio_sel)
+
+
 def _cat_cuentas(request, categoria, tiene_inventario):
     """Pestaña Cuentas por pagar: segmentadores propios (Año, Desde, Hasta;
     se alinean con los de Compras, ver zonas.js) para el PMP del período,
@@ -3600,9 +3650,7 @@ def _cat_cuentas(request, categoria, tiene_inventario):
           "proveedores": [], "pmp_grafico": None, "pmp_serie": []}
     if not anios:
         return {"cx": cx}
-    anio_sel = _por_str(request.GET.get("anio_cxp"), [str(a) for a in anios])
-    anio_sel = int(anio_sel) if anio_sel else anios[-1]
-    rango = _rango_meses(request, "cxp", anio_sel)
+    anio_sel, rango = _periodo_cuentas(request, anios)
     cx.update({"anio_sel": anio_sel, "rango": rango, "texto": _texto_rango(rango, anio_sel)})
 
     # PMP de cada año en los mismos meses del período elegido.
@@ -3634,7 +3682,8 @@ def _cat_cuentas(request, categoria, tiene_inventario):
     tramos, desde = [], -1.0
     for hasta, nombre in _TRAMOS_PLAZO_PAGO:
         valor = float(df.loc[(df["dias"] > desde) & (df["dias"] <= hasta), "valor_total"].sum())
-        tramos.append({"etiqueta": nombre, "valor": valor, "participacion": valor / total * 100})
+        tramos.append({"etiqueta": nombre, "valor": valor, "participacion": valor / total * 100,
+                       "filtrar": desglose.filtro(f_tramo=nombre)})
         desde = hasta
     cx["tramos"] = charts.barras(tramos)
     condiciones = df.groupby("condicion_pago", as_index=False, dropna=False).agg(
@@ -3676,7 +3725,8 @@ def _cat_cuentas(request, categoria, tiene_inventario):
             [{"nombre": _nombre_corto(p["proveedor"]), "monto": p["valor"], "dias": p["pmp"],
               "detalle": (f"{p['proveedor']}\nCompras: S/ {p['valor']:,.0f} ({p['participacion']:.1f}% de la categoría)\n"
                           f"Días de pago: {p['pmp']:.0f} (PMP de la categoría: {referencia:.0f})\n"
-                          f"Condición principal: {p['condicion']} · {p['pedidos']:,} pedidos")}
+                          f"Condición principal: {p['condicion']} · {p['pedidos']:,} pedidos"),
+              "filtrar": desglose.filtro(f_proveedor=p["proveedor"])}
              for p in cx["proveedores"]],
             referencia, _soles_marca,
         )
@@ -4112,3 +4162,316 @@ def rotacion_materiales_pagina(request, slug):
     respuesta["X-Hay-Mas"] = "true" if offset + _ROTACION_PAGINA_TAM < total else "false"
     respuesta["X-Total"] = str(total)
     return respuesta
+
+
+# --- Detalle fila por fila ---------------------------------------------------
+# Filas de origen de cada sección de las pestañas de una categoría (ver
+# gestion/desglose.py, que define columnas, filtros por clic y resumen). Cada
+# constructor usa los MISMOS segmentadores y la misma consulta que la sección,
+# para que la suma de las filas cuadre con el indicador. Devuelve (filas,
+# info): info lleva el período en texto, chips de período y un aviso.
+
+def _sin_filas(clave, aviso):
+    columnas = [c["clave"] for c in desglose.DESGLOSES[clave]["columnas"]]
+    return pd.DataFrame(columns=columnas), {"aviso": aviso}
+
+
+def _numericas(df, columnas):
+    for columna in columnas:
+        df[columna] = pd.to_numeric(df[columna], errors="coerce")
+    return df
+
+
+def _fechas(df, columnas):
+    for columna in columnas:
+        df[columna] = pd.to_datetime(df[columna], errors="coerce").dt.date
+    return df
+
+
+def _periodo_compras_desglose(request, cuentas=False):
+    """Período de un detalle de compras: el de los segmentadores (Compras o
+    Cuentas por pagar) o el de un clic en la sección: un mes (f_mes, columna
+    de Compras por mes) o el mismo rango en otro año (f_anio, fila de Compras
+    por año o tarjeta de PMP por año). None si no hay compras."""
+    anios = q.anios_compras_disponibles()
+    if not anios:
+        return None
+    if cuentas:
+        anio, rango = _periodo_cuentas(request, anios)
+        texto = _texto_rango(rango, anio)
+    else:
+        sc = _segmentadores_compras(request)
+        rango, texto = sc["rango"], sc["texto"]
+    inicio, fin, chips = rango["fecha_ini"], rango["fecha_fin"], []
+    mes = desglose.leer_mes(request.GET.get("f_mes")) if request.GET.get("f_mes") else None
+    anio_clic = _por_str(request.GET.get("f_anio"), [str(a) for a in anios])
+    if mes:
+        inicio, fin = mes
+        texto = q.formato_mes_anio(inicio)
+        chips.append({"parametro": "f_mes", "texto": f"Mes: {texto}"})
+    elif anio_clic:
+        inicio, fin = _rango_en_anio(rango, int(anio_clic))
+        texto = _texto_rango(rango, int(anio_clic))
+        chips.append({"parametro": "f_anio", "texto": f"Año: {texto}"})
+    return {"inicio": inicio, "fin": fin, "texto": texto, "chips": chips, "rango": rango}
+
+
+def _motivo_contrato(pedido, contrato, bajo):
+    """Por qué una línea cuenta como bajo contrato (FILTRO_BAJO_CONTRATO_LC)."""
+    if not bajo:
+        return "No"
+    if contrato:
+        return f"Sí · contrato {contrato}"
+    numero = int(pedido) if str(pedido).isdigit() else 0
+    if 4700000001 <= numero <= 4799999999:
+        return "Sí · pedido 47"
+    if 4000000001 <= numero <= 4099999999:
+        return "Sí · pedido 40"
+    return "Sí"
+
+
+def _desglose_compras(request, categoria, cuentas=False):
+    p = _periodo_compras_desglose(request, cuentas)
+    if p is None:
+        return _sin_filas("cuentas" if cuentas else "compras", "Todavía no hay compras cargadas.")
+    df = q.lineas_compra_detalle(p["inicio"], p["fin"], categoria)
+    df["bajo_contrato"] = df["bajo_contrato"].astype(bool)
+    df["contrato_si"] = df["bajo_contrato"].map({True: "Sí", False: "No"})
+    df["contrato_texto"] = [_motivo_contrato(pe, co, b) for pe, co, b in zip(df["pedido"], df["contrato"], df["bajo_contrato"])]
+    df["dias"] = df["condicion_pago"].map(q.dias_ponderados_condicion_pago).astype(float)
+    df["tramo"] = df["dias"].map(_tramo_plazo)
+    df["peso"] = df["dias"] * df["valor"]
+    return df, {"periodo": p["texto"], "chips": p["chips"]}
+
+
+def _desglose_cuentas(request, categoria):
+    return _desglose_compras(request, categoria, cuentas=True)
+
+
+def _desglose_fillrate(request, categoria):
+    p = _periodo_compras_desglose(request)
+    if p is None:
+        return _sin_filas("fillrate", "Todavía no hay compras cargadas.")
+    df = q.lineas_compra_detalle(p["inicio"], p["fin"], categoria)
+    df = df[df["clase_documento"].isin(["ZNAC", "ZIMP"]) & (df["cantidad_pedido"] > 0)].copy()
+    df["pct_entregado"] = df["cantidad_entrada"] / df["cantidad_pedido"] * 100
+    # Mismo criterio que queries._fill_rate (tolerancia 5%).
+    df["completa"] = (df["cantidad_entrada"] >= df["cantidad_pedido"] * 0.95).map({True: "Completa", False: "Incompleta"})
+    return df, {"periodo": p["texto"], "chips": p["chips"]}
+
+
+def _desglose_leadtime(request, categoria):
+    p = _periodo_compras_desglose(request)
+    if p is None:
+        return _sin_filas("leadtime", "Todavía no hay compras cargadas.")
+    df = q.lead_time_lineas_detalle(p["inicio"], p["fin"], categoria)
+    df = _fechas(_numericas(df, ["valor"]), ["fecha_pedido", "fecha_entrega", "fecha_recepcion"])
+    df["dias"] = [(r - f).days if pd.notna(r) and pd.notna(f) else None
+                  for r, f in zip(df["fecha_recepcion"], df["fecha_pedido"])]
+    df["dias"] = pd.to_numeric(df["dias"], errors="coerce")
+    df["estado"] = ["Válida" if d >= 0 else "Excluida: entrada antes del pedido" for d in df["dias"]]
+    return df, {"periodo": p["texto"], "chips": p["chips"]}
+
+
+def _desglose_otif(request, categoria):
+    supuestos = ejecutivo.cargar_metas()["supuestos"]
+    if categoria not in supuestos["otif_categorias"]:
+        return _sin_filas("otif", "El OTIF solo se mide en Repuestos y Suministros Industriales.")
+    p = _periodo_compras_desglose(request)
+    if p is None:
+        return _sin_filas("otif", "Todavía no hay compras cargadas.")
+    dias, tolerancia = supuestos["otif_dias_tolerancia"], supuestos["otif_cantidad_tolerancia_pct"] / 100
+    df = q.otif_lineas(p["inicio"], p["fin"], (categoria,), dias)
+    if df.empty:
+        return _sin_filas("otif", "Sin líneas con fecha de entrega en el período.")
+    hoy = datetime.date.today()
+    cerradas = pd.Series([f + datetime.timedelta(days=dias) < hoy for f in df["fecha_entrega"]], index=df.index)
+    partes = []
+    if cerradas.any():
+        evaluadas = ejecutivo._evaluar_otif(df[cerradas], dias, tolerancia)
+        evaluadas["estado"] = evaluadas["otif"].map({True: "Cumple", False: "No cumple"})
+        evaluadas["a_tiempo_texto"] = evaluadas["a_tiempo"].map({True: "Sí", False: "No"})
+        evaluadas["completo_texto"] = evaluadas["completo"].map({True: "Sí", False: "No"})
+        partes.append(evaluadas)
+    if (~cerradas).any():
+        pendientes = df[~cerradas].copy()
+        pendientes["limite"] = [f + datetime.timedelta(days=dias) for f in pendientes["fecha_entrega"]]
+        pendientes = pendientes.assign(a_tiempo=False, completo=False, otif=False, estado="En plazo",
+                                       a_tiempo_texto="", completo_texto="", motivo="Todavía en plazo: no se evalúa")
+        partes.append(pendientes)
+    return pd.concat(partes, ignore_index=True), {"periodo": p["texto"], "chips": p["chips"]}
+
+
+def _desglose_unico(request, categoria):
+    p = _periodo_compras_desglose(request)
+    if p is None:
+        return _sin_filas("unico", "Todavía no hay compras cargadas.")
+    rango = p["rango"]
+    # Mismo umbral de recurrencia que _proveedor_unico_periodo.
+    minimo = min(ejecutivo.cargar_metas()["supuestos"]["meses_compra_recurrente"],
+                 rango["mes_hasta"] - rango["mes_desde"] + 1)
+    df = q.compras_por_material_proveedor_rango(p["inicio"], p["fin"])
+    df = df[df["categoria"] == categoria]
+    if df.empty:
+        return _sin_filas("unico", "Sin compras de materiales en el período.")
+    df = df.assign(valor_total=df["valor_total"].astype(float))
+    por_material = df.groupby("material_codigo").agg(
+        texto_breve=("texto_breve", "first"), valor=("valor_total", "sum"), proveedores=("proveedor", "nunique"),
+        nombres=("proveedor", lambda s: " · ".join(sorted(set(s)))), meses=("meses", "sum"), pedidos=("pedidos", "sum"),
+    ).reset_index()
+    por_material = por_material[por_material["meses"] >= minimo].copy()
+    por_material["un_solo"] = por_material["proveedores"] == 1
+    por_material["un_solo_texto"] = por_material["un_solo"].map({True: "Sí", False: "No"})
+    texto = f"{p['texto']} · recurrentes: {minimo} mes{'es' if minimo != 1 else ''} o más con compra"
+    return por_material, {"periodo": texto, "chips": p["chips"]}
+
+
+def _texto_inventario(si):
+    return _texto_corte(si["mes"]) + (f" · {si['texto_filtros']}" if si["texto_filtros"] else "")
+
+
+def _desglose_inventario(request, categoria):
+    si = _segmentadores_inventario(request, categoria)
+    inv = si["inv"].sort_values("valor_total", ascending=False).copy()
+    # ABC igual que queries.clasificacion_abc_por_categoria (solo valor > 0).
+    positivos = inv["valor_total"] > 0
+    total = float(inv.loc[positivos, "valor_total"].sum())
+    inv["pct"] = (inv["valor_total"] / total * 100).where(positivos) if total else None
+    inv["pct_acumulado"] = (inv["valor_total"].where(positivos, 0).cumsum() / total * 100).where(positivos) if total else None
+    inv["clase"] = "—"
+    if total:
+        inv.loc[positivos, "clase"] = pd.cut(inv.loc[positivos, "pct_acumulado"], bins=[-0.01, 80, 95, 100.01],
+                                             labels=["A", "B", "C"]).astype(str)
+    return inv, {"periodo": _texto_inventario(si)}
+
+
+def _desglose_sinmov(request, categoria):
+    si = _segmentadores_inventario(request, categoria)
+    inicio, fin = q._ventana_anios(si["mes"], q.MATERIALES_SIN_MOVIMIENTO_ANIOS)
+    df = si["inv"].merge(q.consumo_periodo_por_material(inicio, fin), on="material_codigo", how="left")
+    df["consumo_total"] = df["consumo_total"].fillna(0.0)
+    df = df[(df["valor_total"] > 0) & (df["consumo_total"] <= 0)]
+    ultimos = _fechas(q.ultimo_movimiento_por_material(df["material_codigo"].tolist()), ["ultimo_consumo", "ultima_entrada"])
+    df = df.merge(ultimos, on="material_codigo", how="left")
+    return df, {"periodo": _texto_inventario(si)}
+
+
+def _desglose_consumo(request, categoria):
+    si = _segmentadores_inventario(request, categoria)
+    inicio, fin = q._ventana_6_meses(si["mes"])
+    df = q.movimientos_consumo_detalle(inicio, fin, categoria)
+    df = _fechas(_numericas(df, ["consumo", "importe"]), ["fecha"])
+    if si["familia"] or si["centro"]:
+        # Familia y Centro del maestro, como la Rotación (no el centro del movimiento).
+        catalogo = q.catalogo_materiales()[["material_codigo", "familia", "centro"]]
+        df = _por_familia_centro(df.merge(catalogo, on="material_codigo", how="left", suffixes=("", "_maestro")), si)
+    texto = f"{q.formato_mes_anio_abrev(inicio)} a {q.formato_mes_anio_abrev(fin)}"
+    return df, {"periodo": texto + (f" · {si['texto_filtros']}" if si["texto_filtros"] else "")}
+
+
+def _desglose_criticos(request, categoria):
+    si = _segmentadores_inventario(request, categoria)
+    rot = q.rotacion_inventario_por_material(si["mes"])
+    rot = _por_familia_centro(rot[rot["categoria"] == categoria], si)
+    criticos = set(q._query("SELECT codigo AS material_codigo FROM gestion_material WHERE material_critico = 'X'")["material_codigo"])
+    df = rot[rot["material_codigo"].isin(criticos)].copy()
+    df["estado"] = ["Sin consumo" if pd.isna(c) else ("En riesgo" if c < 1 else "OK") for c in df["cobertura_meses"]]
+    return df, {"periodo": _texto_inventario(si)}
+
+
+def _desglose_variacion(request, categoria):
+    si = _segmentadores_inventario(request, categoria)
+    _, mes_inicial = _mes_variacion(request, si)
+    if not mes_inicial:
+        return _sin_filas("variacion", "No hay un corte anterior para comparar.")
+    df = q.variacion_inventario_por_material(mes_inicial, si["mes"], categoria=categoria,
+                                             familia=si["familia"], centro=si["centro"])
+    texto = f"{_texto_corte(mes_inicial)} → {_texto_corte(si['mes'])}"
+    return df, {"periodo": texto + (f" · {si['texto_filtros']}" if si["texto_filtros"] else "")}
+
+
+def _texto_precios(s):
+    meses = sorted(s["inflacion"]["mes"].unique())
+    return f"{_mes_corto(meses[0])} a {_mes_corto(meses[-1])} · contra {s['evaluacion']['texto'].lower()}"
+
+
+def _desglose_precios(request, categoria):
+    s = _seleccion_precios(request, categoria)
+    inflacion = s["inflacion"]
+    if inflacion.empty:
+        return _sin_filas("precios", "Sin compras con base de comparación para los filtros elegidos.")
+    umb = dict(zip(s["base"]["material_codigo"], s["base"]["unidad_medida_base"]))
+    df = inflacion.assign(
+        umb=inflacion["material_codigo"].map(umb).fillna(""),
+        mes_texto=[_mes_corto(m) for m in inflacion["mes"]],
+        base_texto=[_mes_corto(m) + (" (último registrado)" if sust else "")
+                    for m, sust in zip(inflacion["mes_base"], inflacion["base_sustituida"])],
+        variacion_pct=inflacion["variacion"] * 100,
+        atipica_texto=inflacion["atipica"].map({True: "Sí", False: ""}),
+    )
+    return df, {"periodo": _texto_precios(s)}
+
+
+def _desglose_entradas(request, categoria):
+    s = _seleccion_precios(request, categoria)
+    inflacion = s["inflacion"]
+    if inflacion.empty:
+        return _sin_filas("entradas", "Sin compras con base de comparación para los filtros elegidos.")
+    meses = sorted(inflacion["mes"].unique())
+    fin = q._sumar_meses(meses[-1], 1) - datetime.timedelta(days=1)
+    df = q.entradas_compra_detalle(sorted(inflacion["material_codigo"].unique()), meses[0], fin)
+    if df.empty:
+        return _sin_filas("entradas", "Sin entradas de mercancía para estos materiales.")
+    df = _fechas(_numericas(df, ["cantidad", "importe"]), ["fecha"])
+    # Solo los material/centro/mes comparados (los mismos meses que suman al IPU).
+    df["mes"] = [f.replace(day=1) for f in df["fecha"]]
+    df = df.merge(inflacion[["material_codigo", "centro", "mes"]].drop_duplicates(), on=["material_codigo", "centro", "mes"])
+    df["precio"] = (df["importe"] / df["cantidad"]).where(df["cantidad"] != 0)
+    return df, {"periodo": _texto_precios(s)}
+
+
+def _desglose_abastecimiento(request, categoria):
+    meses, mes = _mes_sop_categoria(request)
+    if not meses:
+        return _sin_filas("abastecimiento", "Todavía no hay Plan de Abastecimiento S&OP cargado.")
+    return q.plan_vs_real_abastecimiento_por_material(mes, categoria=categoria), {"periodo": q.formato_mes_anio(mes)}
+
+
+def _desglose_ingresos(request, categoria):
+    meses, mes = _mes_sop_categoria(request)
+    if not meses:
+        return _sin_filas("ingresos", "Todavía no hay Plan de Abastecimiento S&OP cargado.")
+    materiales = set(q.plan_vs_real_abastecimiento_por_material(mes, categoria=categoria)["material_codigo"])
+    df = q.tickets_ingreso_detalle(mes)
+    df = _fechas(_numericas(df[df["material_codigo"].isin(materiales)].copy(), ["toneladas"]), ["fecha"])
+    df["tipo"] = df["tipo_operacion"].map(lambda t: "Propio (cantera o traslado)" if t == "5" else "Terceros")
+    df["proveedor"] = df["proveedor"].fillna("").str.strip().replace("", "(sin proveedor)")
+    return df, {"periodo": q.formato_mes_anio(mes)}
+
+
+_CONSTRUCTORES_DESGLOSE = {
+    "compras": _desglose_compras, "cuentas": _desglose_cuentas, "fillrate": _desglose_fillrate,
+    "otif": _desglose_otif, "leadtime": _desglose_leadtime, "unico": _desglose_unico,
+    "inventario": _desglose_inventario, "sinmov": _desglose_sinmov, "consumo": _desglose_consumo,
+    "criticos": _desglose_criticos, "variacion": _desglose_variacion, "precios": _desglose_precios,
+    "entradas": _desglose_entradas, "abastecimiento": _desglose_abastecimiento, "ingresos": _desglose_ingresos,
+}
+
+
+@login_required
+def desglose_filas(request, slug, clave):
+    """Detalle fila por fila de una sección de la categoría `slug` (ver
+    gestion/desglose.py): HTML para desglose.js o Excel (?formato=xlsx)."""
+    categoria = {_slug(c): c for c in _categorias_disponibles()}.get(slug)
+    constructor = _CONSTRUCTORES_DESGLOSE.get(clave)
+    if categoria is None or constructor is None:
+        raise Http404("Detalle no encontrado")
+    # Las filas base dependen de los segmentadores de la página y de los
+    # clics de período; los demás filtros, la búsqueda y el orden se
+    # aplican sobre ellas sin repetir la consulta.
+    base = tuple(sorted(
+        (k, v) for k, v in request.GET.items()
+        if k not in desglose.PARAMETROS_UI and (not k.startswith("f_") or k in desglose.FILTROS_DE_PERIODO)
+    ))
+    return desglose.responder(request, clave, lambda: constructor(request, categoria), (clave, categoria, base),
+                              f"detalle_{clave}_{slug}")

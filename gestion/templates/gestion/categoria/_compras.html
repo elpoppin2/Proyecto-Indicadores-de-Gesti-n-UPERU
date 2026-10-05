@@ -14,7 +14,7 @@
           </thead>
           <tbody>
             {% for fila in compras %}
-              <tr{% if fila.seleccionado %} class="fila-seleccionada"{% endif %}>
+              <tr{% if fila.seleccionado %} class="fila-seleccionada"{% endif %} data-filtrar="f_anio={{ fila.anio }}" tabindex="0" title="Ver las líneas de pedido de {{ fila.periodo }}">
                 <td>{{ fila.periodo }}</td>
                 <td class="num">{{ fila.valor_total|soles }}</td>
                 <td class="num">{{ fila.pct_contrato|numero:1 }}%</td>
@@ -34,6 +34,7 @@
       <p class="nota">Valor de las órdenes de compra por mes del documento: los {{ compras_mensual.meses }} meses que terminan en el período elegido. En rojo, los meses del período ({{ sc.texto }}); en gris, el resto. Pasa el mouse por una columna para ver el detalle.</p>
       {% include "gestion/planificacion/_grafico_columnas.html" with g=compras_mensual.grafico titulo="Compras por mes" %}
     {% endif %}
+    {% include "gestion/_desglose.html" with clave="compras" fuente="Líneas de pedido (ME2N)" pista="o haz clic en un año de la tabla o en un mes del gráfico" %}
   </section>
 
   <section class="bloque" id="sec-pareto">
@@ -49,7 +50,7 @@
           <thead><tr><th>Proveedor</th><th class="num">Valor</th><th class="num" data-orden="desc">% del total</th></tr></thead>
           <tbody>
             {% for p in pareto.top_proveedores %}
-              <tr>
+              <tr data-filtrar="f_proveedor={{ p.proveedor|urlencode }}" tabindex="0" title="Ver las líneas de pedido de este proveedor">
                 <td>{{ p.proveedor }}</td>
                 <td class="num">{{ p.valor|soles }}</td>
                 <td class="num">{{ p.pct|numero:1 }}%</td>
@@ -61,6 +62,7 @@
     {% else %}
       <p class="aviso">Sin compras de esta categoría en el período elegido.</p>
     {% endif %}
+    {% include "gestion/_desglose.html" with clave="compras" fuente="Líneas de pedido (ME2N)" pista="o haz clic en un proveedor" %}
   </section>
 
   {% if con_fill_rate %}
@@ -75,6 +77,7 @@
       {% else %}
         <p class="aviso">Sin datos suficientes para calcular el Fill Rate en el período elegido.</p>
       {% endif %}
+      {% include "gestion/_desglose.html" with clave="fillrate" fuente="Líneas ZNAC/ZIMP (ME2N): pedido contra recibido" %}
     </section>
   {% endif %}
 
@@ -92,6 +95,7 @@
     {% else %}
       <p class="aviso">Sin datos suficientes para calcular el Lead Time en el período elegido.</p>
     {% endif %}
+    {% include "gestion/_desglose.html" with clave="leadtime" fuente="Líneas ZNAC/ZIMP (ME2N) con su primera entrada (MB51 101)" %}
   </section>
 
   {% if unico %}{% include "gestion/_proveedor_unico.html" with un=unico sc=sc por_categoria=False %}{% endif %}

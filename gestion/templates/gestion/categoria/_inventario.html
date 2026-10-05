@@ -60,7 +60,7 @@
       <h2 class="subtitulo">Valor por {{ inventario.eje|lower }}</h2>
       <div class="barras barras-anchas">
         {% for f in inventario.familias %}
-          <div class="barra-fila">
+          <div class="barra-fila" data-filtrar="{{ f.filtrar }}" tabindex="0" title="Ver los materiales de {{ f.etiqueta }}">
             <span class="barra-etiqueta" title="{{ f.etiqueta }}">{{ f.etiqueta }}</span>
             <span class="barra-pista"><span class="barra-relleno" style="width:{{ f.pct }}%"></span></span>
             <span class="barra-valor">{{ f.valor|soles }}</span>
@@ -88,7 +88,7 @@
           </thead>
           <tbody>
             {% for m in inventario.top_materiales %}
-              <tr>
+              <tr data-filtrar="f_material={{ m.material_codigo|urlencode }}" tabindex="0">
                 <td class="col-codigo">{{ m.material_codigo }}</td>
                 <td class="col-descripcion">{{ m.texto_breve }}</td>
                 <td>{{ m.familia }}</td>
@@ -102,6 +102,7 @@
         </table>
       </div>
     </div>
+    {% include "gestion/_desglose.html" with clave="inventario" fuente="Todos los materiales con stock al corte (MB5B)" pista="o haz clic en una barra" %}
   </section>
 
   <section class="bloque" id="sec-abc">
@@ -110,12 +111,13 @@
     {% if abc %}
       <div class="metricas">
         {% for c in abc.clases %}
-          <div class="metrica"><span class="valor">{{ c.materiales|numero }}</span><span class="etiqueta">Clase {{ c.clase }} — {{ c.valor|soles }}</span></div>
+          <div class="metrica" data-filtrar="f_clase={{ c.clase }}" tabindex="0" title="Ver los materiales de clase {{ c.clase }}"><span class="valor">{{ c.materiales|numero }}</span><span class="etiqueta">Clase {{ c.clase }} — {{ c.valor|soles }}</span></div>
         {% endfor %}
       </div>
     {% else %}
       <p class="aviso">Sin inventario para clasificar con los filtros elegidos.</p>
     {% endif %}
+    {% include "gestion/_desglose.html" with clave="inventario" fuente="Materiales ordenados por valor, con su % acumulado (MB5B)" pista="o haz clic en una clase" %}
   </section>
 
   <section class="bloque" id="sec-obsoletos">
@@ -129,6 +131,7 @@
     {% else %}
       <p class="aviso">No se encontraron materiales sin movimiento con los filtros elegidos.</p>
     {% endif %}
+    {% include "gestion/_desglose.html" with clave="sinmov" fuente="Cada material inmovilizado, con su último consumo y última entrada (MB5B + MB51)" %}
   </section>
 
   <section class="bloque" id="sec-rotacion">
@@ -189,6 +192,7 @@
     {% else %}
       <p class="aviso">Sin datos de rotación con los filtros elegidos.</p>
     {% endif %}
+    {% include "gestion/_desglose.html" with clave="consumo" accion="Ver movimientos de consumo" fuente="Cada salida de almacén de los 6 meses (MB51): el consumo valorizado de la rotación" %}
   </section>
 
   <section class="bloque" id="sec-criticos">
@@ -198,11 +202,12 @@
       <div class="metricas">
         <div class="metrica"><span class="valor">{{ criticos.materiales_criticos|numero }}</span><span class="etiqueta">Materiales críticos</span></div>
         <div class="metrica"><span class="valor">{{ criticos.cobertura_promedio|numero:2 }}</span><span class="etiqueta">Cobertura promedio (meses)</span></div>
-        <div class="metrica"><span class="valor {% if criticos.en_riesgo > 0 %}dato-negativo{% endif %}">{{ criticos.en_riesgo|numero }}</span><span class="etiqueta">En riesgo (&lt;1 mes)</span></div>
+        <div class="metrica" data-filtrar="f_estado=En riesgo" tabindex="0" title="Ver los críticos en riesgo"><span class="valor {% if criticos.en_riesgo > 0 %}dato-negativo{% endif %}">{{ criticos.en_riesgo|numero }}</span><span class="etiqueta">En riesgo (&lt;1 mes)</span></div>
       </div>
     {% else %}
       <p class="aviso">No hay materiales marcados como críticos con datos de cobertura con los filtros elegidos.</p>
     {% endif %}
+    {% include "gestion/_desglose.html" with clave="criticos" fuente="Cada material crítico con su stock, consumo y cobertura (ZMM060 + MB5B + MB51)" pista="o haz clic en «En riesgo»" %}
   </section>
 
   <section class="bloque" id="sec-variacion">
@@ -247,7 +252,7 @@
             </thead>
             <tbody>
               {% for r in variacion.filas %}
-                <tr>
+                <tr data-filtrar="f_material={{ r.material_codigo|urlencode }}" tabindex="0">
                   <td class="col-codigo">{{ r.material_codigo }}</td>
                   <td class="col-descripcion">{{ r.texto_breve }}</td>
                   <td>{{ r.unidad_medida_base }}</td>
@@ -266,5 +271,6 @@
     {% else %}
       <p class="aviso">Sin datos de variación con los filtros elegidos.</p>
     {% endif %}
+    {% if variacion.mes_inicial %}{% include "gestion/_desglose.html" with clave="variacion" fuente="Todos los materiales de los dos cortes (MB5B), no solo los 20 primeros" %}{% endif %}
   </section>
 </div>

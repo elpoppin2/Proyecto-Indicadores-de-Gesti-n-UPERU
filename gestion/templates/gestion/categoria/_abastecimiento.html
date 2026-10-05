@@ -34,7 +34,7 @@
         <thead><tr><th>Centro</th><th class="num">Plan (T)</th><th class="num">Real (T)</th><th class="num">Diferencia (T)</th><th class="num">% Cumplimiento</th></tr></thead>
         <tbody>
           {% for f in ab.centros %}
-            <tr>
+            <tr data-filtrar="f_centro={{ f.centro|urlencode }}" data-filtrar-clave="abastecimiento" tabindex="0" title="Ver el plan vs real por material de este centro">
               <td>{{ f.centro|centro }}</td>
               <td class="num">{{ f.plan|numero:0 }}</td>
               <td class="num">{{ f.real|numero:0 }}</td>
@@ -48,6 +48,8 @@
   {% else %}
     <p class="aviso">Sin plan ni ingresos de {{ categoria|title }} en {{ ab.mes|mesanio }}.</p>
   {% endif %}
+  {% include "gestion/_desglose.html" with clave="abastecimiento" accion="Ver plan vs real por material" fuente="Plan S&OP contra báscula, material por material" pista="o haz clic en un centro" %}
+  {% include "gestion/_desglose.html" with clave="ingresos" accion="Ver tickets de báscula" fuente="Cada ticket de recepción del mes (ZMM056)" %}
 </section>
 
 <section class="bloque" id="sec-sop-mensual">

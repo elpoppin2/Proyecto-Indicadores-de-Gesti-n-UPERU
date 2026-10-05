@@ -248,9 +248,10 @@
 
       document.addEventListener('click', function (evento) {
         var th = evento.target.closest('table thead th');
-        // Las tablas con scroll infinito (data-paginado) ordenan pidiendo al
-        // servidor (ver el otro script, más abajo), no barajando el DOM local.
-        if (!th || th.closest('table[data-paginado]')) return;
+        // Las tablas con scroll infinito (data-paginado) y el detalle fila por
+        // fila (data-desglose, ver desglose.js) ordenan pidiendo al servidor,
+        // no barajando el DOM local.
+        if (!th || th.closest('table[data-paginado], table[data-desglose]')) return;
         var tabla = th.closest('table');
         var tbody = tabla.querySelector('tbody');
         if (!tbody) return;

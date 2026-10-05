@@ -147,7 +147,7 @@
             </thead>
             <tbody>
               {% for f in t.filas %}
-                <tr>
+                <tr data-filtrar="f_material={{ f.material_codigo|urlencode }}&amp;f_centro={{ f.centro|urlencode }}" data-filtrar-clave="precios" tabindex="0" title="Ver sus comparaciones mes a mes">
                   <td class="col-codigo">{{ f.material_codigo }}</td>
                   <td class="col-descripcion">{{ f.texto_breve }}</td>
                   <td>{{ f.centro|centro }}</td>
@@ -165,6 +165,8 @@
         <p class="aviso">{{ t.vacio }}</p>
       {% endif %}
     {% endfor %}{% endif %}
+    {% include "gestion/_desglose.html" with clave="precios" fuente="Cada material y mes comparado contra su precio base" pista="o haz clic en un material" %}
+    {% include "gestion/_desglose.html" with clave="entradas" accion="Ver entradas de mercancía" fuente="Cada entrada 101/102 de MB51 de la que sale el precio del mes" %}
   {% endif %}
   {% endwith %}
 </section>

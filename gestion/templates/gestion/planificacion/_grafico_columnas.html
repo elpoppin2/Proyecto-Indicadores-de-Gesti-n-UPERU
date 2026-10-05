@@ -9,7 +9,7 @@
       {% for t in g.linea.tramos %}<path class="linea-col {{ g.linea.clase }}" d="{{ t }}"></path>{% endfor %}
       {% for pt in g.linea.puntos %}<circle class="punto-col {{ g.linea.clase }}" cx="{{ pt.x }}" cy="{{ pt.y }}" r="3.2"></circle>{% endfor %}
     {% endif %}
-    {% for col in g.columnas %}<rect class="zona-detalle con-detalle" x="{{ col.zona_x }}" y="{{ g.arriba }}" width="{{ col.zona_ancho }}" height="{{ g.alto_util }}" data-detalle="{{ col.detalle }}"></rect>{% endfor %}
+    {% for col in g.columnas %}<rect class="zona-detalle con-detalle" x="{{ col.zona_x }}" y="{{ g.arriba }}" width="{{ col.zona_ancho }}" height="{{ g.alto_util }}" data-detalle="{{ col.detalle }}"{% if col.filtrar %} data-filtrar="{{ col.filtrar }}"{% endif %}></rect>{% endfor %}
     {% if g.linea %}{% for pt in g.linea.puntos %}{% if pt.detalle %}<circle class="zona-detalle con-detalle" cx="{{ pt.x }}" cy="{{ pt.y }}" r="8" data-detalle="{{ pt.detalle }}"></circle>{% endif %}{% endfor %}{% endif %}
   </svg>
   {% for m in g.grilla %}<span class="etiqueta-grilla" style="top:{{ m.y_pct }}%;">{{ m.texto }}</span>{% endfor %}

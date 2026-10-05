@@ -43,7 +43,7 @@
     {% if cx.pmp_anios %}
       <div class="metricas">
         {% for a in cx.pmp_anios %}
-          <div class="metrica{% if a.seleccionado %} metrica-elegida{% endif %}">
+          <div class="metrica{% if a.seleccionado %} metrica-elegida{% endif %}" data-filtrar="f_anio={{ a.anio }}" tabindex="0" title="Ver las líneas de pedido de {{ a.periodo }}">
             <span class="valor">{{ a.pmp|numero:0 }} <small class="prefijo-ipu">días</small></span>
             <span class="etiqueta">{{ a.periodo }}{% if a.diferencia is not None %} · {% if a.diferencia > 0 %}+{% endif %}{{ a.diferencia|numero:0 }} días vs el año anterior{% endif %}</span>
           </div>
@@ -72,6 +72,7 @@
         <p class="aviso">No hay suficientes datos de compras para graficar la evolución del PMP en esta categoría.</p>
       {% endif %}
     {% endwith %}
+    {% include "gestion/_desglose.html" with clave="cuentas" fuente="Líneas de pedido (ME2N) con su condición y días de pago" pista="o haz clic en un año" %}
   </section>
 
   <section class="bloque" id="sec-plazos">
@@ -86,7 +87,7 @@
       </div>
       <div class="barras barras-anchas">
         {% for t in cx.tramos %}
-          <div class="barra-fila">
+          <div class="barra-fila" data-filtrar="{{ t.filtrar }}" tabindex="0" title="Ver las líneas de pedido de este tramo">
             <span class="barra-etiqueta" title="{{ t.etiqueta }}">{{ t.etiqueta }}</span>
             <span class="barra-pista"><span class="barra-relleno" style="width:{{ t.pct }}%"></span></span>
             <span class="barra-valor">{{ t.valor|soles }} · {{ t.participacion|numero:1 }}%</span>
@@ -99,7 +100,7 @@
           <thead><tr><th>Condición de pago</th><th class="num">Días ponderados</th><th class="num">Valor</th><th class="num" data-orden="desc">% del total</th></tr></thead>
           <tbody>
             {% for c in cx.condiciones %}
-              <tr>
+              <tr data-filtrar="f_condicion={{ c.condicion_pago|default:''|urlencode }}" tabindex="0" title="Ver las líneas de pedido con esta condición">
                 <td>{{ c.condicion_pago|default:"(sin condición)" }}</td>
                 <td class="num">{{ c.dias|numero:0 }}</td>
                 <td class="num">{{ c.valor_total|soles }}</td>
@@ -112,6 +113,7 @@
     {% else %}
       <p class="aviso">Sin compras de esta categoría en {{ cx.texto }}.</p>
     {% endif %}
+    {% include "gestion/_desglose.html" with clave="cuentas" fuente="Líneas de pedido (ME2N) con su condición y días de pago" pista="o haz clic en un tramo o una condición" %}
   </section>
 
   <section class="bloque" id="sec-dispersion-cxp">
@@ -136,7 +138,7 @@
           <line class="eje" x1="{{ g.izq }}" y1="{{ g.base }}" x2="{{ g.der }}" y2="{{ g.base }}"></line>
           <line class="linea-iso" x1="{{ g.izq }}" y1="{{ g.referencia.y }}" x2="{{ g.der }}" y2="{{ g.referencia.y }}"></line>
           {% for m in g.marcas %}
-            <circle class="punto-pago pago-{{ m.sentido }}{% if m.grande %} punto-grande{% endif %} con-detalle" cx="{{ m.x }}" cy="{{ m.y }}" r="{% if m.grande %}6.5{% else %}4.5{% endif %}" data-detalle="{{ m.detalle }}"></circle>
+            <circle class="punto-pago pago-{{ m.sentido }}{% if m.grande %} punto-grande{% endif %} con-detalle" cx="{{ m.x }}" cy="{{ m.y }}" r="{% if m.grande %}6.5{% else %}4.5{% endif %}" data-detalle="{{ m.detalle }}"{% if m.filtrar %} data-filtrar="{{ m.filtrar }}"{% endif %}></circle>
           {% endfor %}
         </svg>
         {% for t in g.grilla_y %}<span class="etiqueta-eje-y" style="top:{{ t.y_pct }}%; width:{{ g.izq_pct }}%;">{{ t.texto }}</span>{% endfor %}
@@ -160,6 +162,7 @@
       <p class="aviso">Sin compras de esta categoría en {{ cx.texto }}.</p>
     {% endif %}
     {% endwith %}
+    {% include "gestion/_desglose.html" with clave="cuentas" fuente="Líneas de pedido (ME2N) con su condición y días de pago" pista="o haz clic en un punto" %}
   </section>
 
   <section class="bloque" id="sec-proveedores-cxp">
@@ -178,7 +181,7 @@
             <thead><tr><th>Proveedor</th><th class="num" data-orden="desc">Valor</th><th class="num">% del total</th><th class="num">Pedidos</th><th class="num">PMP (días)</th><th>Condición principal</th></tr></thead>
             <tbody>
               {% for p in cx.proveedores %}
-                <tr>
+                <tr data-filtrar="f_proveedor={{ p.proveedor|urlencode }}" tabindex="0" title="Ver las líneas de pedido de este proveedor">
                   <td class="col-descripcion">{{ p.proveedor }}</td>
                   <td class="num">{{ p.valor|soles }}</td>
                   <td class="num">{{ p.participacion|numero:1 }}%</td>
@@ -194,6 +197,7 @@
     {% else %}
       <p class="aviso">Sin compras de esta categoría en {{ cx.texto }}.</p>
     {% endif %}
+    {% include "gestion/_desglose.html" with clave="cuentas" fuente="Líneas de pedido (ME2N) con su condición y días de pago" pista="o haz clic en un proveedor" %}
   </section>
 
   <section class="bloque" id="sec-deuda">

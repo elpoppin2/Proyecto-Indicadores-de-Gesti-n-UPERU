@@ -850,6 +850,7 @@ def columnas(etiquetas, pilas, formato, linea=None, textos=None, ancho=960, alto
         negativa = sube == 0 and baja < 0
         columnas_out.append({
             "segmentos": segmentos, "detalle": pila[0].get("detalle", "") if pila else "",
+            "filtrar": pila[0].get("filtrar", "") if pila else "",
             "zona_x": f"{x - paso / 2:.1f}", "zona_ancho": f"{paso:.1f}",
             "texto": texto, "texto_abajo": negativa, "x_pct": f"{x / ancho * 100:.2f}",
             "y_pct": f"{(y_de(baja) if negativa else y_de(sube)) / alto * 100:.2f}",
@@ -954,7 +955,7 @@ def dispersion_pago(puntos, referencia, formato_x, ancho=960, alto=380, pad_izq=
         x, y = x_de(p["monto"]), y_de(p["dias"])
         sentido = "antes" if p["dias"] < referencia - 0.5 else ("despues" if p["dias"] > referencia + 0.5 else "igual")
         marca = {"x": f"{x:.1f}", "y": f"{y:.1f}", "sentido": sentido, "detalle": p["detalle"],
-                 "grande": id(p) in mas_grandes}
+                 "grande": id(p) in mas_grandes, "filtrar": p.get("filtrar", "")}
         marcas.append(marca)
         if marca["grande"]:
             alineacion = "fin" if x > izq + (der - izq) * 0.7 else ""

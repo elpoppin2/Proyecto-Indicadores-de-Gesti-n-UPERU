@@ -1,0 +1,11 @@
+{# Botón "Ver detalle fila por fila" al pie de una sección de una categoría (gestion/desglose.py): al abrirlo, desglose.js pide las filas de origen con los segmentadores de la página. Los elementos de la sección con data-filtrar (filas, barras, puntos) lo abren ya filtrado. Parámetros: clave (de desglose.DESGLOSES), fuente (texto corto) y pista (opcional: qué se puede cliquear). Sin slug (Overview) no se muestra. #}
+{% if slug %}
+<details class="desglose" data-clave="{{ clave }}" data-url="{% url 'desglose_filas' slug=slug clave=clave %}">
+  <summary>
+    <span class="desglose-chevron" aria-hidden="true"></span>
+    <span class="desglose-accion">{{ accion|default:"Ver detalle fila por fila" }}</span>
+    <span class="desglose-fuente">{{ fuente }}{% if pista %} · {{ pista }}{% endif %}</span>
+  </summary>
+  <div class="desglose-cuerpo" aria-live="polite"></div>
+</details>
+{% endif %}

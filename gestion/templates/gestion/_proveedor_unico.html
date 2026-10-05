@@ -7,7 +7,7 @@
     <div class="metricas">
       <div class="metrica"><span class="valor">{{ un.pct|numero:0 }}%</span><span class="etiqueta">Del valor recurrente con un solo proveedor</span></div>
       <div class="metrica"><span class="valor">{{ un.valor_unico|soles }}</span><span class="etiqueta">Comprado a proveedor único</span></div>
-      <div class="metrica"><span class="valor">{{ un.materiales_unicos|numero }} de {{ un.materiales_recurrentes|numero }}</span><span class="etiqueta">Materiales recurrentes con un solo proveedor</span></div>
+      <div class="metrica"{% if not por_categoria %} data-filtrar="f_unico=Sí" tabindex="0" title="Ver los materiales con un solo proveedor"{% endif %}><span class="valor">{{ un.materiales_unicos|numero }} de {{ un.materiales_recurrentes|numero }}</span><span class="etiqueta">Materiales recurrentes con un solo proveedor</span></div>
     </div>
     {% if por_categoria %}
       <div class="tabla-scroll">
@@ -45,7 +45,7 @@
           <thead><tr><th>Material</th><th>Descripción</th>{% if por_categoria %}<th>Categoría</th>{% endif %}<th>Proveedor</th><th class="num">Meses con compra</th><th class="num">Pedidos</th><th class="num" data-orden="desc">Valor</th></tr></thead>
           <tbody>
             {% for m in un.materiales %}
-              <tr>
+              <tr{% if not por_categoria %} data-filtrar="f_material={{ m.material_codigo|urlencode }}" tabindex="0"{% endif %}>
                 <td class="col-codigo">{{ m.material_codigo }}</td>
                 <td class="col-descripcion">{{ m.texto_breve }}</td>
                 {% if por_categoria %}<td>{{ m.categoria }}</td>{% endif %}
@@ -62,4 +62,5 @@
   {% else %}
     <p class="aviso">Sin materiales comprados de forma recurrente en el período elegido.</p>
   {% endif %}
+  {% if not por_categoria %}{% include "gestion/_desglose.html" with clave="unico" fuente="Todos los materiales recurrentes y sus proveedores (ME2N)" %}{% endif %}
 </section>

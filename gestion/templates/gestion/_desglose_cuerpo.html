@@ -1,0 +1,41 @@
+{% load dashboard_extras %}
+{# Cuerpo del detalle fila por fila (desglose.responder): resumen de las filas filtradas, filtros activos, buscador, Excel, tabla paginada. #}
+<div class="desglose-cabecera">
+  <div class="desglose-titulo-fila">
+    <h3 class="desglose-titulo">{{ definicion.titulo }}{% if periodo %} · {{ periodo }}{% endif %}</h3>
+    <span class="desglose-conteo">{% if total != base_total %}{{ total|numero }} de {% endif %}{{ base_total|numero }} fila{{ base_total|pluralize }}</span>
+  </div>
+  <p class="desglose-nota">{{ definicion.nota }}</p>
+  {% if resumen %}
+    <dl class="desglose-resumen">
+      {% for etiqueta, valor in resumen %}<div><dt>{{ etiqueta }}</dt><dd>{{ valor }}</dd></div>{% endfor %}
+    </dl>
+  {% endif %}
+  <div class="desglose-herramientas">
+    {% if chips %}
+      <div class="desglose-chips">
+        {% for c in chips %}<button type="button" class="desglose-chip" data-quitar="{{ c.parametro }}" title="Quitar este filtro">{{ c.texto }} <span aria-hidden="true">×</span></button>{% endfor %}
+        {% if chips|length > 1 %}<button type="button" class="btn-link desglose-limpiar" data-quitar="*">Quitar todos</button>{% endif %}
+      </div>
+    {% endif %}
+    <input class="desglose-buscar" type="search" value="{{ buscar }}" placeholder="Buscar: material, pedido, proveedor…" aria-label="Buscar en el detalle" autocomplete="off">
+    <a class="btn-link desglose-excel" href="{{ url_excel }}"{% if total > 20000 %} title="Con tantas filas, el archivo puede tardar unos segundos"{% endif %}>Descargar Excel{% if excel_tope %} (primeras {{ max_excel|numero }}){% else %} ({{ total|numero }} fila{{ total|pluralize }}){% endif %}</a>
+  </div>
+</div>
+{% if aviso %}<p class="aviso">{{ aviso }}</p>{% endif %}
+{% if filas %}
+  <div class="tabla-scroll tabla-alto-fijo desglose-scroll">
+    <table class="tabla-desglose" data-desglose>
+      <thead>
+        <tr>{% for c in columnas %}<th data-col="{{ c.clave }}"{% if c.num %} class="num"{% endif %}{% if c.clave == orden %} data-orden="{{ direccion }}"{% endif %}>{{ c.titulo }}</th>{% endfor %}</tr>
+      </thead>
+      <tbody>{% include "gestion/_desglose_filas.html" %}</tbody>
+    </table>
+  </div>
+  <p class="desglose-pie" data-hay-mas="{{ hay_mas|yesno:'true,false' }}" data-mostradas="{{ mostradas }}">
+    <span class="desglose-mostradas">Mostrando <span data-mostradas-texto>{{ mostradas|numero }}</span> de {{ total|numero }}</span>
+    {% if hay_mas %}<button type="button" class="btn-link desglose-mas">Cargar {{ por_pagina }} más</button>{% endif %}
+  </p>
+{% elif not aviso %}
+  <p class="aviso">Ninguna fila cumple {% if buscar or chips %}esta búsqueda o estos filtros{% else %}los filtros de la sección{% endif %}.</p>
+{% endif %}

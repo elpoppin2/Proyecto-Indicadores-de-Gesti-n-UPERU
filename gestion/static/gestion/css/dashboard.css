@@ -1304,3 +1304,98 @@ body.asistente-abierto .asistente-lanzador { display: none; }
 .asistente-enviar:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .asistente-pie { margin: 0; padding: 0 16px 12px; font-size: 10.5px; color: var(--muted); line-height: 1.4; }
 @media print { .asistente-lanzador, .asistente-panel { display: none !important; } }
+
+/* --- Detalle fila por fila (gestion/desglose.py + js/desglose.js): al pie de
+   cada sección, las filas de SAP de las que sale el indicador. Pedido por el
+   usuario: ir de lo general a lo específico. --- */
+/* scroll-margin: al abrirlo con un clic, que no quede bajo la barra fija de pestañas. */
+details.desglose { border-top: 1px dashed var(--line); padding-top: 12px; scroll-margin-top: 110px; }
+details.desglose > summary {
+  display: flex; align-items: baseline; gap: 6px 10px; flex-wrap: wrap; cursor: pointer; list-style: none;
+  width: fit-content; max-width: 100%; border-radius: 6px;
+}
+details.desglose > summary::-webkit-details-marker { display: none; }
+details.desglose > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.desglose-chevron {
+  flex: none; align-self: center; width: 7px; height: 7px; margin: 0 2px;
+  border-right: 2px solid var(--accent-texto); border-bottom: 2px solid var(--accent-texto);
+  transform: rotate(-45deg); transition: transform .15s;
+}
+details.desglose[open] .desglose-chevron { transform: rotate(45deg); }
+.desglose-accion {
+  font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px; letter-spacing: .08em;
+  text-transform: uppercase; font-weight: 600; color: var(--accent-texto);
+}
+details.desglose > summary:hover .desglose-accion { text-decoration: underline; text-underline-offset: 3px; }
+.desglose-fuente { font-size: 12px; color: var(--muted); }
+.desglose-cuerpo { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+.desglose-cuerpo.cargando { min-height: 60px; }
+.desglose-cargando { margin: 0; font-size: 13px; color: var(--muted); }
+.desglose-cabecera { display: flex; flex-direction: column; gap: 10px; }
+.desglose-titulo-fila { display: flex; justify-content: space-between; align-items: baseline; gap: 6px 14px; flex-wrap: wrap; }
+.desglose-titulo {
+  font-family: "Big Shoulders Display", sans-serif; font-weight: 700; font-size: 18px;
+  margin: 0; letter-spacing: .01em; text-wrap: balance;
+}
+.desglose-conteo { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.desglose-nota { margin: 0; font-size: 12px; line-height: 1.45; color: var(--muted); max-width: 95ch; }
+/* Resumen de las filas filtradas: una tira de cifras que cuadra con el indicador. */
+.desglose-resumen {
+  display: flex; flex-wrap: wrap; margin: 0; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface-2); overflow: hidden;
+}
+.desglose-resumen > div { display: flex; flex-direction: column; gap: 3px; padding: 9px 16px; border-right: 1px solid var(--line); }
+.desglose-resumen > div:last-child { border-right: none; }
+.desglose-resumen dt {
+  font-family: "IBM Plex Mono", monospace; font-size: 9.5px; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--muted);
+}
+.desglose-resumen dd {
+  margin: 0; font-family: "IBM Plex Mono", monospace; font-size: 14px; font-weight: 600;
+  font-variant-numeric: tabular-nums; color: var(--ink);
+}
+.desglose-herramientas { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.desglose-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.desglose-chip {
+  font: 600 12px/1.2 "IBM Plex Sans", ui-sans-serif, sans-serif; padding: 6px 10px; border-radius: 999px;
+  border: 1px solid var(--accent); color: var(--ink); cursor: pointer;
+  background: color-mix(in srgb, var(--accent) 9%, var(--surface));
+}
+.desglose-chip span { margin-left: 4px; color: var(--accent-texto); }
+.desglose-chip:hover { background: color-mix(in srgb, var(--accent) 18%, var(--surface)); }
+.desglose-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.desglose-buscar {
+  flex: 1 1 240px; min-width: 0; max-width: 380px; font: inherit; font-size: 13px; padding: 7px 10px;
+  border-radius: 7px; border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+}
+.desglose-buscar:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.desglose-excel { margin-left: auto; font-size: 13px; }
+.desglose-scroll { --alto-tabla: 520px; }
+.tabla-desglose { font-size: 12px; }
+.tabla-desglose th, .tabla-desglose td { padding: 6px 9px; white-space: nowrap; }
+.tabla-desglose td.texto-tenue { font-size: inherit; }
+.desglose-pie { display: flex; align-items: center; gap: 14px; margin: 0; font-size: 12px; color: var(--muted); }
+.desglose-pie .btn-link { font-size: 12.5px; }
+.desglose-pie .btn-link:disabled { opacity: .5; cursor: default; }
+@media (max-width: 600px) {
+  .desglose-excel { margin-left: 0; }
+  .desglose-resumen > div { flex: 1 1 45%; border-right: none; border-bottom: 1px solid var(--line); }
+}
+/* Lo que se puede cliquear para abrir el detalle ya filtrado (un proveedor,
+   un tramo, una barra, una columna del gráfico): solo en secciones con
+   detalle (el mismo gráfico en la pestaña Indicadores no lo tiene). */
+.bloque:has(details.desglose) tr[data-filtrar] { cursor: pointer; }
+.bloque:has(details.desglose) tr[data-filtrar] td:first-child { text-decoration: underline dotted var(--muted); text-underline-offset: 3px; }
+.bloque:has(details.desglose) tr[data-filtrar]:hover td:first-child,
+.bloque:has(details.desglose) tr[data-filtrar]:focus-visible td:first-child { color: var(--accent-texto); text-decoration-color: currentColor; }
+tr[data-filtrar]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.bloque:has(details.desglose) .barra-fila[data-filtrar],
+.bloque:has(details.desglose) .metrica[data-filtrar] { cursor: pointer; border-radius: 6px; }
+.bloque:has(details.desglose) .barra-fila[data-filtrar]:hover .barra-etiqueta,
+.barra-fila[data-filtrar]:focus-visible .barra-etiqueta { color: var(--accent-texto); }
+.bloque:has(details.desglose) .metrica[data-filtrar]:hover .etiqueta,
+.metrica[data-filtrar]:focus-visible .etiqueta { color: var(--accent-texto); text-decoration: underline; }
+.barra-fila[data-filtrar]:focus-visible, .metrica[data-filtrar]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.bloque:has(details.desglose) svg [data-filtrar] { cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .desglose-chevron { transition: none; } }
+@media print { details.desglose { display: none !important; } }
