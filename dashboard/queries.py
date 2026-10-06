@@ -1370,7 +1370,7 @@ def tickets_ingreso_detalle(mes):
                proveedor_codigo AS proveedor_codigo, proveedor AS proveedor, tipo_operacion AS tipo_operacion,
                cantidad AS toneladas, documento_material AS documento
         FROM gestion_ingresofisicosop
-        WHERE fecha_ingreso BETWEEN %s AND %s
+        WHERE {FECHA_INGRESO_EFECTIVA} BETWEEN %s AND %s
               AND tipo_operacion IN ({_IN_TIPOS_OPERACION_RECEPCION})
     """, [fecha_inicio, fecha_fin])
 
@@ -1752,17 +1752,37 @@ def plan_abastecimiento_por_material(mes):
     """, [mes])
 
 
+# Ingresos de báscula que se cuentan con otra fecha que la del ticket
+# (material, centro, fecha del ticket) -> fecha con la que se cuentan.
+# Excepciones puntuales definidas por el usuario, solo para ese material,
+# centro y día:
+# - 2026-10-06: el Carbón Importado que llegó a Condorcocha el 30-set-2026
+#   (traslado desde Atocongo, 223 T) es del abastecimiento de OCTUBRE: se
+#   cuenta el 1-oct y sale de setiembre (el usuario eligió moverlo, no
+#   contarlo dos veces).
+# Rige el Plan vs Real (Detalle por material, Evaluación diaria, Curva S,
+# Cumplimiento mensual), las entregas por proveedor y los traslados; no la
+# calidad ni los premios (esos van por la fecha real del análisis).
+INGRESOS_CON_OTRA_FECHA = {
+    ("06-00000003", "U002", datetime.date(2026, 9, 30)): datetime.date(2026, 10, 1),
+}
+FECHA_INGRESO_EFECTIVA = "(CASE " + " ".join(
+    f"WHEN material_codigo = '{m}' AND centro = '{c}' AND fecha_ingreso = '{f.isoformat()}' THEN '{n.isoformat()}'"
+    for (m, c, f), n in INGRESOS_CON_OTRA_FECHA.items()
+) + " ELSE fecha_ingreso END)" if INGRESOS_CON_OTRA_FECHA else "fecha_ingreso"
+
+
 def ingresos_fisicos_por_material(mes):
     """Ingresos físicos reales de Recepción (báscula, ZMM056 — solo Tipo de
     operación 1/5, ver _TIPOS_OPERACION_RECEPCION) por material/centro en el
-    mes calendario `mes`. Definido por el usuario: no se toma de MB51 para
-    estos materiales."""
+    mes calendario `mes` (por FECHA_INGRESO_EFECTIVA). Definido por el
+    usuario: no se toma de MB51 para estos materiales."""
     fecha_inicio, fecha_fin = _limites_mes(mes)
     return _query(f"""
         SELECT material_codigo AS material_codigo, centro AS centro,
                SUM(cantidad) AS cantidad_real
         FROM gestion_ingresofisicosop
-        WHERE fecha_ingreso BETWEEN %s AND %s
+        WHERE {FECHA_INGRESO_EFECTIVA} BETWEEN %s AND %s
               AND tipo_operacion IN ({_IN_TIPOS_OPERACION_RECEPCION})
         GROUP BY material_codigo, centro
     """, [fecha_inicio, fecha_fin])
@@ -1781,7 +1801,7 @@ def ingresos_fisicos_por_proveedor(mes):
                proveedor AS proveedor, MAX(tipo_operacion) AS tipo_operacion,
                SUM(cantidad) AS cantidad_real, COUNT(*) AS carros
         FROM gestion_ingresofisicosop
-        WHERE fecha_ingreso BETWEEN %s AND %s
+        WHERE {FECHA_INGRESO_EFECTIVA} BETWEEN %s AND %s
               AND tipo_operacion IN ({_IN_TIPOS_OPERACION_RECEPCION})
         GROUP BY material_codigo, centro, proveedor_codigo, proveedor
     """, [fecha_inicio, fecha_fin])
@@ -1801,7 +1821,7 @@ def entregas_por_proveedor_sop():
         SELECT material_codigo AS material_codigo, centro AS centro, proveedor_codigo AS proveedor_codigo,
                proveedor AS proveedor, MAX(tipo_operacion) AS tipo_operacion,
                MAX(descripcion_material) AS descripcion,
-               substr(fecha_ingreso, 1, 7) || '-01' AS mes, SUM(cantidad) AS toneladas, COUNT(*) AS carros
+               substr({FECHA_INGRESO_EFECTIVA}, 1, 7) || '-01' AS mes, SUM(cantidad) AS toneladas, COUNT(*) AS carros
         FROM gestion_ingresofisicosop
         WHERE fecha_ingreso IS NOT NULL AND tipo_operacion IN ({_IN_TIPOS_OPERACION_RECEPCION})
         GROUP BY material_codigo, centro, proveedor_codigo, proveedor, mes
@@ -1838,11 +1858,11 @@ def traslados_recibidos(mes, centro):
     `mes`, por material y planta de origen (el "proveedor" del ticket), con
     toneladas y carros."""
     fecha_inicio, fecha_fin = _limites_mes(mes)
-    return _query("""
+    return _query(f"""
         SELECT material_codigo AS material_codigo, MAX(descripcion_material) AS descripcion,
                proveedor AS origen, SUM(cantidad) AS toneladas, COUNT(*) AS carros
         FROM gestion_ingresofisicosop
-        WHERE fecha_ingreso BETWEEN %s AND %s AND centro = %s AND tipo_operacion = '5'
+        WHERE {FECHA_INGRESO_EFECTIVA} BETWEEN %s AND %s AND centro = %s AND tipo_operacion = '5'
         GROUP BY material_codigo, proveedor
     """, [fecha_inicio, fecha_fin, centro])
 
@@ -1929,12 +1949,12 @@ def evaluacion_diaria_abastecimiento(mes, categoria=None, centro=None, material=
     plan_diario = plan_total / dias_mes if dias_mes else 0.0
 
     real = _query(f"""
-        SELECT fecha_ingreso AS fecha, material_codigo AS material_codigo, centro AS centro,
+        SELECT {FECHA_INGRESO_EFECTIVA} AS fecha, material_codigo AS material_codigo, centro AS centro,
                SUM(cantidad) AS cantidad_real, COUNT(*) AS carros
         FROM gestion_ingresofisicosop
-        WHERE fecha_ingreso BETWEEN %s AND %s
+        WHERE {FECHA_INGRESO_EFECTIVA} BETWEEN %s AND %s
               AND tipo_operacion IN ({_IN_TIPOS_OPERACION_RECEPCION})
-        GROUP BY fecha_ingreso, material_codigo, centro
+        GROUP BY {FECHA_INGRESO_EFECTIVA}, material_codigo, centro
     """, [fecha_inicio, fecha_fin])
 
     catalogo = catalogo_materiales()[["material_codigo", "categoria"]]

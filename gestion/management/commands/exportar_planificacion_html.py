@@ -77,11 +77,11 @@ class Command(BaseCommand):
         for m in meses:
             fi, ff = q._limites_mes(m)
             real = q._query(f"""
-                SELECT fecha_ingreso AS fecha, material_codigo AS material_codigo, centro AS centro,
+                SELECT {q.FECHA_INGRESO_EFECTIVA} AS fecha, material_codigo AS material_codigo, centro AS centro,
                        SUM(cantidad) AS cantidad_real, COUNT(*) AS carros
                 FROM gestion_ingresofisicosop
-                WHERE fecha_ingreso BETWEEN %s AND %s AND tipo_operacion IN ({q._IN_TIPOS_OPERACION_RECEPCION})
-                GROUP BY fecha_ingreso, material_codigo, centro
+                WHERE {q.FECHA_INGRESO_EFECTIVA} BETWEEN %s AND %s AND tipo_operacion IN ({q._IN_TIPOS_OPERACION_RECEPCION})
+                GROUP BY {q.FECHA_INGRESO_EFECTIVA}, material_codigo, centro
             """, [fi, ff])
             if real.empty:
                 continue
