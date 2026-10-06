@@ -950,30 +950,36 @@ function toneladasCorto(v){
 }
 const nulo = v => v === null || v === undefined || v !== v;
 function escaparAttr(s){ return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
-function evolucionStock(puntos, barras, banda, {ancho=640, alto=300, padX=16, padY=30, detalles=null} = {}){
+function evolucionStock(puntos, barras, banda, {ancho=640, alto=320, padIzq=48, padDer=12, padArr=26, padAbj=24, detalles=null} = {}){
+  /* Un solo eje de toneladas con ejes y grilla: las barritas suben desde 0 en
+     la misma escala que el stock y el mínimo/máximo (charts.evolucion_stock). */
   if(puntos.length < 2) return null;
   const valores = puntos.map(p=>p[1]);
   const limites = (banda || []).filter(Boolean).flat().filter(v => !nulo(v));
-  const minimo = Math.min(Math.min(...valores), 0), maximo = Math.max(Math.max(...valores, ...limites), 0);
-  const rango = (maximo - minimo) || 1, paso = (ancho - 2*padX) / (puntos.length - 1);
-  const baseLinea = barras ? alto*0.56 : alto - padY, topeBarras = alto*0.66, baseBarras = alto - 22;
-  const yDe = v => padY + (baseLinea - padY) * (1 - (v - minimo) / rango);
-  const crudos = puntos.map(([et, v], i) => [padX + i*paso, yDe(v), et, v]);
+  const enBarras = (barras || []).filter(Boolean).flat().map(v => Math.max(v, 0));
+  let minimo = Math.min(Math.min(...valores), 0), maximo = Math.max(Math.max(...valores, ...limites, ...enBarras), 0) || 1;
+  const marcas = marcasEje(minimo, maximo);
+  if(marcas.length >= 2 && marcas[marcas.length-1] < maximo) marcas.push(2*marcas[marcas.length-1] - marcas[marcas.length-2]);
+  minimo = Math.min(minimo, marcas[0]); maximo = Math.max(maximo, marcas[marcas.length-1]);
+  const rango = (maximo - minimo) || 1;
+  const izq = padIzq, der = ancho - padDer, arriba = padArr, base = alto - padAbj;
+  const paso = (der - izq) / puntos.length;
+  const yDe = v => arriba + (base - arriba) * (1 - (v - minimo) / rango);
+  const crudos = puntos.map(([et, v], i) => [izq + (i + 0.5)*paso, yDe(v), et, v]);
   const linea = crudos.map(([x,y],i) => `${i?'L':'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
-  const yCero = yDe(0);
+  const yCero = yDe(0), baseBarras = yCero;
   const area = linea + ` L${crudos[crudos.length-1][0].toFixed(1)} ${yCero.toFixed(1)} L${crudos[0][0].toFixed(1)} ${yCero.toFixed(1)} Z`;
   const barrasOut = [];
   if(barras){
-    const mayor = Math.max(0, ...barras.filter(Boolean).flat()) || 1;
-    const anchoBarra = Math.min(paso*0.36, 14);
+    const anchoBarra = Math.min(paso*0.3, 16);
     crudos.forEach(([x,,et], i) => {
       const par = barras[i]; if(!par) return;
       [[par[0], "barra-ingreso", -anchoBarra-1, "Abastecimiento planificado"], [par[1], "barra-consumo", 1, "Consumo planificado"]].forEach(([v, clase, dx, nombre]) => {
-        const h = Math.max(v, 0) / mayor * (baseBarras - topeBarras);
-        const dentro = h >= 24, yEt = dentro ? baseBarras - h/2 : baseBarras - h - 2;
+        const h = Math.max(v, 0) / rango * (base - arriba);
+        const dentro = h >= 30;
         barrasOut.push({x:(x+dx).toFixed(1), y:(baseBarras-h).toFixed(1), ancho:anchoBarra.toFixed(1), alto:h.toFixed(1), clase,
-                        titulo:`${nombre} ${et}: ${numero(v)} T`, etiqueta: v > 0 ? toneladasCorto(v) : "", dentro,
-                        xPct:((x+dx+anchoBarra/2)/ancho*100).toFixed(2), yPct:(yEt/alto*100).toFixed(2)});
+                        titulo:`${nombre} ${et}: ${numero(v)} T`, etiqueta: v > 0 && dentro ? toneladasCorto(v) : "", dentro,
+                        xPct:((x+dx+anchoBarra/2)/ancho*100).toFixed(2), yPct:((baseBarras-h/2)/alto*100).toFixed(2)});
       });
     });
   }
@@ -982,7 +988,7 @@ function evolucionStock(puntos, barras, banda, {ancho=640, alto=300, padX=16, pa
     const tMin = [], tMax = [];
     crudos.forEach(([x], i) => {
       const par = banda[i]; if(!par || nulo(par[0]) || nulo(par[1])) return;
-      const x0 = Math.max(x - paso/2, padX), x1 = Math.min(x + paso/2, ancho - padX);
+      const x0 = x - paso/2, x1 = x + paso/2;
       tMin.push([x0, yDe(par[0])], [x1, yDe(par[0])]); tMax.push([x0, yDe(par[1])], [x1, yDe(par[1])]);
     });
     const trazo = ps => ps.map(([x,y],i) => `${i?'L':'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
@@ -990,7 +996,10 @@ function evolucionStock(puntos, barras, banda, {ancho=640, alto=300, padX=16, pa
     bandaOut = {area: trazo(tMax) + " " + [...tMin].reverse().map(([x,y]) => `L${x.toFixed(1)} ${y.toFixed(1)}`).join(" ") + " Z",
                 lineaMin: trazo(tMin), lineaMax: trazo(tMax), textoMin: toneladasCorto(ultimo[0]), textoMax: toneladasCorto(ultimo[1])};
   }
-  return {ancho, alto, linea, area, yCero: yCero.toFixed(1), barras: barrasOut, baseBarras: baseBarras.toFixed(1), banda: bandaOut,
+  return {ancho, alto, linea, area, yCero: yCero.toFixed(1), barras: barrasOut, banda: bandaOut,
+    hayNegativos: valores.some(v => v < 0),
+    izq: izq.toFixed(1), der: der.toFixed(1), arriba: arriba.toFixed(1), base: base.toFixed(1), izqPct: (izq/ancho*100).toFixed(2),
+    grilla: marcas.map(v => ({y: yDe(v).toFixed(1), yPct: (yDe(v)/alto*100).toFixed(2), texto: toneladasCorto(v)})),
     puntos: crudos.map(([x,y,et,v],i) => ({
       x: x.toFixed(1), y: y.toFixed(1), xPct: (x/ancho*100).toFixed(2), yPct: (y/alto*100).toFixed(2),
       etiqueta: et, valor: toneladasCorto(v), negativo: v < 0,
@@ -1002,16 +1011,21 @@ function svgProyeccion(g, hayTraslados){
   const b = g.banda;
   return `
     <div class="chart-scroll"><div class="chart-wrap chart-proyeccion">
+      <span class="titulo-eje-y">Toneladas (T)</span>
       <svg class="chart-svg" viewBox="0 0 ${g.ancho} ${g.alto}" role="img" aria-label="Evolución de inventario proyectada">
-        ${b ? `<path class="banda-minmax" d="${b.area}"></path><path class="linea-minimo" d="${b.lineaMin}"></path><path class="linea-maximo" d="${b.lineaMax}"></path>` : `<path class="area" d="${g.area}"></path>`}
-        <line class="linea-cero" x1="0" y1="${g.yCero}" x2="${g.ancho}" y2="${g.yCero}"></line>
-        <path class="linea" d="${g.linea}"></path>
-        <line class="base-barras" x1="0" y1="${g.baseBarras}" x2="${g.ancho}" y2="${g.baseBarras}"></line>
+        ${g.grilla.map(t=>`<line class="grilla" x1="${g.izq}" y1="${t.y}" x2="${g.der}" y2="${t.y}"></line>`).join("")}
+        ${b ? `<path class="banda-minmax" d="${b.area}"></path>` : `<path class="area" d="${g.area}"></path>`}
         ${g.barras.map(r=>`<rect class="${r.clase} con-detalle" x="${r.x}" y="${r.y}" width="${r.ancho}" height="${r.alto}" rx="1.5" data-detalle="${escaparAttr(r.titulo)}"></rect>`).join("")}
+        ${b ? `<path class="linea-minimo" d="${b.lineaMin}"></path><path class="linea-maximo" d="${b.lineaMax}"></path>` : ""}
+        <line class="eje" x1="${g.izq}" y1="${g.arriba}" x2="${g.izq}" y2="${g.base}"></line>
+        <line class="eje" x1="${g.izq}" y1="${g.base}" x2="${g.der}" y2="${g.base}"></line>
+        ${g.hayNegativos ? `<line class="linea-cero" x1="${g.izq}" y1="${g.yCero}" x2="${g.der}" y2="${g.yCero}"></line>` : ""}
+        <path class="linea" d="${g.linea}"></path>
         ${g.puntos.map(p=>`<circle class="punto${p.negativo?' punto-negativo':''}" cx="${p.x}" cy="${p.y}" r="3"></circle>` +
           `<circle class="zona-detalle con-detalle" cx="${p.x}" cy="${p.y}" r="10" data-detalle="${escaparAttr(p.detalle)}"></circle>`).join("")}
       </svg>
-      ${g.barras.filter(r=>r.etiqueta).map(r=>`<span class="etiqueta-barra ${r.clase}-texto ${r.dentro?'etiqueta-barra-dentro':'etiqueta-barra-encima'} con-detalle" style="left:${r.xPct}%; top:${r.yPct}%;" data-detalle="${escaparAttr(r.titulo)}">${r.etiqueta}</span>`).join("")}
+      ${g.grilla.map(t=>`<span class="etiqueta-eje-y" style="top:${t.yPct}%; width:${g.izqPct}%;">${t.texto}</span>`).join("")}
+      ${g.barras.filter(r=>r.etiqueta).map(r=>`<span class="etiqueta-barra ${r.clase}-texto etiqueta-barra-dentro con-detalle" style="left:${r.xPct}%; top:${r.yPct}%;" data-detalle="${escaparAttr(r.titulo)}">${r.etiqueta}</span>`).join("")}
       ${g.puntos.map(p=>`<span class="etiqueta-valor${p.negativo?' dato-negativo':''} con-detalle" style="left:${p.xPct}%; top:${p.yPct}%;" data-detalle="${escaparAttr(p.detalle)}">${p.valor}</span>` +
         `<span class="etiqueta-mes" style="left:${p.xPct}%;">${p.etiqueta}</span>`).join("")}
     </div></div>
@@ -1019,7 +1033,7 @@ function svgProyeccion(g, hayTraslados){
       <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>Stock proyectado al cierre de cada mes (T)</span>
       ${b ? `<span class="leyenda-item"><span class="leyenda-marca banda-minmax"></span>Rango objetivo: mínimo ${b.textoMin} – máximo ${b.textoMax}</span>`
           : `<span class="leyenda-item leyenda-nota">Elige un material para ver su banda de mínimo y máximo</span>`}
-      <span class="leyenda-item"><span class="leyenda-marca leyenda-meta"></span>Stock 0</span>
+      ${g.hayNegativos ? `<span class="leyenda-item"><span class="leyenda-marca leyenda-meta"></span>Stock 0</span>` : ""}
       <span class="leyenda-item"><span class="leyenda-marca barra-ingreso"></span>Abastecimiento planificado</span>
       <span class="leyenda-item"><span class="leyenda-marca barra-consumo"></span>Consumo planificado${hayTraslados ? " + traslados a otro centro" : ""}</span>
     </div>`;

@@ -59,26 +59,33 @@
       {% if g %}
         <div class="chart-scroll">
         <div class="chart-wrap chart-proyeccion">
+          <span class="titulo-eje-y">Toneladas (T)</span>
           <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Evolución de inventario proyectada">
+            {% for t in g.grilla %}<line class="grilla" x1="{{ g.izq }}" y1="{{ t.y }}" x2="{{ g.der }}" y2="{{ t.y }}"></line>{% endfor %}
             {% if g.banda %}
               <path class="banda-minmax" d="{{ g.banda.area }}"></path>
-              <path class="linea-minimo" d="{{ g.banda.linea_min }}"></path>
-              <path class="linea-maximo" d="{{ g.banda.linea_max }}"></path>
+            {% else %}
+              <path class="area" d="{{ g.area }}"></path>
             {% endif %}
-            {% if not g.banda %}<path class="area" d="{{ g.area }}"></path>{% endif %}
-            <line class="linea-cero" x1="0" y1="{{ g.y_cero }}" x2="{{ g.ancho }}" y2="{{ g.y_cero }}"></line>
-            <path class="linea" d="{{ g.linea }}"></path>
-            <line class="base-barras" x1="0" y1="{{ g.base_barras }}" x2="{{ g.ancho }}" y2="{{ g.base_barras }}"></line>
             {% for b in g.barras %}
               <rect class="{{ b.clase }} con-detalle" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.ancho }}" height="{{ b.alto }}" rx="1.5" data-detalle="{{ b.titulo }}"></rect>
             {% endfor %}
+            {% if g.banda %}
+              <path class="linea-minimo" d="{{ g.banda.linea_min }}"></path>
+              <path class="linea-maximo" d="{{ g.banda.linea_max }}"></path>
+            {% endif %}
+            <line class="eje" x1="{{ g.izq }}" y1="{{ g.arriba }}" x2="{{ g.izq }}" y2="{{ g.base }}"></line>
+            <line class="eje" x1="{{ g.izq }}" y1="{{ g.base }}" x2="{{ g.der }}" y2="{{ g.base }}"></line>
+            {% if g.hay_negativos %}<line class="linea-cero" x1="{{ g.izq }}" y1="{{ g.y_cero }}" x2="{{ g.der }}" y2="{{ g.y_cero }}"></line>{% endif %}
+            <path class="linea" d="{{ g.linea }}"></path>
             {% for pt in g.puntos %}
               <circle class="punto{% if pt.negativo %} punto-negativo{% endif %}" cx="{{ pt.x }}" cy="{{ pt.y }}" r="3"></circle>
               <circle class="zona-detalle con-detalle" cx="{{ pt.x }}" cy="{{ pt.y }}" r="10" data-detalle="{{ pt.detalle }}"></circle>
             {% endfor %}
           </svg>
+          {% for t in g.grilla %}<span class="etiqueta-eje-y" style="top:{{ t.y_pct }}%; width:{{ g.izq_pct }}%;">{{ t.texto }}</span>{% endfor %}
           {% for b in g.barras %}
-            {% if b.etiqueta %}<span class="etiqueta-barra {{ b.clase }}-texto {% if b.etiqueta_dentro %}etiqueta-barra-dentro{% else %}etiqueta-barra-encima{% endif %} con-detalle" style="left:{{ b.x_pct }}%; top:{{ b.y_pct }}%;" data-detalle="{{ b.titulo }}">{{ b.etiqueta }}</span>{% endif %}
+            {% if b.etiqueta %}<span class="etiqueta-barra {{ b.clase }}-texto etiqueta-barra-dentro con-detalle" style="left:{{ b.x_pct }}%; top:{{ b.y_pct }}%;" data-detalle="{{ b.titulo }}">{{ b.etiqueta }}</span>{% endif %}
           {% endfor %}
           {% for pt in g.puntos %}
             <span class="etiqueta-valor{% if pt.negativo %} dato-negativo{% endif %} con-detalle" style="left:{{ pt.x_pct }}%; top:{{ pt.y_pct }}%;" data-detalle="{{ pt.detalle }}">{{ pt.etiqueta_valor }}</span>
@@ -92,7 +99,8 @@
             <span class="leyenda-item"><span class="leyenda-marca banda-minmax"></span>Rango objetivo: mínimo {{ g.banda.texto_min }} – máximo {{ g.banda.texto_max }}</span>
           {% else %}
             <span class="leyenda-item leyenda-nota">Elige un material para ver su banda de mínimo y máximo</span>
-          {% endif %}              <span class="leyenda-item"><span class="leyenda-marca leyenda-meta"></span>Stock 0</span>
+          {% endif %}
+          {% if g.hay_negativos %}<span class="leyenda-item"><span class="leyenda-marca leyenda-meta"></span>Stock 0</span>{% endif %}
           <span class="leyenda-item"><span class="leyenda-marca barra-ingreso"></span>Abastecimiento planificado</span>
           <span class="leyenda-item"><span class="leyenda-marca barra-consumo"></span>Consumo planificado{% if p.hay_traslados %} + traslados a otro centro{% endif %}</span>
         </div>

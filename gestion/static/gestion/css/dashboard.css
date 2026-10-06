@@ -316,6 +316,9 @@ td.estado-sobre_maximo { background: rgba(214, 160, 40, .2); }
 .diag-sin_parametro { color: var(--muted); }
 
 .chart-proyeccion .linea-cero { stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 4 4; }
+/* Ejes y grilla del eje único de toneladas (stock, mín./máx. y barritas). */
+.chart-proyeccion .grilla { stroke: var(--line); stroke-width: 1; opacity: .7; }
+.chart-proyeccion .eje { stroke: var(--table-line); stroke-width: 1.2; }
 /* Todos los meses llevan etiqueta en el eje: un poco más chica para que
    entren 17-18 meses sin pisarse. */
 .chart-proyeccion .etiqueta-mes { font-size: 9.5px; letter-spacing: 0; }

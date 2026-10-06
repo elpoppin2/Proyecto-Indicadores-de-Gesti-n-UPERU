@@ -323,15 +323,17 @@ def _toneladas_corto(valor):
     return f"-{texto}" if valor < 0 else texto
 
 
-def evolucion_stock(puntos, barras=None, banda=None, detalles=None, ancho=640, alto=300, pad_x=16, pad_y=30):
-    """Evolución de stock proyectado (toneladas), en dos franjas que comparten
-    los meses del eje X:
-    - arriba, la línea de stock (roja, como el objetivo de la Curva S) con la
-      línea de 0 siempre dentro de la escala, para que un quiebre (stock
-      negativo) se vea de inmediato, con su punto en color de alerta;
-    - abajo, barritas del abastecimiento (entra) y el consumo (sale)
-      planificados de cada mes, en su propia escala, para ver qué movió el
-      stock. Pedido por el usuario.
+def evolucion_stock(puntos, barras=None, banda=None, detalles=None, ancho=640, alto=320, pad_izq=48, pad_der=12,
+                    pad_arr=26, pad_abj=24):
+    """Evolución de stock proyectado (toneladas) en UN solo eje de toneladas,
+    con sus ejes y grilla (pedido por el usuario el 2026-10-06: antes la
+    línea y las barritas iban en franjas con escalas distintas y sin ejes):
+    - la línea de stock (roja, como el objetivo de la Curva S), con el 0
+      siempre dentro de la escala para que un quiebre (stock negativo) se vea
+      de inmediato, con su punto en color de alerta;
+    - las barritas del abastecimiento (entra) y el consumo (sale)
+      planificados de cada mes, que suben desde 0 en la MISMA escala que el
+      stock y la banda de mínimo y máximo: se comparan directamente.
     `puntos`: lista de (etiqueta_mes, stock). `barras`: lista paralela a
     `puntos` de (abastecimiento, consumo), o None en los puntos sin barras
     (p.ej. el primero, que es el stock de partida). `banda`: lista paralela a
@@ -339,28 +341,34 @@ def evolucion_stock(puntos, barras=None, banda=None, detalles=None, ancho=640, a
     stock objetivo detrás de la línea (solo tiene sentido para UN material).
     `detalles`: lista paralela a `puntos` con el texto (varias líneas) del
     recuadro que aparece al pasar el mouse por el punto o su etiqueta.
-    Todos los meses llevan su etiqueta en el eje (antes, con más de 9 meses,
-    se mostraba uno de cada dos). Pedido por el usuario."""
+    Todos los meses llevan su etiqueta en el eje."""
     if len(puntos) < 2:
         return None
     valores = [v for _, v in puntos]
     limites = [v for par in (banda or []) if par for v in par if v is not None and v == v]
-    minimo, maximo = min(min(valores), 0.0), max(max(valores + limites), 0.0)
+    en_barras = [max(v, 0.0) for par in (barras or []) if par for v in par]
+    minimo = min(min(valores), 0.0)
+    maximo = max(max(valores + limites + en_barras), 0.0) or 1.0
+    marcas = _marcas_eje(minimo, maximo)
+    # Una marca más arriba del mayor valor: la escala termina en una línea de
+    # la grilla y el punto más alto no queda pegado al borde.
+    if len(marcas) >= 2 and marcas[-1] < maximo:
+        marcas.append(marcas[-1] + (marcas[-1] - marcas[-2]))
+    minimo, maximo = min(minimo, marcas[0]), max(maximo, marcas[-1])
     rango = (maximo - minimo) or 1.0
-    paso = (ancho - 2 * pad_x) / (len(puntos) - 1)
-
-    # Franjas: la línea usa ~la mitad de arriba; las barras, la de abajo (sobre
-    # las etiquetas de los meses, que van pegadas al borde inferior).
-    base_linea = alto * 0.56 if barras else alto - pad_y
-    tope_barras, base_barras = alto * 0.66, alto - 22
+    izq, der, arriba, base = pad_izq, ancho - pad_der, pad_arr, alto - pad_abj
+    # Cada mes al centro de su tramo: las barritas del primer y último mes no
+    # se salen del área del gráfico.
+    paso = (der - izq) / len(puntos)
 
     def y_de(valor):
-        return pad_y + (base_linea - pad_y) * (1 - (valor - minimo) / rango)
+        return arriba + (base - arriba) * (1 - (valor - minimo) / rango)
 
-    crudos = [(pad_x + i * paso, y_de(v), etiqueta, v) for i, (etiqueta, v) in enumerate(puntos)]
+    crudos = [(izq + (i + 0.5) * paso, y_de(v), etiqueta, v) for i, (etiqueta, v) in enumerate(puntos)]
     linea = " ".join(f"{'M' if i == 0 else 'L'}{x:.1f} {y:.1f}" for i, (x, y, _, _) in enumerate(crudos))
     y_cero = y_de(0.0)
     area = linea + f" L{crudos[-1][0]:.1f} {y_cero:.1f} L{crudos[0][0]:.1f} {y_cero:.1f} Z"
+    base_barras = y_cero
 
     puntos_out = []
     for i, (x, y, etiqueta, valor) in enumerate(crudos):
@@ -375,8 +383,7 @@ def evolucion_stock(puntos, barras=None, banda=None, detalles=None, ancho=640, a
 
     barras_out = []
     if barras:
-        mayor = max((max(b) for b in barras if b), default=0.0) or 1.0
-        ancho_barra = min(paso * 0.36, 14.0)
+        ancho_barra = min(paso * 0.3, 16.0)
         for (x, _, etiqueta, _), par in zip(crudos, barras):
             if not par:
                 continue
@@ -384,21 +391,21 @@ def evolucion_stock(puntos, barras=None, banda=None, detalles=None, ancho=640, a
                 (par[0], "barra-ingreso", -ancho_barra - 1, "Abastecimiento planificado"),
                 (par[1], "barra-consumo", 1, "Consumo planificado"),
             ):
-                alto_barra = max(valor, 0.0) / mayor * (base_barras - tope_barras)
+                alto_barra = max(valor, 0.0) / rango * (base - arriba)
                 x_barra = x + desplazamiento
                 # Valor dentro de la barra, en vertical (en horizontal no entra
-                # en barras de ~14 px); si la barra es muy baja para el
-                # número, va justo encima de ella.
-                dentro = alto_barra >= 24
-                y_etiqueta = base_barras - alto_barra / 2 if dentro else base_barras - alto_barra - 2
+                # en barras de ~16 px), solo si cabe: encima chocaría con la
+                # línea de stock y sus etiquetas (el valor queda en el
+                # recuadro del mouse y en el Detalle mensual).
+                dentro = alto_barra >= 30
                 barras_out.append({
                     "x": f"{x_barra:.1f}", "y": f"{base_barras - alto_barra:.1f}",
                     "ancho": f"{ancho_barra:.1f}", "alto": f"{alto_barra:.1f}", "clase": clase,
                     "titulo": f"{nombre} {etiqueta}: {valor:,.0f} T",
-                    "etiqueta": _toneladas_corto(valor) if valor > 0 else "",
+                    "etiqueta": _toneladas_corto(valor) if valor > 0 and dentro else "",
                     "etiqueta_dentro": dentro,
                     "x_pct": f"{(x_barra + ancho_barra / 2) / ancho * 100:.2f}",
-                    "y_pct": f"{y_etiqueta / alto * 100:.2f}",
+                    "y_pct": f"{(base_barras - alto_barra / 2) / alto * 100:.2f}",
                 })
     # Banda mínimo–máximo: escalonada (el valor vale para todo el mes, no se
     # interpola entre meses), como polígono + sus dos bordes punteados.
@@ -409,7 +416,7 @@ def evolucion_stock(puntos, barras=None, banda=None, detalles=None, ancho=640, a
             par = banda[i] if i < len(banda) else None
             if not par or par[0] is None or par[1] is None or par[0] != par[0] or par[1] != par[1]:
                 continue
-            x0, x1 = max(x - paso / 2, pad_x), min(x + paso / 2, ancho - pad_x)
+            x0, x1 = x - paso / 2, x + paso / 2
             tramos_min += [(x0, y_de(par[0])), (x1, y_de(par[0]))]
             tramos_max += [(x0, y_de(par[1])), (x1, y_de(par[1]))]
         if tramos_min:
@@ -424,7 +431,14 @@ def evolucion_stock(puntos, barras=None, banda=None, detalles=None, ancho=640, a
     return {
         "ancho": ancho, "alto": alto, "linea": linea, "area": area, "puntos": puntos_out,
         "y_cero": f"{y_cero:.1f}", "hay_negativos": any(v < 0 for v in valores),
-        "barras": barras_out, "base_barras": f"{base_barras:.1f}", "banda": banda_out,
+        "barras": barras_out, "banda": banda_out,
+        # Ejes y grilla: eje Y a la izquierda con sus marcas en toneladas, eje
+        # X abajo (en el mínimo de la escala; si hay negativos, el 0 va aparte
+        # como línea punteada).
+        "izq": f"{izq:.1f}", "der": f"{der:.1f}", "arriba": f"{arriba:.1f}", "base": f"{base:.1f}",
+        "izq_pct": f"{izq / ancho * 100:.2f}",
+        "grilla": [{"y": f"{y_de(v):.1f}", "y_pct": f"{y_de(v) / alto * 100:.2f}", "texto": _toneladas_corto(v)}
+                   for v in marcas],
     }
 
 
