@@ -518,6 +518,49 @@ class IngresoFisicoSOP(models.Model):
         return f"{self.material_codigo} @ {self.centro} - {self.fecha_ingreso}"
 
 
+class AjustePrecioFBL3N(models.Model):
+    """Partidas de las cuentas de existencias (FBL3N, cuentas 24xx-28xx) que
+    cambian el VALOR del stock sin pasar por MB51: facturas de proveedor
+    (MIRO: diferencias de precio, fletes, desestiba, cargos aduaneros),
+    anulaciones de factura (MR8M), cambios de precio (MR22/MR21) y
+    liquidaciones de órdenes (KO88). Las entradas, consumos y despachos (clases
+    WE/WA/WL) y el inventario físico (WI) ya están en MB51 y no se guardan.
+    Sirven para el "precio real" de entrada = (importe MB51 + ajustes) / T.
+    Pedido por el usuario; descubierto revisando la extracción de set-26
+    (ver dashboard/queries.py, ajustes_precio_fbl3n)."""
+
+    cuenta_mayor = models.CharField(max_length=20, db_index=True)
+    material_codigo = models.CharField(max_length=40, db_index=True)
+    centro = models.CharField(max_length=20, blank=True)
+    numero_documento = models.CharField(max_length=20, verbose_name="Nº documento contable")
+    clase_documento = models.CharField(max_length=4, db_index=True)
+    codigo_transaccion = models.CharField(max_length=20, blank=True)
+    clave_contabilizacion = models.CharField(max_length=4, blank=True)
+    fecha_documento = models.DateField(null=True, blank=True)
+    fecha_contabilizacion = models.DateField(db_index=True)
+    importe = models.FloatField(verbose_name="Importe en moneda local (S/)")
+    importe_ml2 = models.FloatField(null=True, blank=True, verbose_name="Importe en ML2 (USD)")
+    moneda_documento = models.CharField(max_length=5, blank=True)
+    importe_moneda_documento = models.FloatField(null=True, blank=True)
+    cantidad = models.FloatField(null=True, blank=True, verbose_name="Cantidad (de la factura u orden, no del stock)")
+    unidad_medida_base = models.CharField(max_length=10, blank=True)
+    documento_compras = models.CharField(max_length=20, blank=True)
+    proveedor = models.CharField(max_length=20, blank=True)
+    referencia = models.CharField(max_length=60, blank=True)
+    texto = models.CharField(max_length=255, blank=True)
+    texto_cabecera = models.CharField(max_length=255, blank=True)
+    usuario = models.CharField(max_length=20, blank=True)
+    cuenta_contrapartida = models.CharField(max_length=20, blank=True)
+
+    class Meta:
+        verbose_name = "Ajuste de valor de existencias (FBL3N)"
+        verbose_name_plural = "Ajustes de valor de existencias (FBL3N)"
+        indexes = [models.Index(fields=["material_codigo", "fecha_contabilizacion"])]
+
+    def __str__(self):
+        return f"{self.numero_documento} {self.material_codigo} {self.importe:.2f}"
+
+
 class ConsultaAsistente(models.Model):
     """Registro de cada pregunta al asistente de IA (ver gestion/asistente.py):
     quién preguntó, qué respondió, qué datos consultó y cuántos tokens usó.

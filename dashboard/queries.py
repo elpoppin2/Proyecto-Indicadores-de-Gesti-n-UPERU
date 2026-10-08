@@ -2745,6 +2745,159 @@ def precios_entrada_materiales():
     return df[columnas].sort_values(["material_codigo", "centro", "mes"]).reset_index(drop=True)
 
 
+# ---------------------------------------------------------------------------
+# Precio real de entrada = MB51 + ajustes de valor de la FBL3N. Pedido por el
+# usuario (oct-2026). El 101 de MB51 valoriza la entrada al precio del pedido;
+# después, sin cantidad y fuera de MB51, llegan a la cuenta de existencias:
+# diferencias de precio de la factura (MIRO), fletes, desestiba y cargos de
+# importación, anulaciones de factura (MR8M) y cargos/abonos por cambio de
+# precio (MR22). Todo eso suma al precio real. Las liquidaciones de órdenes
+# (KO88: reparación de repuestos) también caen en la cuenta de existencias,
+# pero no son costo de compra: se muestran aparte y no entran al precio
+# (propuesto al usuario y aceptado).
+# Asignación: al material/centro/mes de contabilización del ajuste. Un ajuste
+# de un mes sin compra de ese material (p.ej. la desestiba de un barco
+# facturada el mes siguiente) pasa al último mes anterior con compra; uno
+# registrado en un centro donde el material nunca se compra (la desestiba del
+# Carbón Importado va a U001, la compra es en U004) pasa al centro de compra.
+# ---------------------------------------------------------------------------
+CLASES_LIQUIDACION_ORDENES = ("PM", "X1")
+
+
+def concepto_ajuste(clase, transaccion, texto):
+    """De qué trata un ajuste de la FBL3N, según su clase de documento, código
+    de transacción y texto (reglas vistas en las extracciones 2024-2026)."""
+    texto = (texto or "").upper()
+    if clase == "PR":
+        return "Cambio de precio (MR22)"
+    if clase in CLASES_LIQUIDACION_ORDENES:
+        return "Liquidación de órdenes (KO88)"
+    if transaccion == "MR8M" or clase in ("XK", "XS"):
+        return "Anulación de factura (MR8M)"
+    if transaccion == "MIRO":
+        if "ADUAN" in texto or "DUA" in texto:
+            return "Cargos de importación"
+        if "FLETE" in texto or "TRANSP" in texto:
+            return "Flete / transporte"
+        if "DESESTIBA" in texto or "DESCARGA" in texto:
+            return "Desestiba / descarga"
+        if "ANTICIPO" in texto:
+            return "Liquidación de anticipo"
+        return "Factura de proveedor (MIRO)"
+    if transaccion.startswith("FB"):
+        return "Asiento contable manual"
+    return "Otros"
+
+
+@_cacheado
+def ajustes_precio_fbl3n():
+    """Ajustes de la FBL3N sumados por material/centro/mes: ajuste (S/, entra
+    al precio real), ajuste_ordenes (S/, liquidaciones de órdenes, aparte) y
+    lineas. Vacío si todavía no se cargó la FBL3N."""
+    df = _query(f"""
+        SELECT material_codigo, centro, substr(fecha_contabilizacion, 1, 7) || '-01' AS mes,
+               SUM(CASE WHEN clase_documento IN {CLASES_LIQUIDACION_ORDENES} THEN 0 ELSE importe END) AS ajuste,
+               SUM(CASE WHEN clase_documento IN {CLASES_LIQUIDACION_ORDENES} THEN importe ELSE 0 END) AS ajuste_ordenes,
+               COUNT(*) AS lineas
+        FROM gestion_ajustepreciofbl3n
+        GROUP BY material_codigo, centro, mes
+    """)
+    if not df.empty:
+        df["mes"] = pd.to_datetime(df["mes"]).dt.date
+    return df
+
+
+def meses_con_fbl3n():
+    """Meses cubiertos por alguna extracción de la FBL3N (para no mostrar como
+    "precio real" un mes que no tiene sus ajustes cargados)."""
+    df = _query("SELECT DISTINCT substr(fecha_contabilizacion, 1, 7) || '-01' AS mes FROM gestion_ajustepreciofbl3n")
+    return {datetime.date.fromisoformat(m) for m in df["mes"]}
+
+
+def con_precio_real(base):
+    """`base` (salida de precios_entrada_sop / precios_entrada_materiales) con
+    el precio real: importe_mb51 y precio_mb51 (lo de antes), ajuste,
+    ajuste_trasladado (la parte que vino de meses sin compra o de otro
+    centro), ajuste_ordenes (aparte), con_fbl3n (el mes tiene la FBL3N
+    cargada), y "importe"/"precio" pasan a ser los reales, para que el resto
+    (resumen, gráficos, inflación) funcione igual con cualquiera de los dos."""
+    df = base.copy()
+    df["importe_mb51"] = df["importe"]
+    df["precio_mb51"] = df["precio"]
+    for c in ("ajuste", "ajuste_trasladado", "ajuste_ordenes"):
+        df[c] = 0.0
+    meses = meses_con_fbl3n()
+    df["con_fbl3n"] = df["mes"].isin(meses)
+    aj = ajustes_precio_fbl3n()
+    if df.empty or aj.empty:
+        return df
+    aj = aj[aj["material_codigo"].isin(set(df["material_codigo"]))].copy()
+
+    # Centro: si el material nunca se compra en el centro del ajuste, al
+    # centro donde sí se compra (el único, o el de importación).
+    centros_compra = df.groupby("material_codigo")["centro"].agg(lambda s: set(s)).to_dict()
+
+    def centro_destino(material, centro):
+        compra = centros_compra.get(material, set())
+        if centro in compra:
+            return centro
+        if len(compra) == 1:
+            return next(iter(compra))
+        return CENTRO_IMPORTACION if CENTRO_IMPORTACION in compra else None
+
+    aj["centro_destino"] = [centro_destino(m, c) for m, c in zip(aj["material_codigo"], aj["centro"])]
+    aj = aj[aj["centro_destino"].notna()]
+    # Mes: el mismo si hubo compra; si no, el último anterior con compra.
+    compras = df[["material_codigo", "centro", "mes"]].rename(columns={"centro": "centro_destino", "mes": "mes_destino"})
+    compras["_clave"] = pd.to_datetime(compras["mes_destino"])
+    aj["_clave"] = pd.to_datetime(aj["mes"])
+    aj = pd.merge_asof(aj.sort_values("_clave"), compras.sort_values("_clave"), on="_clave",
+                       by=["material_codigo", "centro_destino"], direction="backward")
+    aj = aj[aj["mes_destino"].notna()]
+    trasladado = (aj["mes_destino"] != aj["mes"]) | (aj["centro_destino"] != aj["centro"])
+    aj["ajuste_trasladado"] = aj["ajuste"].where(trasladado, 0.0)
+    suma = (aj.groupby(["material_codigo", "centro_destino", "mes_destino"])[["ajuste", "ajuste_ordenes", "ajuste_trasladado"]]
+            .sum().reset_index().rename(columns={"centro_destino": "centro", "mes_destino": "mes"}))
+    df = df.drop(columns=["ajuste", "ajuste_trasladado", "ajuste_ordenes"]).merge(
+        suma, on=["material_codigo", "centro", "mes"], how="left")
+    for c in ("ajuste", "ajuste_trasladado", "ajuste_ordenes"):
+        df[c] = df[c].fillna(0.0)
+    df["importe"] = df["importe_mb51"] + df["ajuste"]
+    df["precio"] = df["importe"] / df["toneladas"]
+    return df
+
+
+@_cacheado
+def precios_entrada_sop_real():
+    """precios_entrada_sop con el precio real (ver con_precio_real)."""
+    return con_precio_real(precios_entrada_sop())
+
+
+def ajustes_fbl3n_detalle(materiales, desde=None, hasta=None):
+    """Las partidas de la FBL3N de `materiales` (todas sus plantas) entre dos
+    meses, con su concepto, para ver de qué trata cada importe."""
+    if not materiales:
+        return pd.DataFrame()
+    filtros = [f"material_codigo IN ({','.join(_texto_sql(m) for m in materiales)})"]
+    if desde:
+        filtros.append(f"fecha_contabilizacion >= '{desde.isoformat()}'")
+    if hasta:
+        filtros.append(f"fecha_contabilizacion < '{_sumar_meses(hasta, 1).isoformat()}'")
+    df = _query_directo(f"""
+        SELECT fecha_contabilizacion, material_codigo, centro, numero_documento, clase_documento,
+               codigo_transaccion, importe, moneda_documento, importe_moneda_documento, cantidad,
+               unidad_medida_base, documento_compras, referencia, texto, usuario, cuenta_mayor
+        FROM gestion_ajustepreciofbl3n WHERE {' AND '.join(filtros)}
+        ORDER BY fecha_contabilizacion DESC, numero_documento
+    """)
+    if not df.empty:
+        df["concepto"] = [concepto_ajuste(c, t, x) for c, t, x in
+                          zip(df["clase_documento"], df["codigo_transaccion"], df["texto"])]
+        df["fecha_contabilizacion"] = pd.to_datetime(df["fecha_contabilizacion"]).dt.date
+        df["en_precio"] = ~df["clase_documento"].isin(CLASES_LIQUIDACION_ORDENES)
+    return df
+
+
 def resumen_precios_entrada(df):
     """Una fila por material/centro de `df` (salida de precios_entrada_sop,
     ya filtrada): último precio y su mes, variación contra la compra anterior

@@ -73,6 +73,12 @@ class Command(BaseCommand):
         else:
             self.stdout.write("== Ingresos físicos (S&OP, ZMM056) == (omitido, no se encontró la carpeta)")
 
+        fbl3n_dir = self._carpeta_opcional(base, "TABLA_FBL3N")
+        if fbl3n_dir:
+            self._paso("Ajustes de valor de existencias (FBL3N)", "import_fbl3n", fbl3n_dir, forzar=forzar)
+        else:
+            self.stdout.write("== Ajustes de valor de existencias (FBL3N) == (omitido, no se encontró la carpeta)")
+
         self.stdout.write(self.style.SUCCESS(
             f"Carga completa finalizada en {self._duracion(time.monotonic() - inicio)}."
         ))

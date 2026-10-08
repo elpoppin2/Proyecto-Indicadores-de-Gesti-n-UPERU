@@ -1402,3 +1402,17 @@ tr[data-filtrar]:focus-visible { outline: 2px solid var(--accent); outline-offse
 .bloque:has(details.desglose) svg [data-filtrar] { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .desglose-chevron { transition: none; } }
 @media print { details.desglose { display: none !important; } }
+
+/* Precio real (MB51 + FBL3N): el precio elegido resaltado en el detalle,
+   la marca de ajustes trasladados y las liquidaciones de órdenes atenuadas. */
+td.dato-destacado { font-weight: 700; }
+.nota-celda { color: var(--muted); cursor: help; }
+tr.fila-atenuada td { color: var(--muted); }
+details.desglose-simple { border-top: 1px dashed var(--line); padding-top: 10px; }
+details.desglose-simple > summary {
+  cursor: pointer; width: fit-content; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px;
+  letter-spacing: .08em; text-transform: uppercase; font-weight: 600; color: var(--accent-texto);
+}
+details.desglose-simple > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+details.desglose-simple[open] > summary { margin-bottom: 10px; }
+@media print { details.desglose-simple { display: none !important; } }

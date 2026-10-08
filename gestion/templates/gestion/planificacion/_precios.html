@@ -13,7 +13,32 @@
     precio de compra. Los importados (Carbón Importado, Escoria japonesa) se compran en el centro {{ pr.centro_importacion }}
     (importación): un punto por barco. Un mes sin punto es un mes sin compras.
   </p>
+  {% if pr.es_real %}
+  <p class="nota">
+    <strong>Precio real</strong> = (importe de MB51 + ajustes de valor de la FBL3N) ÷ toneladas. Los ajustes son lo que
+    llega a la cuenta de existencias sin pasar por MB51: diferencias de precio de la factura, fletes, desestiba y
+    cargos de importación (MIRO), anulaciones de factura (MR8M) y cambios de precio (MR22). Cada ajuste cuenta en su
+    mes de contabilización; si ese mes no hubo compra, pasa al último mes anterior con compra. Las liquidaciones de
+    órdenes (KO88, reparación de repuestos) se muestran aparte y no entran al precio.
+    {% if pr.fbl3n_desde %}FBL3N cargada de {{ pr.fbl3n_desde|mesanio }} a {{ pr.fbl3n_hasta|mesanio }}.{% endif %}
+  </p>
+  {% if pr.meses_sin_fbl3n %}
+  <p class="aviso">
+    {{ pr.meses_sin_fbl3n|length }} mes{{ pr.meses_sin_fbl3n|length|pluralize:"es" }} del período no tiene{{ pr.meses_sin_fbl3n|length|pluralize:"n" }}
+    la FBL3N cargada ({{ pr.tramos_sin_fbl3n }}):
+    en esos meses el precio real es igual al de MB51 y se marca con * en el detalle.
+  </p>
+  {% endif %}
+  {% endif %}
   <form class="filtros" method="get" data-target="sec-precios">
+    <div class="campo">
+      <label for="tipo_precios">Precio</label>
+      <select name="tipo_precios" id="tipo_precios">
+        {% for o in pr.tipos %}
+          <option value="{{ o.valor }}" {% if o.valor == pr.tipo_sel %}selected{% endif %}>{{ o.texto }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <div class="campo">
       <label for="periodo_precios">Período</label>
       <select name="periodo_precios" id="periodo_precios">
@@ -83,19 +108,27 @@
         <table>
           <thead>
             <tr>
-              <th>Mes</th><th class="num">Toneladas</th><th class="num">Importe (S/)</th>
-              <th class="num">Precio (S/ por T)</th><th class="num">Var. vs compra anterior</th>
+              <th>Mes</th><th class="num">Toneladas</th>
+              <th class="num">Importe MB51 (S/)</th><th class="num">Ajustes FBL3N (S/)</th>
+              <th class="num">Precio MB51 (S/ por T)</th><th class="num">Precio real (S/ por T)</th>
+              <th class="num">Ajuste por T</th>
+              <th class="num">Var. vs compra anterior</th>
+              <th class="num">Liquid. órdenes (S/, aparte)</th>
               <th class="num">Entradas</th><th class="num">Proveedores</th>
             </tr>
           </thead>
           <tbody>
             {% for d in pr.detalle %}
               <tr>
-                <td>{{ d.mes|mesanio }}</td>
+                <td>{{ d.mes|mesanio }}{% if not d.con_fbl3n %} *{% endif %}</td>
                 <td class="num">{{ d.toneladas|numero:0 }}</td>
-                <td class="num">{{ d.importe|numero:0 }}</td>
-                <td class="num">{{ d.precio|numero:2 }}</td>
+                <td class="num">{{ d.importe_mb51|numero:0 }}</td>
+                <td class="num">{% if d.con_fbl3n or d.ajuste %}{{ d.ajuste|numero:0 }}{% if d.ajuste_trasladado %} <span class="nota-celda" title="Incluye S/ {{ d.ajuste_trasladado|numero:0 }} de meses sin compra o de otro centro">†</span>{% endif %}{% else %}—{% endif %}</td>
+                <td class="num {% if not pr.es_real %}dato-destacado{% endif %}">{{ d.precio_mb51|numero:2 }}</td>
+                <td class="num {% if pr.es_real %}dato-destacado{% endif %}">{{ d.precio_real|numero:2 }}{% if d.atipico %} <span class="nota-celda" title="El ajuste más que duplica el precio de MB51 o lo baja a menos de la mitad: revisar las partidas">!</span>{% endif %}</td>
+                <td class="num">{% if d.ajuste %}{% if d.ajuste > 0 %}+{% endif %}{{ d.ajuste_por_t|numero:2 }}{% else %}—{% endif %}</td>
                 <td class="num {% if d.variacion_pct > 0.05 %}dato-negativo{% elif d.variacion_pct < -0.05 %}dato-positivo{% endif %}">{% if d.variacion_pct is not None %}{% if d.variacion_pct > 0 %}+{% endif %}{{ d.variacion_pct|numero:1 }}%{% else %}—{% endif %}</td>
+                <td class="num">{% if d.ajuste_ordenes %}{{ d.ajuste_ordenes|numero:0 }}{% else %}—{% endif %}</td>
                 <td class="num">{{ d.entradas }}</td>
                 <td class="num">{{ d.proveedores }}</td>
               </tr>
@@ -103,6 +136,59 @@
           </tbody>
         </table>
       </div>
+      <p class="nota">* Mes sin la FBL3N cargada: el precio real es igual al de MB51. † El ajuste incluye importes de meses sin compra o registrados en otro centro (ver arriba). ! El ajuste más que duplica el precio de MB51 o lo baja a menos de la mitad: revisar sus partidas abajo. La variación es la del precio elegido en el filtro.</p>
+
+      {% if pr.ajustes %}
+        <h3 class="subtitulo">Ajustes de la FBL3N del período ({{ pr.ajustes_total }} partida{{ pr.ajustes_total|pluralize }})</h3>
+        <div class="tabla-scroll">
+          <table>
+            <thead><tr><th>Concepto</th><th class="num">Partidas</th><th class="num">Importe (S/)</th><th>¿Entra al precio?</th></tr></thead>
+            <tbody>
+              {% for a in pr.ajustes_resumen %}
+                <tr>
+                  <td>{{ a.concepto }}</td><td class="num">{{ a.lineas }}</td>
+                  <td class="num {% if a.importe > 0 %}dato-negativo{% elif a.importe < 0 %}dato-positivo{% endif %}">{{ a.importe|numero:0 }}</td>
+                  <td>{% if a.en_precio %}Sí{% else %}No, se muestra aparte{% endif %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <details class="desglose-simple">
+          <summary>Ver partida por partida{% if pr.ajustes_total > pr.max_ajustes %} (las {{ pr.max_ajustes }} más recientes){% endif %}</summary>
+          <div class="tabla-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha contab.</th><th>Centro</th><th>Concepto</th><th>Clase</th><th>Transacción</th>
+                  <th>Nº documento</th><th>Pedido</th><th>Referencia</th><th>Texto</th><th>Usuario</th>
+                  <th class="num">Importe (S/)</th><th class="num">Moneda doc.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for a in pr.ajustes %}
+                  <tr{% if not a.en_precio %} class="fila-atenuada"{% endif %}>
+                    <td>{{ a.fecha_contabilizacion|date:"d/m/Y" }}</td>
+                    <td>{{ a.centro|centro }}</td>
+                    <td>{{ a.concepto }}</td>
+                    <td>{{ a.clase_documento }}</td>
+                    <td>{{ a.codigo_transaccion }}</td>
+                    <td>{{ a.numero_documento }}</td>
+                    <td>{{ a.documento_compras }}</td>
+                    <td>{{ a.referencia }}</td>
+                    <td>{{ a.texto }}</td>
+                    <td>{{ a.usuario }}</td>
+                    <td class="num">{{ a.importe|numero:2 }}</td>
+                    <td class="num">{% if a.moneda_documento != "PEN" %}{{ a.importe_moneda_documento|numero:2 }} {{ a.moneda_documento }}{% endif %}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      {% elif pr.es_real %}
+        <p class="nota">Sin ajustes de la FBL3N para este material en el período.</p>
+      {% endif %}
     {% endwith %}
   {% else %}
     <p class="nota">Ordenado por la variación en 12 meses, de mayor alza a mayor baja. Elige una tarjeta para ver el gráfico completo.</p>

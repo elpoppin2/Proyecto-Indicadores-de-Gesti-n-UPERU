@@ -2320,6 +2320,9 @@ def _contexto_calidad(request):
 # Período del gráfico de precios de entrada: meses hacia atrás desde el
 # último mes con compras (None = toda la historia de MB51).
 _PERIODOS_PRECIOS = {"12": ("Últimos 12 meses", 12), "24": ("Últimos 24 meses", 24), "todo": ("Toda la historia", None)}
+_TIPOS_PRECIO = {"real": "Real (MB51 + ajustes FBL3N)", "mb51": "Solo MB51 (precio del pedido)"}
+# Partidas de la FBL3N listadas con un material elegido (las más recientes).
+_MAX_AJUSTES_LISTA = 300
 
 
 def _contexto_precios_entrada(request):
@@ -2327,10 +2330,17 @@ def _contexto_precios_entrada(request):
     desde MB51 (ver queries.precios_entrada_sop). Filtros propios en cascada
     (Categoría/Centro/Material) y Período. Con varios materiales: una tarjeta
     por material con su minigráfico; con uno: gráfico grande con las
-    toneladas compradas y su detalle mensual. Pedido por el usuario."""
-    base = q.precios_entrada_sop()
+    toneladas compradas y su detalle mensual. Pedido por el usuario.
+    "Precio": real (MB51 + ajustes de valor de la FBL3N, ver
+    queries.con_precio_real; por defecto) o solo MB51."""
+    base = q.precios_entrada_sop_real()
     if base.empty:
         return None
+    tipo_sel = request.GET.get("tipo_precios", "real")
+    if tipo_sel not in _TIPOS_PRECIO:
+        tipo_sel = "real"
+    if tipo_sel == "mb51":
+        base = base.assign(importe=base["importe_mb51"], precio=base["precio_mb51"])
     periodo_sel = request.GET.get("periodo_precios", "24")
     if periodo_sel not in _PERIODOS_PRECIOS:
         periodo_sel = "24"
@@ -2365,13 +2375,23 @@ def _contexto_precios_entrada(request):
     # gerencia); los que no tienen base anual, al final.
     tarjetas.sort(key=lambda t: (t["variacion_anual"] is None, -(t["variacion_anual"] or 0)))
 
-    detalle, grafico = [], None
+    detalle, grafico, ajustes, ajustes_resumen = [], None, [], []
     if len(tarjetas) == 1:
         g = df.sort_values("mes")
         anterior = None
         for r in g.itertuples():
             detalle.append({
                 "mes": r.mes, "toneladas": r.toneladas, "importe": r.importe, "precio": r.precio,
+                # Céntimos sueltos (líneas de flete en 0,00/−0,02) no son un ajuste.
+                "importe_mb51": r.importe_mb51, "precio_mb51": r.precio_mb51,
+                "ajuste": r.ajuste if abs(r.ajuste) >= 1 else 0.0,
+                "ajuste_trasladado": r.ajuste_trasladado if abs(r.ajuste_trasladado) >= 1 else 0.0,
+                "ajuste_ordenes": r.ajuste_ordenes if abs(r.ajuste_ordenes) >= 1 else 0.0,
+                "precio_real": (r.importe_mb51 + r.ajuste) / r.toneladas, "ajuste_por_t": r.ajuste / r.toneladas,
+                # Mismo criterio que la inflación (q._RAZON_ATIPICA): el ajuste
+                # más que duplica el precio o lo baja a menos de la mitad.
+                "atipico": not (1 / q._RAZON_ATIPICA <= (r.importe_mb51 + r.ajuste) / r.importe_mb51 <= q._RAZON_ATIPICA),
+                "con_fbl3n": r.con_fbl3n,
                 "entradas": r.entradas, "proveedores": r.proveedores,
                 "variacion_pct": None if anterior is None else (r.precio / anterior - 1) * 100,
             })
@@ -2380,8 +2400,25 @@ def _contexto_precios_entrada(request):
             [(r.mes, float(r.precio), float(r.toneladas)) for r in g.itertuples()], _mes_corto,
         )
         detalle.reverse()  # lo más reciente arriba
+        lista = q.ajustes_fbl3n_detalle([tarjetas[0]["material_codigo"]], min(g["mes"]), max(g["mes"]))
+        if not lista.empty:
+            ajustes = lista.head(_MAX_AJUSTES_LISTA).to_dict("records")
+            ajustes_resumen = (lista.groupby(["concepto", "en_precio"])
+                               .agg(lineas=("importe", "size"), importe=("importe", "sum"))
+                               .reset_index().sort_values("importe", key=abs, ascending=False).to_dict("records"))
 
+    meses_fbl3n = q.meses_con_fbl3n()
+    meses_vista = set(df["mes"]) if not df.empty else set()
+    sin_fbl3n = sorted(m for m in meses_vista if m not in meses_fbl3n)
     return {
+        "tipos": [{"valor": k, "texto": v} for k, v in _TIPOS_PRECIO.items()], "tipo_sel": tipo_sel,
+        "es_real": tipo_sel == "real",
+        "meses_sin_fbl3n": sin_fbl3n, "tramos_sin_fbl3n": _tramos_de_meses(sin_fbl3n),
+        "fbl3n_desde": min(meses_fbl3n) if meses_fbl3n else None,
+        "fbl3n_hasta": max(meses_fbl3n) if meses_fbl3n else None,
+        "ajustes": ajustes, "ajustes_resumen": ajustes_resumen,
+        "ajustes_total": len(lista) if len(tarjetas) == 1 else 0,
+        "max_ajustes": _MAX_AJUSTES_LISTA,
         "periodos": [{"valor": k, "texto": v[0]} for k, v in _PERIODOS_PRECIOS.items()], "periodo_sel": periodo_sel,
         "categorias": categorias_op, "categoria_sel": categoria_sel,
         "centros": centros_op, "centro_sel": centro_sel, "centro_importacion": q.CENTRO_IMPORTACION,
@@ -2390,6 +2427,18 @@ def _contexto_precios_entrada(request):
         "grafico": grafico, "detalle": detalle,
         "desde": min(df["mes"]) if not df.empty else None, "hasta": max(df["mes"]) if not df.empty else None,
     }
+
+
+def _tramos_de_meses(meses):
+    """Meses ordenados -> texto con los tramos consecutivos ('Ene-25 a Dic-25,
+    Oct-26')."""
+    tramos = []
+    for m in meses:
+        if tramos and q._sumar_meses(tramos[-1][1], 1) == m:
+            tramos[-1][1] = m
+        else:
+            tramos.append([m, m])
+    return ", ".join(_mes_corto(a) if a == b else f"{_mes_corto(a)} a {_mes_corto(b)}" for a, b in tramos)
 
 
 def _mes_corto(fecha):
