@@ -2493,11 +2493,18 @@ def _contexto_inflacion(request, sufijo="inflacion"):
     variación % o en bolsa (S/ = diferencia de precio × toneladas del mes
     evaluado). Filtros propios (Período/Categoría/Centro/Material/Ver). Una
     matriz material × mes con la bolsa por año, la selección ponderada mes a
-    mes y, con un material, su detalle. Pedido por el usuario."""
+    mes y, con un material, su detalle. Pedido por el usuario. Precio real
+    (MB51 + FBL3N) por defecto desde que la FBL3N quedó completa (2024 a
+    set-26); "Solo MB51" deja la evaluación como antes."""
     evaluacion = _EVALUACIONES_PRECIOS[sufijo]
-    base = q.precios_entrada_sop()
+    base = q.precios_entrada_sop_real()
     if base.empty:
         return None
+    tipo_sel = request.GET.get(f"tipo_{sufijo}", "real")
+    if tipo_sel not in _TIPOS_PRECIO:
+        tipo_sel = "real"
+    if tipo_sel == "mb51":
+        base = base.assign(importe=base["importe_mb51"], precio=base["precio_mb51"])
 
     categorias_op, _ = _opciones_categoria_centro(base)
     categoria_sel = request.GET.get(f"categoria_{sufijo}", "Todas")
@@ -2535,6 +2542,8 @@ def _contexto_inflacion(request, sufijo="inflacion"):
         periodo_sel = "desde"
     contexto = {
         **evaluacion, "sufijo": sufijo,
+        "tipos": [{"valor": k, "texto": v} for k, v in _TIPOS_PRECIO.items()], "tipo_sel": tipo_sel,
+        "es_real": tipo_sel == "real",
         "periodos": [{"valor": v, "texto": t} for v, t in periodos], "periodo_sel": periodo_sel,
         "categorias": categorias_op, "categoria_sel": categoria_sel,
         "centros": centros_op, "centro_sel": centro_sel,
@@ -2583,7 +2592,7 @@ def _contexto_inflacion(request, sufijo="inflacion"):
                  f"Bolsa: (S/ {r['precio']:,.2f} − S/ {r['precio_base']:,.2f}) × {r['toneladas']:,.0f} T = "
                  f"{signo}S/ {abs(r['bolsa']):,.0f}")
         if r["atipica"]:
-            texto += "\nATÍPICA: el precio más que se duplica o cae a menos de la mitad (dato a revisar en MB51); no suma en la bolsa ni en la selección."
+            texto += "\nATÍPICA: el precio más que se duplica o cae a menos de la mitad (dato a revisar en MB51 o en los ajustes de la FBL3N); no suma en la bolsa ni en la selección."
         return texto
 
     def detalle_acumulado(mes, datos, ipu, nombre=""):

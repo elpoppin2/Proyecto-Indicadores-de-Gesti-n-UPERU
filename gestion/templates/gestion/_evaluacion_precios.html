@@ -10,7 +10,7 @@
     <button type="button" class="btn-link" data-imprimir="{{ inf.id }}">Descargar / Imprimir</button>
   </div>
   <p class="nota">
-    Precio de compra de cada mes (MB51, mismo criterio que Precios de entrada) contra {{ inf.contra }}
+    Precio de compra de cada mes ({% if inf.es_real %}precio real: MB51 + ajustes de valor de la FBL3N{% else %}MB51{% endif %}, mismo criterio que Precios de entrada) contra {{ inf.contra }}
     ({{ inf.ejemplo }}). Si ese mes no tuvo compra, se compara contra el último precio registrado antes
     ({{ inf.sustituto }}), marcado con <span class="marca-sustituida">*</span>. Solo se evalúan los meses con compra.
     <strong>Bolsa</strong> = (precio del mes − precio base) × toneladas compradas en el mes evaluado: el impacto en soles
@@ -21,10 +21,20 @@
     mismo tramo del año anterior (Ene–Feb 2026 vs Ene–Feb 2025), ponderado con las toneladas del año más reciente{% else %}las
     variaciones de cada mes encadenadas desde enero, (1 + v₁) × (1 + v₂) × … − 1{% endif %}; se reinicia cada enero.
     Una comparación donde el precio más que se duplica o cae a menos de la mitad se marca con
-    <span class="marca-atipica">!</span> (dato atípico de MB51, p.ej. Ene-24 de Sílices y Puzolana de Terceros): se
+    <span class="marca-atipica">!</span> (dato atípico{% if not inf.es_real %} de MB51, p.ej. Ene-24 de Sílices y Puzolana de Terceros{% endif %}): se
     muestra, pero no suma en la bolsa ni en la selección.
   </p>
   <form class="filtros" method="get" data-target="{{ inf.id }}">
+    {% if inf.tipos %}
+    <div class="campo">
+      <label for="tipo_{{ inf.sufijo }}">Precio</label>
+      <select name="tipo_{{ inf.sufijo }}" id="tipo_{{ inf.sufijo }}">
+        {% for o in inf.tipos %}
+          <option value="{{ o.valor }}" {% if o.valor == inf.tipo_sel %}selected{% endif %}>{{ o.texto }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
     <div class="campo">
       <label for="periodo_{{ inf.sufijo }}">Período</label>
       <select name="periodo_{{ inf.sufijo }}" id="periodo_{{ inf.sufijo }}">

@@ -37,7 +37,7 @@ class Command(BaseCommand):
             self.stdout.write("== Categorías == (omitido, no se encontró la carpeta 'CATEGORÍAS')")
 
         inicio = time.monotonic()
-        materiales_xlsx = self._un_archivo(base, "TABLA_SQ01_ZMM60")
+        materiales_xlsx = self._mas_reciente(base, "TABLA_SQ01_ZMM60")
         self._paso("Materiales", "import_materiales", materiales_xlsx, forzar=forzar)
 
         inventario_dir = self._carpeta(base, "TABLA_MB5B")
@@ -114,6 +114,23 @@ class Command(BaseCommand):
                 f"Se esperaba un único archivo en {ruta}, se encontraron {len(archivos)}: {archivos}"
             )
         return archivos[0]
+
+    def _mas_reciente(self, base, nombre):
+        """El maestro de materiales es una foto completa: desde oct-2026 el
+        robot le pone el mes al nombre (MM60_SUPPLY_OCTUBRE_2026), así que en
+        la carpeta copia conviven el nuevo y los anteriores (la copia no
+        borra). Se usa el más reciente en vez de detener toda la carga."""
+        ruta = self._carpeta(base, nombre)
+        archivos = [a for a in glob.glob(os.path.join(ruta, "*.xlsx")) + glob.glob(os.path.join(ruta, "*.csv"))
+                    if not os.path.basename(a).startswith("~$")]
+        if not archivos:
+            raise CommandError(f"No se encontró ningún CSV/Excel dentro de {ruta}")
+        elegido = max(archivos, key=os.path.getmtime)
+        if len(archivos) > 1:
+            otros = ", ".join(os.path.basename(a) for a in archivos if a != elegido)
+            self.stdout.write(f"   ({nombre}: {len(archivos)} archivos, se usa el más reciente "
+                              f"{os.path.basename(elegido)}; se ignoran: {otros})")
+        return elegido
 
     def _un_archivo_opcional(self, base, nombre):
         ruta = os.path.join(base, nombre)
