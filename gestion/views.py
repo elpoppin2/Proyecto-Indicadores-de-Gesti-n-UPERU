@@ -2458,8 +2458,8 @@ def _matriz_tco(historia, df):
     material y centro de lo filtrado y, de izquierda a derecha, el precio de
     cada mes del año anterior y del actual (p.ej. Ene-25 … Oct-26), con el
     IPU acumulado de cada año al cierre de sus meses; abajo, el IPU de todo lo
-    filtrado. Solo esos dos años (pedido del usuario). Mes sin compra =
-    vacío. `historia` sin recortar por período (el IPU de enero compara
+    filtrado. Solo esos dos años (pedido del usuario). Mes sin compra = el
+    último precio, marcado como repetido. `historia` sin recortar por período (el IPU de enero compara
     contra el año anterior)."""
     if df.empty:
         return None
@@ -2475,6 +2475,7 @@ def _matriz_tco(historia, df):
         columnas += [{"tipo": "mes", "texto": _mes_corto(m), "mes": m} for m in meses_de[a]]
         columnas.append({"tipo": "ipu", "texto": f"IPU {a}", "anio": a})
     filas = []
+    primer_mes = meses_de[anios[0]][0]
     for (material, centro), g in h.groupby(["material_codigo", "centro"]):
         por_mes = {r.mes: r for r in g.itertuples()}
         if not any(m in por_mes for a in anios for m in meses_de[a]):
@@ -2483,6 +2484,11 @@ def _matriz_tco(historia, df):
         # En producción propia la liquidación ES el costo (no un ajuste sobre
         # MB51): no se marca como atípica.
         propio = (material, centro) in q.PRODUCCION_PROPIA
+        # Mes sin compra = se repite el último precio (pedido del usuario),
+        # también el de antes de enero del año anterior. No cambia el IPU:
+        # ese mes no tiene toneladas y la base ya es el último precio.
+        previos = [m for m in por_mes if m < primer_mes]
+        vigente = (max(previos), por_mes[max(previos)].importe_tco / por_mes[max(previos)].toneladas) if previos else None
         celdas = []
         for c in columnas:
             if c["tipo"] == "ipu":
@@ -2490,8 +2496,11 @@ def _matriz_tco(historia, df):
                 continue
             r = por_mes.get(c["mes"])
             if r is None:
-                celdas.append(None)
+                celdas.append({"precio": vigente[1], "repetido": True,
+                               "titulo": f"{c['texto']}: sin compra, se repite el precio de {_mes_corto(vigente[0])}"}
+                              if vigente else None)
                 continue
+            vigente = (c["mes"], r.importe_tco / r.toneladas)
             celdas.append({"precio": r.importe_tco / r.toneladas,
                            "atipico": not propio and not (
                                1 / q._RAZON_ATIPICA <= r.importe_tco / r.importe_mb51 <= q._RAZON_ATIPICA),

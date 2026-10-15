@@ -209,7 +209,8 @@
         con los importados puestos en planta (AT = Atocongo U001, CC = Condorcocha U002). Los materiales son los de los
         filtros de arriba; los meses son los de {{ mt.anios.0 }} y {{ mt.anios.1 }}. <strong>IPU</strong> = acumulado del año
         contra el mismo tramo del año anterior (lo pagado ÷ lo que habrían costado esas toneladas al precio de un año antes
-        − 1); la última fila es el IPU de todos los materiales de la tabla. Celda vacía = mes sin compra. En amarillo,
+        − 1); la última fila es el IPU de todos los materiales de la tabla. Mes sin compra = se repite el último precio
+        (en gris y cursiva; no cambia el IPU, que solo pondera los meses con compra). En amarillo,
         meses donde los ajustes de la FBL3N más que duplican el precio de MB51 o lo bajan a menos de la mitad. Pasa el
         mouse sobre un precio para ver cómo se calcula.
       </p>
@@ -230,7 +231,7 @@
                 {% for c in f.celdas %}
                   {% if c is None %}<td class="num"></td>
                   {% elif 'ipu' in c %}<td class="num tco-ipu">{% if c.ipu is not None %}{% if c.ipu > 0 %}+{% endif %}{{ c.ipu|numero:1 }}%{% else %}—{% endif %}</td>
-                  {% else %}<td class="num{% if c.atipico %} tco-atipico{% endif %}" title="{{ c.titulo }}">{{ c.precio|numero:2 }}</td>{% endif %}
+                  {% else %}<td class="num{% if c.atipico %} tco-atipico{% endif %}{% if c.repetido %} tco-repetido{% endif %}" title="{{ c.titulo }}">{{ c.precio|numero:2 }}</td>{% endif %}
                 {% endfor %}
               </tr>
             {% endfor %}
