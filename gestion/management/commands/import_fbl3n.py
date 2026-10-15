@@ -79,7 +79,7 @@ class Command(BaseCommand):
             return ("Le faltan las columnas " + ", ".join(faltan)
                     + ": vuelve a exportarlo con la disposición completa.")
 
-        objetos, fechas, leidas = [], [], 0
+        objetos, fechas, cuentas, leidas = [], [], set(), 0
 
         def agregar(f):
             nonlocal leidas
@@ -88,6 +88,7 @@ class Command(BaseCommand):
                 return
             leidas += 1
             fechas.append(fecha_cont)
+            cuentas.add(texto(f.get("Cuenta de mayor")))
             clase = texto(f.get("Clase de documento"))
             material = texto(f.get("Material"))
             importe = _num(f.get("Importe en moneda local"))
@@ -126,11 +127,14 @@ class Command(BaseCommand):
         if not fechas:
             return "No trae ninguna fila con fecha de contabilización."
 
-        # Reemplaza lo que hubiera de las mismas fechas (un año vuelto a bajar,
-        # o el mes en curso actualizado).
+        # Reemplaza lo que hubiera de las mismas fechas Y las mismas cuentas (un
+        # año vuelto a bajar, o el mes en curso actualizado). Por cuenta: un
+        # archivo aparte con otras cuentas (p.ej. la de la caliza de cantera
+        # propia, clase 23) no borra los ajustes de las cuentas 24-28.
         desde, hasta = min(fechas), max(fechas)
         borrados, _ = AjustePrecioFBL3N.objects.filter(
-            fecha_contabilizacion__gte=desde, fecha_contabilizacion__lte=hasta).delete()
+            fecha_contabilizacion__gte=desde, fecha_contabilizacion__lte=hasta,
+            cuenta_mayor__in=cuentas).delete()
         AjustePrecioFBL3N.objects.bulk_create(objetos, batch_size=2000)
         registrar_importado(archivo, len(objetos))
         self.stdout.write(
