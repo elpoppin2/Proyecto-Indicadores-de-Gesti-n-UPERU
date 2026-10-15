@@ -5,7 +5,7 @@ from django.db import transaction
 from django.core.management.base import BaseCommand, CommandError
 
 from gestion.models import IngresoFisicoSOP
-from ._excel_utils import decimal, fecha, leer_filas_excel, texto
+from ._excel_utils import _filas_xlsx, decimal, fecha, texto
 from ._seguimiento_archivos import fuera_de_ventana, necesita_importar, registrar_importado
 
 # El Pesaje Neto (báscula) viene en kilogramos aunque la Unidad de medida base
@@ -42,6 +42,55 @@ _IDX_CALIDAD = {
     12: "humedad", 13: "cao", 14: "sio2", 15: "so3", 16: "mgo", 17: "fe2o3", 18: "al2o3",
     19: "insolubles", 20: "cenizas", 21: "volatiles", 22: "azufre", 23: "pcs", 24: "hgi",
     25: "yeso", 26: "humedad_total", 27: "azufre_elt", 28: "sialfe",
+}
+
+# Desde el 14-oct-2026 el robot de TIC baja la ZMM056 con otro layout (98
+# columnas, otro orden, empieza por "Ticket Registro"). Ese formato se lee por
+# NOMBRE de columna, tomando la PRIMERA aparición de cada nombre repetido:
+# verificado contra los tickets ya cargados que la primera "Documento
+# material" es la de la entrada (coincidió en 1,310 de 1,310), la primera
+# "Nombre 1" es el proveedor del material y la primera "Número Muestra" la
+# muestra. El layout antiguo (107 columnas, empieza por "Centro Salida") se
+# sigue leyendo por posición, como antes.
+_NOMBRES = {
+    "centro": "Centro Salida", "ticket": "Ticket Registro", "estado": "Estado Ticket",
+    "fecha": "Fecha de Ingreso", "proveedor_codigo": "Proveedor Material", "proveedor": "Nombre 1",
+    "material": "Material", "descripcion": "Descripción material", "humedo": "Pesaje Neto Humedo",
+    "umb": "Unidad medida base", "documento": "Documento material", "posicion": "Posición",
+    "tipo": "Tipo de operacion", "muestra": "Número Muestra", "premio": "Premio o Castigo",
+    "seco": "Pesaje Neto Seco",
+}
+_POSICIONES_ANTIGUAS = {
+    "centro": _IDX_CENTRO_SALIDA, "ticket": _IDX_TICKET_REGISTRO, "estado": _IDX_ESTADO_TICKET,
+    "fecha": _IDX_FECHA_INGRESO, "proveedor_codigo": _IDX_PROVEEDOR_CODIGO, "proveedor": _IDX_PROVEEDOR_NOMBRE,
+    "material": _IDX_MATERIAL, "descripcion": _IDX_DESCRIPCION_MATERIAL, "humedo": _IDX_PESAJE_NETO_HUMEDO,
+    "umb": _IDX_UNIDAD_MEDIDA_BASE, "documento": _IDX_DOCUMENTO_MATERIAL, "posicion": _IDX_POSICION,
+    "tipo": _IDX_TIPO_OPERACION, "muestra": _IDX_NUMERO_MUESTRA, "premio": _IDX_PREMIO, "seco": _IDX_PESAJE_NETO_SECO,
+}
+
+
+def _indices(encabezado):
+    """(posición de cada campo, posición -> campo de calidad) según el layout
+    del archivo (ver _NOMBRES)."""
+    encabezado = ["" if e is None else str(e).strip() for e in encabezado]
+    if encabezado and encabezado[0] == "Centro Salida":
+        return _POSICIONES_ANTIGUAS, _IDX_CALIDAD
+    primera = {}
+    for i, nombre in enumerate(encabezado):
+        primera.setdefault(nombre, i)
+    faltan = [n for n in [*_NOMBRES.values(), *_NOMBRES_CALIDAD.values()] if n not in primera]
+    if faltan:
+        raise CommandError("La ZMM056 trae un formato desconocido; faltan las columnas: " + ", ".join(faltan))
+    return ({campo: primera[nombre] for campo, nombre in _NOMBRES.items()},
+            {primera[nombre]: campo for campo, nombre in _NOMBRES_CALIDAD.items()})
+
+
+_NOMBRES_CALIDAD = {
+    "humedad": "Factor humedad %", "cao": "Factor CaO", "sio2": "Factor Si02", "so3": "Factor S03",
+    "mgo": "Factor Mg0", "fe2o3": "Factor Fe2O3", "al2o3": "Factor Al203", "insolubles": "Factor Insolu",
+    "cenizas": "Factor Cenizas %", "volatiles": "Factor Volatiles %", "azufre": "Factor Azufre %",
+    "pcs": "Factor  PCS", "hgi": "Factor  HGI", "yeso": "Gypsum", "humedad_total": "Factor humedad Total",
+    "azufre_elt": "Factor S(Elt)", "sialfe": "Factor SiAlFe",
 }
 
 # Al recargar un archivo (p.ej. el del mes en curso, cada día), un ticket que
@@ -149,41 +198,48 @@ class Command(BaseCommand):
                 )
                 lote = []
 
-        for fila in leer_filas_excel(archivo):
-            if texto(fila[_IDX_ESTADO_TICKET]) == _ESTADO_TICKET_ANULADO:
+        filas = _filas_xlsx(archivo)
+        encabezado = next(filas, None)
+        if not encabezado:
+            return 0
+        ix, ix_calidad = _indices(encabezado)
+        for fila in filas:
+            if not fila or not any(v is not None and v != "" for v in fila):
+                continue
+            if texto(fila[ix["estado"]]) == _ESTADO_TICKET_ANULADO:
                 continue
 
-            ticket_registro = texto(fila[_IDX_TICKET_REGISTRO])
+            ticket_registro = texto(fila[ix["ticket"]])
             if not ticket_registro:
                 continue
             # Un mismo ticket puede venir en más de una fila (columna "Sec."):
             # se queda la primera, igual que antes.
-            clave = (texto(fila[_IDX_CENTRO_SALIDA]), ticket_registro)
+            clave = (texto(fila[ix["centro"]]), ticket_registro)
             if clave in vistos:
                 continue
             vistos.add(clave)
 
-            peso_neto_humedo = decimal(fila[_IDX_PESAJE_NETO_HUMEDO])
+            peso_neto_humedo = decimal(fila[ix["humedo"]])
             cantidad_toneladas = peso_neto_humedo / _KG_A_TONELADAS if peso_neto_humedo is not None else None
 
             lote.append(IngresoFisicoSOP(
                 planta_origen=planta_origen,
                 ticket_registro=ticket_registro,
-                centro=texto(fila[_IDX_CENTRO_SALIDA]),
-                material_codigo=texto(fila[_IDX_MATERIAL]),
-                descripcion_material=texto(fila[_IDX_DESCRIPCION_MATERIAL]),
-                fecha_ingreso=fecha(fila[_IDX_FECHA_INGRESO]),
+                centro=texto(fila[ix["centro"]]),
+                material_codigo=texto(fila[ix["material"]]),
+                descripcion_material=texto(fila[ix["descripcion"]]),
+                fecha_ingreso=fecha(fila[ix["fecha"]]),
                 cantidad=cantidad_toneladas,
-                unidad_medida_base=texto(fila[_IDX_UNIDAD_MEDIDA_BASE]),
-                proveedor_codigo=texto(fila[_IDX_PROVEEDOR_CODIGO]),
-                proveedor=texto(fila[_IDX_PROVEEDOR_NOMBRE]),
-                documento_material=texto(fila[_IDX_DOCUMENTO_MATERIAL]),
-                posicion=texto(fila[_IDX_POSICION]),
-                tipo_operacion=texto(fila[_IDX_TIPO_OPERACION]),
-                numero_muestra=texto(fila[_IDX_NUMERO_MUESTRA]),
-                **{campo: _analisis(fila[indice]) for indice, campo in _IDX_CALIDAD.items()},
-                premio=float(premio) if (premio := decimal(fila[_IDX_PREMIO])) else None,
-                cantidad_seca=float(seco) / _KG_A_TONELADAS if (seco := decimal(fila[_IDX_PESAJE_NETO_SECO])) else None,
+                unidad_medida_base=texto(fila[ix["umb"]]),
+                proveedor_codigo=texto(fila[ix["proveedor_codigo"]]),
+                proveedor=texto(fila[ix["proveedor"]]),
+                documento_material=texto(fila[ix["documento"]]),
+                posicion=texto(fila[ix["posicion"]]),
+                tipo_operacion=texto(fila[ix["tipo"]]),
+                numero_muestra=texto(fila[ix["muestra"]]),
+                **{campo: _analisis(fila[indice]) for indice, campo in ix_calidad.items()},
+                premio=float(premio) if (premio := decimal(fila[ix["premio"]])) else None,
+                cantidad_seca=float(seco) / _KG_A_TONELADAS if (seco := decimal(fila[ix["seco"]])) else None,
             ))
             total += 1
             if len(lote) >= batch_size:
