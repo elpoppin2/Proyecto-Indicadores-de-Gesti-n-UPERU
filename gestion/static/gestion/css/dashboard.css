@@ -345,6 +345,22 @@ td.estado-sobre_maximo { background: rgba(214, 160, 40, .2); }
 .chart-precio .base-barras { stroke: var(--line); stroke-width: 1; }
 .chart-precio .barra-toneladas, .leyenda-marca.barra-toneladas { fill: #9a9a9a; background: #9a9a9a; }
 .leyenda-marca.barra-toneladas { height: 10px; width: 10px; border-radius: 2px; }
+/* Ejes y etiquetas siempre visibles (pedido del usuario): eje Y en S/ por T
+   con grilla, escala de toneladas, precio en cada punto y toneladas en cada
+   barra; meses girados cuando no caben horizontales. */
+.chart-precio .grilla { stroke: var(--line); stroke-width: 1; opacity: .7; }
+.chart-precio .eje { stroke: var(--table-line); stroke-width: 1.2; }
+.chart-precio .etiqueta-eje-y { font-size: 10px; }
+.chart-precio .eje-toneladas { color: #8a8a8a; font-size: 9px; }
+.chart-precio .etiqueta-valor { font-size: 9px; text-shadow: 0 0 3px var(--surface), 0 0 3px var(--surface); }
+.etiqueta-barra-t {
+  position: absolute; transform: translate(-50%, calc(-100% - 2px)); font-family: "IBM Plex Mono", monospace;
+  font-size: 8.5px; color: var(--muted); white-space: nowrap; pointer-events: none;
+}
+.etiqueta-mes.etiqueta-mes-girada {
+  bottom: auto; font-size: 9.5px; letter-spacing: 0;
+  transform-origin: 100% 0; transform: translate(-100%, 0) rotate(-40deg);
+}
 .grilla-precios { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
 .tarjeta-precio {
   display: flex; flex-direction: column; gap: 6px; text-align: left; font: inherit; color: var(--ink);

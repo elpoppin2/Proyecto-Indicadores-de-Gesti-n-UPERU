@@ -451,15 +451,20 @@ def _meses_continuos(desde, hasta):
     return meses
 
 
-def evolucion_precio(serie, etiqueta_mes, base=None, ancho=640, alto=280, pad_x=16, pad_y=28):
+def evolucion_precio(serie, etiqueta_mes, base=None, ancho_minimo=640, izq=58, der=18, arriba=30):
     """Precio de entrada mensual (S/ por T) de UN material, en dos franjas con
     el mismo eje de meses (continuo: un mes sin compra queda como hueco, así
     se ve cada cuánto se compra — p.ej. un barco cada 5 meses):
     - arriba, la línea del precio (escala ajustada al rango del precio, no
-      desde 0, para que una variación de 2-3% se vea), con etiqueta solo en
-      el primer y último punto y en el precio mínimo y máximo (con 30+ meses,
-      un número por punto se pisaba);
-    - abajo, barritas grises con las toneladas compradas cada mes.
+      desde 0, para que una variación de 2-3% se vea), con eje Y en S/ por T,
+      grilla, y etiqueta en TODOS los puntos (pedido del usuario: siempre
+      etiquetas de datos y ejes con valores); cuando los meses van muy
+      juntos las etiquetas se alternan arriba/abajo del punto para no pisarse;
+    - abajo, barritas grises con las toneladas compradas cada mes, cada una
+      con su etiqueta, y su propia escala (0 y el máximo) en el eje.
+    El eje X muestra todos los meses (girados si no caben). El ancho crece con
+    la cantidad de meses (~30 unidades por mes); en pantallas angostas el
+    contenedor hace scroll horizontal.
     `serie`: lista de (mes, precio, toneladas) ordenada. `etiqueta_mes`:
     función mes -> texto corto del eje. `base`: lista opcional de (mes,
     precio) con el precio contra el que se compara cada mes (Inflación de
@@ -478,46 +483,72 @@ def evolucion_precio(serie, etiqueta_mes, base=None, ancho=640, alto=280, pad_x=
     # 2-3% ocupaba todo el alto y parecía un salto enorme.
     centro, medio_rango = (piso + techo) / 2, max((techo - piso) / 2, 0.10 * sum(precios) / len(precios))
     piso, techo = centro - medio_rango, centro + medio_rango
-    paso = (ancho - 2 * pad_x) / (len(meses) - 1)
-    base_linea = alto * 0.60
-    tope_barras, base_barras = alto * 0.70, alto - 22
+    marcas = _marcas_eje(piso, techo, 5)
+    if marcas:
+        piso, techo = min(piso, marcas[0]), max(techo, marcas[-1])
+
+    # Margen interior a cada lado: la etiqueta del primer punto no se pisa con
+    # los valores del eje Y ni la del último se corta en el borde.
+    interior = 22
+    ancho = max(ancho_minimo, round(izq + der + 2 * interior + 30 * (len(meses) - 1)))
+    paso = (ancho - izq - der - 2 * interior) / (len(meses) - 1)
+    x0 = izq + interior
+    girado = paso < 40  # "Ene-25" no cabe horizontal: se gira el texto del mes
+    alto = 330 if girado else 300
+    base_barras = alto - (48 if girado else 24)
+    base_linea = arriba + (base_barras - arriba) * 0.58
+    tope_barras = base_linea + 40
 
     def y_de(valor):
-        return pad_y + (base_linea - pad_y) * (1 - (valor - piso) / (techo - piso))
+        return arriba + (base_linea - arriba) * (1 - (valor - piso) / (techo - piso))
 
-    crudos = [(pad_x + indice[m] * paso, y_de(p), m, p, t) for m, p, t in serie]
+    def pct_x(x):
+        return f"{x / ancho * 100:.2f}"
+
+    def pct_y(y):
+        return f"{y / alto * 100:.2f}"
+
+    crudos = [(x0 + indice[m] * paso, y_de(p), m, p, t) for m, p, t in serie]
     linea = " ".join(f"{'M' if i == 0 else 'L'}{x:.1f} {y:.1f}" for i, (x, y, _, _, _) in enumerate(crudos))
-    i_min = min(range(len(crudos)), key=lambda i: crudos[i][3])
-    i_max = max(range(len(crudos)), key=lambda i: crudos[i][3])
-    con_etiqueta = {0, len(crudos) - 1, i_min, i_max}
+    alternar = paso < 34
     puntos = [{
-        "x": f"{x:.1f}", "y": f"{y:.1f}", "x_pct": f"{x / ancho * 100:.2f}", "y_pct": f"{y / alto * 100:.2f}",
+        "x": f"{x:.1f}", "y": f"{y:.1f}", "x_pct": pct_x(x), "y_pct": pct_y(y),
         "titulo": f"{etiqueta_mes(m)}: S/ {p:,.2f} por T · {t:,.0f} T",
-        "etiqueta": f"{p:,.1f}" if i in con_etiqueta else "",
+        "etiqueta": f"{p:,.1f}", "posicion": "abajo" if alternar and i % 2 else "arriba",
     } for i, (x, y, m, p, t) in enumerate(crudos)]
 
     mayor = max(t for _, _, t in serie) or 1.0
-    ancho_barra = max(min(paso * 0.6, 14.0), 2.0)
+    ancho_barra = max(min(paso * 0.55, 14.0), 2.0)
     barras = []
     for x, _, m, p, t in crudos:
         alto_barra = max(t, 0.0) / mayor * (base_barras - tope_barras)
+        y_barra = base_barras - alto_barra
         barras.append({
-            "x": f"{x - ancho_barra / 2:.1f}", "y": f"{base_barras - alto_barra:.1f}",
+            "x": f"{x - ancho_barra / 2:.1f}", "y": f"{y_barra:.1f}",
             "ancho": f"{ancho_barra:.1f}", "alto": f"{alto_barra:.1f}",
             "titulo": f"{etiqueta_mes(m)}: {t:,.0f} T compradas",
+            "etiqueta": _toneladas_corto(t), "x_pct": pct_x(x), "y_pct": pct_y(y_barra),
         })
-    paso_eje = max(1, math.ceil(len(meses) / 10))
-    eje = [
-        {"x_pct": f"{(pad_x + i * paso) / ancho * 100:.2f}", "texto": etiqueta_mes(m)}
-        for i, m in enumerate(meses) if i % paso_eje == 0 or i == len(meses) - 1
-    ]
+    eje = [{"x_pct": pct_x(x0 + i * paso), "texto": etiqueta_mes(m)} for i, m in enumerate(meses)]
     linea_base = " ".join(
-        f"{'M' if i == 0 else 'L'}{pad_x + indice[m] * paso:.1f} {y_de(p):.1f}" for i, (m, p) in enumerate(base or [])
+        f"{'M' if i == 0 else 'L'}{x0 + indice[m] * paso:.1f} {y_de(p):.1f}" for i, (m, p) in enumerate(base or [])
     )
+    grilla = [{"y": f"{y_de(v):.1f}", "y_pct": pct_y(y_de(v)), "texto": f"{v:,.0f}" if _paso_marca(marcas) >= 1 else f"{v:,.1f}"}
+              for v in marcas]
+    grilla_t = [{"y": f"{base_barras:.1f}", "y_pct": pct_y(base_barras), "texto": "0 T"},
+                {"y": f"{tope_barras:.1f}", "y_pct": pct_y(tope_barras), "texto": f"{_toneladas_corto(mayor)} T"}]
     return {
         "ancho": ancho, "alto": alto, "linea": linea, "puntos": puntos, "barras": barras, "eje": eje,
+        "girado": girado, "eje_top_pct": pct_y(base_barras + 6),
+        "izq": f"{izq:.1f}", "der": f"{ancho - der:.1f}", "arriba": f"{arriba - 10:.1f}", "izq_pct": pct_x(izq),
+        "grilla": grilla, "grilla_t": grilla_t, "tope_barras": f"{tope_barras:.1f}",
         "base_barras": f"{base_barras:.1f}", "tonelaje_maximo": _toneladas_corto(mayor), "linea_base": linea_base,
     }
+
+
+def _paso_marca(marcas):
+    """Distancia entre marcas consecutivas del eje (para decidir decimales)."""
+    return (marcas[1] - marcas[0]) if len(marcas) > 1 else 1.0
 
 
 def minigrafico_precio(serie, ancho=180, alto=46, pad=5):

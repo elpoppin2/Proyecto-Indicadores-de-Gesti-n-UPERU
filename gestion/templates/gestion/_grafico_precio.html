@@ -1,0 +1,33 @@
+{% load dashboard_extras %}
+{% comment %}
+  Gráfico de evolución del precio de entrada (charts.evolucion_precio): eje Y
+  en S/ por T con grilla, escala de toneladas, todos los meses en el eje X y
+  etiqueta de datos en cada punto y cada barra (pedido del usuario: siempre
+  visibles). Se incluye con:
+  {% include "gestion/_grafico_precio.html" with g=... aria="..." %}
+{% endcomment %}
+<div class="chart-scroll">
+<div class="chart-wrap chart-precio{% if g.girado %} chart-precio-girado{% endif %}" style="min-width: {{ g.ancho }}px;">
+  <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="{{ aria|default:'Evolución del precio de entrada' }}">
+    {% for l in g.grilla %}<line class="grilla" x1="{{ g.izq }}" y1="{{ l.y }}" x2="{{ g.der }}" y2="{{ l.y }}"></line>{% endfor %}
+    <line class="grilla" x1="{{ g.izq }}" y1="{{ g.tope_barras }}" x2="{{ g.der }}" y2="{{ g.tope_barras }}"></line>
+    {% for b in g.barras %}
+      <rect class="barra-toneladas con-detalle" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.ancho }}" height="{{ b.alto }}" rx="1.5" data-detalle="{{ b.titulo }}"></rect>
+    {% endfor %}
+    <line class="eje" x1="{{ g.izq }}" y1="{{ g.arriba }}" x2="{{ g.izq }}" y2="{{ g.base_barras }}"></line>
+    <line class="eje" x1="{{ g.izq }}" y1="{{ g.base_barras }}" x2="{{ g.der }}" y2="{{ g.base_barras }}"></line>
+    {% if g.linea_base %}<path class="linea-precio-base" d="{{ g.linea_base }}"></path>{% endif %}
+    <path class="linea" d="{{ g.linea }}"></path>
+    {% for pt in g.puntos %}
+      <circle class="punto" cx="{{ pt.x }}" cy="{{ pt.y }}" r="3"></circle>
+      <circle class="zona-detalle con-detalle" cx="{{ pt.x }}" cy="{{ pt.y }}" r="9" data-detalle="{{ pt.titulo }}"></circle>
+    {% endfor %}
+  </svg>
+  <span class="titulo-eje-y">S/ por T</span>
+  {% for l in g.grilla %}<span class="etiqueta-eje-y" style="top:{{ l.y_pct }}%; width:{{ g.izq_pct }}%;">{{ l.texto }}</span>{% endfor %}
+  {% for l in g.grilla_t %}<span class="etiqueta-eje-y eje-toneladas" style="top:{{ l.y_pct }}%; width:{{ g.izq_pct }}%;">{{ l.texto }}</span>{% endfor %}
+  {% for pt in g.puntos %}<span class="etiqueta-valor etiqueta-{{ pt.posicion }}" style="left:{{ pt.x_pct }}%; top:{{ pt.y_pct }}%;">{{ pt.etiqueta }}</span>{% endfor %}
+  {% for b in g.barras %}<span class="etiqueta-barra-t" style="left:{{ b.x_pct }}%; top:{{ b.y_pct }}%;">{{ b.etiqueta }}</span>{% endfor %}
+  {% for e in g.eje %}<span class="etiqueta-mes{% if g.girado %} etiqueta-mes-girada{% endif %}" style="left:{{ e.x_pct }}%;{% if g.girado %} top:{{ g.eje_top_pct }}%;{% endif %}">{{ e.texto }}</span>{% endfor %}
+</div>
+</div>

@@ -2063,7 +2063,7 @@ function minigraficoPrecio(serie, {ancho=180, alto=46, pad=5} = {}){
   return {ancho, alto, linea: crudos.map(([x,y],i)=>`${i?"L":"M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" "),
           fin_x: crudos[crudos.length-1][0].toFixed(1), fin_y: crudos[crudos.length-1][1].toFixed(1)};
 }
-function evolucionPrecio(serie, {base=null, ancho=640, alto=280, padX=16, padY=28} = {}){
+function evolucionPrecio(serie, {base=null, anchoMinimo=640, izq=58, der=18, arriba=30} = {}){
   if(!serie.length) return null;
   let meses = mesesContinuos(serie[0][0], serie[serie.length-1][0]);
   if(meses.length < 2) meses = [meses[0], sumarMesesIso(meses[0], 1)];
@@ -2074,24 +2074,35 @@ function evolucionPrecio(serie, {base=null, ancho=640, alto=280, padX=16, padY=2
   let piso = minimo - margen, techo = maximo + margen;
   const centro = (piso + techo)/2, medio = Math.max((techo - piso)/2, 0.10*precios.reduce((a,b)=>a+b,0)/precios.length);
   piso = centro - medio; techo = centro + medio;
-  const paso = (ancho - 2*padX)/(meses.length - 1), baseLinea = alto*0.60, topeBarras = alto*0.70, baseBarras = alto - 22;
-  const yDe = v => padY + (baseLinea - padY)*(1 - (v - piso)/(techo - piso));
-  const crudos = serie.map(([m,p,t]) => [padX + indice.get(m)*paso, yDe(p), m, p, t]);
-  let iMin = 0, iMax = 0;
-  crudos.forEach((c,i) => { if(c[3] < crudos[iMin][3]) iMin = i; if(c[3] > crudos[iMax][3]) iMax = i; });
-  const conEtiqueta = new Set([0, crudos.length-1, iMin, iMax]);
+  const marcas = marcasEje(piso, techo, 5);
+  if(marcas.length){ piso = Math.min(piso, marcas[0]); techo = Math.max(techo, marcas[marcas.length-1]); }
+  const interior = 22;
+  const ancho = Math.max(anchoMinimo, Math.round(izq + der + 2*interior + 30*(meses.length - 1)));
+  const paso = (ancho - izq - der - 2*interior)/(meses.length - 1), x0 = izq + interior;
+  const girado = paso < 40, alto = girado ? 330 : 300, baseBarras = alto - (girado ? 48 : 24);
+  const baseLinea = arriba + (baseBarras - arriba)*0.58, topeBarras = baseLinea + 40;
+  const yDe = v => arriba + (baseLinea - arriba)*(1 - (v - piso)/(techo - piso));
+  const px = x => (x/ancho*100).toFixed(2), py = y => (y/alto*100).toFixed(2);
+  const crudos = serie.map(([m,p,t]) => [x0 + indice.get(m)*paso, yDe(p), m, p, t]);
+  const alternar = paso < 34;
   const mayor = Math.max(...serie.map(s=>s[2])) || 1;
-  const anchoBarra = Math.max(Math.min(paso*0.6, 14), 2);
-  const pasoEje = Math.max(1, Math.ceil(meses.length/10));
+  const anchoBarra = Math.max(Math.min(paso*0.55, 14), 2);
+  const pasoMarca = marcas.length > 1 ? marcas[1] - marcas[0] : 1;
   return {
-    ancho, alto, base_barras: baseBarras.toFixed(1), tonelaje_maximo: toneladasCorto(mayor),
+    ancho, alto, girado, base_barras: baseBarras.toFixed(1), tope_barras: topeBarras.toFixed(1), tonelaje_maximo: toneladasCorto(mayor),
+    izq: izq.toFixed(1), der: (ancho - der).toFixed(1), arriba: (arriba - 10).toFixed(1), izq_pct: px(izq), eje_top_pct: py(baseBarras + 6),
     linea: crudos.map(([x,y],i)=>`${i?"L":"M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" "),
-    puntos: crudos.map(([x,y,m,p,t],i) => ({x:x.toFixed(1), y:y.toFixed(1), x_pct:(x/ancho*100).toFixed(2), y_pct:(y/alto*100).toFixed(2),
-      titulo:`${mesCorto(m)}: S/ ${numero(p,2)} por T · ${numero(t)} T`, etiqueta: conEtiqueta.has(i) ? numero(p,1) : ""})),
-    barras: crudos.map(([x,,m,,t]) => { const a = Math.max(t,0)/mayor*(baseBarras - topeBarras);
-      return {x:(x-anchoBarra/2).toFixed(1), y:(baseBarras-a).toFixed(1), ancho:anchoBarra.toFixed(1), alto:a.toFixed(1), titulo:`${mesCorto(m)}: ${numero(t)} T compradas`}; }),
-    eje: meses.map((m,i)=>({m,i})).filter(o => o.i % pasoEje === 0 || o.i === meses.length-1).map(o => ({x_pct:((padX+o.i*paso)/ancho*100).toFixed(2), texto:mesCorto(o.m)})),
-    linea_base: (base || []).map(([m,p],i)=>`${i?"L":"M"}${(padX+indice.get(m)*paso).toFixed(1)} ${yDe(p).toFixed(1)}`).join(" "),
+    puntos: crudos.map(([x,y,m,p,t],i) => ({x:x.toFixed(1), y:y.toFixed(1), x_pct:px(x), y_pct:py(y),
+      titulo:`${mesCorto(m)}: S/ ${numero(p,2)} por T · ${numero(t)} T`, etiqueta: numero(p,1),
+      posicion: alternar && i % 2 ? "abajo" : "arriba"})),
+    barras: crudos.map(([x,,m,,t]) => { const a = Math.max(t,0)/mayor*(baseBarras - topeBarras), yb = baseBarras - a;
+      return {x:(x-anchoBarra/2).toFixed(1), y:yb.toFixed(1), ancho:anchoBarra.toFixed(1), alto:a.toFixed(1),
+              titulo:`${mesCorto(m)}: ${numero(t)} T compradas`, etiqueta: toneladasCorto(t), x_pct: px(x), y_pct: py(yb)}; }),
+    eje: meses.map((m,i) => ({x_pct: px(x0 + i*paso), texto: mesCorto(m)})),
+    grilla: marcas.map(v => ({y: yDe(v).toFixed(1), y_pct: py(yDe(v)), texto: numero(v, pasoMarca >= 1 ? 0 : 1)})),
+    grilla_t: [{y: baseBarras.toFixed(1), y_pct: py(baseBarras), texto: "0 T"},
+               {y: topeBarras.toFixed(1), y_pct: py(topeBarras), texto: toneladasCorto(mayor) + " T"}],
+    linea_base: (base || []).map(([m,p],i)=>`${i?"L":"M"}${(x0+indice.get(m)*paso).toFixed(1)} ${yDe(p).toFixed(1)}`).join(" "),
   };
 }
 function svgPrecio(g, {conDetalle=false, leyenda=""} = {}){
@@ -2102,16 +2113,22 @@ function svgPrecio(g, {conDetalle=false, leyenda=""} = {}){
   const punto = p => conDetalle
     ? `<circle class="punto" cx="${p.x}" cy="${p.y}" r="3"></circle><circle class="zona-detalle con-detalle" cx="${p.x}" cy="${p.y}" r="9" data-detalle="${e(p.titulo)}"></circle>`
     : `<circle class="punto" cx="${p.x}" cy="${p.y}" r="3"><title>${e(p.titulo)}</title></circle>`;
-  return `<div class="chart-scroll"><div class="chart-wrap chart-precio">
+  const lineaH = (y, clase) => `<line class="${clase}" x1="${g.izq}" y1="${y}" x2="${g.der}" y2="${y}"></line>`;
+  return `<div class="chart-scroll"><div class="chart-wrap chart-precio${g.girado ? " chart-precio-girado" : ""}" style="min-width:${g.ancho}px;">
     <svg class="chart-svg" viewBox="0 0 ${g.ancho} ${g.alto}" role="img" aria-label="Evolución del precio de entrada">
-      <line class="base-barras" x1="0" y1="${g.base_barras}" x2="${g.ancho}" y2="${g.base_barras}"></line>
+      ${g.grilla.map(l => lineaH(l.y, "grilla")).join("")}${lineaH(g.tope_barras, "grilla")}
       ${g.barras.map(barra).join("")}
+      <line class="eje" x1="${g.izq}" y1="${g.arriba}" x2="${g.izq}" y2="${g.base_barras}"></line>${lineaH(g.base_barras, "eje")}
       ${g.linea_base ? `<path class="linea-precio-base" d="${g.linea_base}"></path>` : ""}
       <path class="linea" d="${g.linea}"></path>
       ${g.puntos.map(punto).join("")}
     </svg>
-    ${g.puntos.filter(p=>p.etiqueta).map(p => `<span class="etiqueta-valor" style="left:${p.x_pct}%; top:${p.y_pct}%;">${p.etiqueta}</span>`).join("")}
-    ${g.eje.map(x => `<span class="etiqueta-mes" style="left:${x.x_pct}%;">${x.texto}</span>`).join("")}
+    <span class="titulo-eje-y">S/ por T</span>
+    ${g.grilla.map(l => `<span class="etiqueta-eje-y" style="top:${l.y_pct}%; width:${g.izq_pct}%;">${l.texto}</span>`).join("")}
+    ${g.grilla_t.map(l => `<span class="etiqueta-eje-y eje-toneladas" style="top:${l.y_pct}%; width:${g.izq_pct}%;">${l.texto}</span>`).join("")}
+    ${g.puntos.map(p => `<span class="etiqueta-valor etiqueta-${p.posicion}" style="left:${p.x_pct}%; top:${p.y_pct}%;">${p.etiqueta}</span>`).join("")}
+    ${g.barras.map(b => `<span class="etiqueta-barra-t" style="left:${b.x_pct}%; top:${b.y_pct}%;">${b.etiqueta}</span>`).join("")}
+    ${g.eje.map(x => `<span class="etiqueta-mes${g.girado ? " etiqueta-mes-girada" : ""}" style="left:${x.x_pct}%;${g.girado ? ` top:${g.eje_top_pct}%;` : ""}">${x.texto}</span>`).join("")}
   </div></div>${leyenda}`;
 }
 

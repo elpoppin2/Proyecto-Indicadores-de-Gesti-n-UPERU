@@ -80,26 +80,7 @@
         <div class="metrica"><span class="valor">{{ t.toneladas|numero:0 }} T</span><span class="etiqueta">Compradas en el período · {{ t.importe|soles }}</span></div>
       </div>
       {% if g %}
-        <div class="chart-scroll">
-        <div class="chart-wrap chart-precio">
-          <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Evolución del precio de entrada">
-            <line class="base-barras" x1="0" y1="{{ g.base_barras }}" x2="{{ g.ancho }}" y2="{{ g.base_barras }}"></line>
-            {% for b in g.barras %}
-              <rect class="barra-toneladas" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.ancho }}" height="{{ b.alto }}" rx="1.5"><title>{{ b.titulo }}</title></rect>
-            {% endfor %}
-            <path class="linea" d="{{ g.linea }}"></path>
-            {% for pt in g.puntos %}
-              <circle class="punto" cx="{{ pt.x }}" cy="{{ pt.y }}" r="3"><title>{{ pt.titulo }}</title></circle>
-            {% endfor %}
-          </svg>
-          {% for pt in g.puntos %}
-            {% if pt.etiqueta %}<span class="etiqueta-valor" style="left:{{ pt.x_pct }}%; top:{{ pt.y_pct }}%;">{{ pt.etiqueta }}</span>{% endif %}
-          {% endfor %}
-          {% for e in g.eje %}
-            <span class="etiqueta-mes" style="left:{{ e.x_pct }}%;">{{ e.texto }}</span>
-          {% endfor %}
-        </div>
-        </div>
+        {% include "gestion/_grafico_precio.html" with g=g aria="Evolución del precio de entrada" %}
         <div class="leyenda-curva">
           <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>Precio de entrada (S/ por T)</span>
           <span class="leyenda-item"><span class="leyenda-marca barra-toneladas"></span>Toneladas compradas en el mes (máx. {{ g.tonelaje_maximo }})</span>

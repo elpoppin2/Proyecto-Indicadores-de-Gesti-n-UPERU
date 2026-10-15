@@ -103,28 +103,7 @@
     {% with g=inf.grafico_precio %}
     {% if g %}
       <h3 class="subtitulo">Precio del mes vs precio base</h3>
-      <div class="chart-scroll">
-      <div class="chart-wrap chart-precio">
-        <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Precio del mes contra el precio base">
-          <line class="base-barras" x1="0" y1="{{ g.base_barras }}" x2="{{ g.ancho }}" y2="{{ g.base_barras }}"></line>
-          {% for b in g.barras %}
-            <rect class="barra-toneladas con-detalle" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.ancho }}" height="{{ b.alto }}" rx="1.5" data-detalle="{{ b.titulo }}"></rect>
-          {% endfor %}
-          {% if g.linea_base %}<path class="linea-precio-base" d="{{ g.linea_base }}"></path>{% endif %}
-          <path class="linea" d="{{ g.linea }}"></path>
-          {% for pt in g.puntos %}
-            <circle class="punto" cx="{{ pt.x }}" cy="{{ pt.y }}" r="3"></circle>
-            <circle class="zona-detalle con-detalle" cx="{{ pt.x }}" cy="{{ pt.y }}" r="9" data-detalle="{{ pt.titulo }}"></circle>
-          {% endfor %}
-        </svg>
-        {% for pt in g.puntos %}
-          {% if pt.etiqueta %}<span class="etiqueta-valor" style="left:{{ pt.x_pct }}%; top:{{ pt.y_pct }}%;">{{ pt.etiqueta }}</span>{% endif %}
-        {% endfor %}
-        {% for e in g.eje %}
-          <span class="etiqueta-mes" style="left:{{ e.x_pct }}%;">{{ e.texto }}</span>
-        {% endfor %}
-      </div>
-      </div>
+      {% include "gestion/_grafico_precio.html" with g=g aria="Precio del mes contra el precio base" %}
       <div class="leyenda-curva">
         <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>Precio del mes (S/ por T)</span>
         <span class="leyenda-item"><span class="leyenda-marca leyenda-meta"></span>Precio base contra el que se compara ({{ inf.contra }})</span>
