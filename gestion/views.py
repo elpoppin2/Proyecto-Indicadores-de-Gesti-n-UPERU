@@ -3525,7 +3525,7 @@ def _seleccion_precios(request, categoria):
     base (compras de la categoría), df (filtrado), inflacion_total (todas
     las comparaciones) e inflacion (las del período). Lo usan la pestaña y
     su detalle fila por fila."""
-    base = q.precios_entrada_materiales()
+    base = q.precios_entrada_materiales_real()
     base = base[base["categoria"] == categoria]
     evaluacion_sel = request.GET.get("evaluacion_ipu", "interanual")
     if evaluacion_sel not in _EVALUACIONES_IPU_CATEGORIA:
@@ -3566,7 +3566,7 @@ def _seleccion_precios(request, categoria):
 def _cat_precios(request, categoria, tiene_inventario):
     """Pestaña Precios e IPU de una categoría: IPU (Índice de Precios Unacem)
     de sus materiales comprados, con el mismo cálculo que Planificación
-    (precio de compra de MB51, ver queries.precios_entrada_materiales), y los
+    (precio real de compra: MB51 + ajustes FBL3N, ver queries.con_precio_real), y los
     materiales que más subieron y bajaron. Segmentadores: Período, contra qué
     se compara, Familia, Centro y Material (varios), en cascada; con un solo
     material, su detalle mes a mes. Una categoría sin materiales con entrada
@@ -3983,7 +3983,7 @@ def _cat_indicadores(request, categoria, tiene_inventario):
               f"{'+' if a['bolsa'] >= 0 else '−'}{_soles_mm(abs(a['bolsa']))} · {pr['resumen']['materiales']:,} materiales",
               "columnas", g, tono, estado,
               leyenda=[("col-sube", "El mes sube"), ("col-baja", "El mes baja"), ("linea-ipu", "IPU acumulado del año")],
-              nota="Precio de compra (MB51) de cada mes contra el mismo mes del año anterior; la línea acumula desde enero.")
+              nota="Precio real de compra (MB51 + ajustes FBL3N) de cada mes contra el mismo mes del año anterior; la línea acumula desde enero.")
 
     # 7. Cuentas por pagar: PMP del año y su evolución.
     cx = _cat_cuentas(sin_filtros, categoria, tiene_inventario)["cx"]

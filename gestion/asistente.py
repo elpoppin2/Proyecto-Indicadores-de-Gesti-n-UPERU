@@ -179,7 +179,7 @@ def _grupos(df):
 # ---------------------------------------------------------------------------
 
 def buscar_materiales(texto=None):
-    precios = q.precios_entrada_sop()[["material_codigo", "texto_breve", "centro", "categoria"]]
+    precios = q.precios_entrada_sop_real()[["material_codigo", "texto_breve", "centro", "categoria"]]
     snapshots = q.snapshots_sop_disponibles()
     plan = q.proyeccion_inventario_sop(snapshots[-1])[["material_codigo", "texto_breve", "centro", "categoria"]] if snapshots else precios.iloc[0:0]
     calidad = q.calidad_ingresos_sop()
@@ -300,7 +300,7 @@ def proyeccion_inventario(material=None, centro=None, categoria=None, snapshot=N
 
 
 def precios_compra(material=None, centro=None, categoria=None, desde=None):
-    df, nota = _filtrar(q.precios_entrada_sop(), material, centro, categoria)
+    df, nota = _filtrar(q.precios_entrada_sop_real(), material, centro, categoria)
     desde = _mes(desde, "desde")
     if desde:
         df = df[df["mes"] >= desde]
@@ -332,7 +332,7 @@ def precios_compra(material=None, centro=None, categoria=None, desde=None):
 
 def inflacion_ipu(tipo="interanual", material=None, centro=None, categoria=None, desde=None, hasta=None):
     desfase = 1 if _normalizar(tipo).startswith("mensual") else 12
-    base, nota = _filtrar(q.precios_entrada_sop(), material, centro, categoria)
+    base, nota = _filtrar(q.precios_entrada_sop_real(), material, centro, categoria)
     inflacion = q.inflacion_precios(base, desfase)
     if inflacion.empty:
         raise ErrorHerramienta("Sin compras con base de comparación para esos filtros.")
@@ -499,7 +499,7 @@ def costo_energia(material=None, centro=None, proveedor=None, desde=None):
 
 
 def simular_impacto_precio(material, variacion_pct, centro=None, meses=12):
-    precios = q.precios_entrada_sop()
+    precios = q.precios_entrada_sop_real()
     codigos = _codigos_material(precios, material)
     if len(codigos) != 1:
         opciones = precios[precios["material_codigo"].isin(codigos)][["material_codigo", "texto_breve"]].drop_duplicates()
@@ -581,7 +581,7 @@ HERRAMIENTAS = {
             "snapshot": {"type": "string", "description": "Mes de emisión del S&OP AAAA-MM; por defecto el último."}}},
     }),
     "precios_compra": (precios_compra, "Precios de entrada", {
-        "description": "Precio de compra por tonelada (MB51) por material y mes: último precio, variación vs compra anterior y vs un año antes, mínimo/máximo/promedio y serie mensual.",
+        "description": "Precio real de compra por tonelada (MB51 + ajustes de valor de la FBL3N) por material y mes: último precio, variación vs compra anterior y vs un año antes, mínimo/máximo/promedio y serie mensual.",
         "input_schema": {"type": "object", "properties": {
             "material": _P_MATERIAL, "centro": _P_CENTRO, "categoria": _P_CATEGORIA, "desde": _P_DESDE}},
     }),

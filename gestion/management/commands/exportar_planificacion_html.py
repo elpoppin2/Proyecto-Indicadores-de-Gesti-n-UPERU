@@ -297,7 +297,7 @@ class Command(BaseCommand):
              "categoria": r.categoria, "mes": r.mes.isoformat(), "toneladas": round(float(r.toneladas), 3),
              "importe": round(float(r.importe), 2), "precio": float(r.precio),
              "entradas": int(r.entradas), "proveedores": int(r.proveedores)}
-            for r in q.precios_entrada_sop().itertuples()
+            for r in q.precios_entrada_sop_real().itertuples()
         ]
 
         def sumas_calidad(df, con_simple):

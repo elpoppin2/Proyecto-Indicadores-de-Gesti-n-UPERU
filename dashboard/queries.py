@@ -2873,6 +2873,14 @@ def precios_entrada_sop_real():
     return con_precio_real(precios_entrada_sop())
 
 
+@_cacheado
+def precios_entrada_materiales_real():
+    """precios_entrada_materiales (todos los materiales, pestañas de cada
+    categoría y resumen ejecutivo) con el precio real. Desde 2026-10-14 todo
+    el IPU usa el precio real (pedido del usuario)."""
+    return con_precio_real(precios_entrada_materiales())
+
+
 def ajustes_fbl3n_detalle(materiales, desde=None, hasta=None):
     """Las partidas de la FBL3N de `materiales` (todas sus plantas) entre dos
     meses, con su concepto, para ver de qué trata cada importe."""

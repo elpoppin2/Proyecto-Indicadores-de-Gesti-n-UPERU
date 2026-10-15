@@ -376,8 +376,8 @@ DESGLOSES = {
     },
     "precios": {
         "titulo": "Comparaciones de precio (material y mes)",
-        "nota": "Una fila por material, centro y mes con compra: precio del mes (importe ÷ cantidad de las entradas 101/102) "
-                "contra el precio base. Bolsa = (precio − precio base) × cantidad. Las atípicas no suman al IPU.",
+        "nota": "Una fila por material, centro y mes con compra: precio real del mes (importe de las entradas 101/102 + "
+                "ajustes de valor de la FBL3N, ÷ cantidad) contra el precio base. Bolsa = (precio − precio base) × cantidad. Las atípicas no suman al IPU.",
         "columnas": [
             _col("mes_texto", "Mes"), _COL_MATERIAL, _COL_DESCRIPCION, _col("centro", "Centro", "centro"),
             _col("umb", "UMB"), _col("toneladas", "Cantidad", "cantidad"), _col("importe", "Importe (S/)", "soles"),
@@ -394,7 +394,8 @@ DESGLOSES = {
     "entradas": {
         "titulo": "Entradas de mercancía de compra (MB51)",
         "nota": "Una fila por entrada 101 (o su anulación 102) con proveedor, de los materiales y meses comparados: de "
-                "aquí sale el precio de cada mes (importe ÷ cantidad).",
+                "aquí sale el precio MB51 de cada mes (importe ÷ cantidad); el precio real le suma los ajustes de la "
+                "FBL3N (ver el detalle por material en Planificación > Precios de entrada).",
         "columnas": [
             _col("fecha", "Fecha", "fecha"), _col("documento", "Doc. material", "codigo"),
             _col("posicion", "Pos.", "codigo"), _col("clase_movimiento", "Cl. mov.", "codigo"),

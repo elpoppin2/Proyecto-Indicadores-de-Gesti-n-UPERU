@@ -345,7 +345,7 @@ def _calcular(mes, config):
                                                  if brecha > 0 else "."))
 
     # 4. IPU: inflación de los precios de compra del año.
-    base_precios = q.precios_entrada_materiales()
+    base_precios = q.precios_entrada_materiales_real()
     inflacion = q.inflacion_precios(base_precios, 12) if not base_precios.empty else pd.DataFrame()
     ipu = q.ipu_por_mes(inflacion, 12) if not inflacion.empty else {}
     meses_ipu = [m for m in ipu if m.year == mes.year and m <= mes]

@@ -222,7 +222,9 @@
       pedido a un proveedor (101, neto de anulaciones 102), promedio ponderado por toneladas de cada mes. No incluye
       traslados entre centros ni lo que sale de cantera propia o de producción (calizas propias, Clinker), que no tienen
       precio de compra. Los importados (Carbón Importado, Escoria japonesa) se compran en el centro U004
-      (importación): un punto por barco. Un mes sin punto es un mes sin compras.
+      (importación): un punto por barco. Un mes sin punto es un mes sin compras. <strong>Precio real</strong>: al importe
+      de MB51 se le suman los ajustes de valor de la FBL3N (diferencias de precio de la factura, fletes, desestiba, cargos
+      de importación, anulaciones y MR22).
     </p>
     <form class="filtros">
       <div class="campo"><label for="periodo_precios">Período</label><select id="periodo_precios"></select></div>
@@ -238,7 +240,7 @@
       <button type="button" class="btn-link" data-imprimir="sec-inflacion">Descargar / Imprimir</button>
     </div>
     <p class="nota">
-      Precio de compra de cada mes (MB51, mismo criterio que Precios de entrada) contra el mismo mes del año anterior
+      Precio real de compra de cada mes (MB51 + ajustes de la FBL3N, mismo criterio que Precios de entrada) contra el mismo mes del año anterior
       (Ene-26 vs Ene-25). Si ese mes no tuvo compra, se compara contra el último precio registrado antes
       (Dic-24, Nov-24…), marcado con <span class="marca-sustituida">*</span>. Solo se evalúan los meses con compra.
       <strong>Bolsa</strong> = (precio del mes − precio base) × toneladas compradas en el mes evaluado: el impacto en soles
@@ -248,7 +250,7 @@
       <strong>IPU (Índice de Precios Unacem)</strong> acumulado del año: de enero al mes T contra el
       mismo tramo del año anterior (Ene–Feb 2026 vs Ene–Feb 2025), ponderado con las toneladas del año más reciente; se reinicia cada enero.
       Una comparación donde el precio más que se duplica o cae a menos de la mitad se marca con
-      <span class="marca-atipica">!</span> (dato atípico de MB51, p.ej. Ene-24 de Sílices y Puzolana de Terceros): se
+      <span class="marca-atipica">!</span> (dato atípico): se
       muestra, pero no suma en la bolsa ni en la selección.
     </p>
     <form class="filtros">
@@ -267,7 +269,7 @@
       <button type="button" class="btn-link" data-imprimir="sec-inflacion-mensual">Descargar / Imprimir</button>
     </div>
     <p class="nota">
-      Precio de compra de cada mes (MB51, mismo criterio que Precios de entrada) contra el mes anterior
+      Precio real de compra de cada mes (MB51 + ajustes de la FBL3N, mismo criterio que Precios de entrada) contra el mes anterior
       (Mar-26 vs Feb-26). Si ese mes no tuvo compra, se compara contra el último precio registrado antes
       (Ene-26, Dic-25…), marcado con <span class="marca-sustituida">*</span>. Solo se evalúan los meses con compra.
       <strong>Bolsa</strong> = (precio del mes − precio base) × toneladas compradas en el mes evaluado: el impacto en soles
@@ -276,7 +278,7 @@
       <strong>IPU (Índice de Precios Unacem)</strong> acumulado del año: las variaciones de cada mes encadenadas desde enero,
       (1 + v₁) × (1 + v₂) × … − 1; se reinicia cada enero.
       Una comparación donde el precio más que se duplica o cae a menos de la mitad se marca con
-      <span class="marca-atipica">!</span> (dato atípico de MB51, p.ej. Ene-24 de Sílices y Puzolana de Terceros): se
+      <span class="marca-atipica">!</span> (dato atípico): se
       muestra, pero no suma en la bolsa ni en la selección.
     </p>
     <form class="filtros">
@@ -2341,7 +2343,7 @@ function calcularInflacion(suf, sel){
     let texto = `${r.texto_breve} (${nombreCentro(r.centro)}) · ${mesCorto(r.mes)}: ${fmtSigno1(r.variacion*100)}%\n` +
       `${mesCorto(r.mes)}: S/ ${numero(r.precio,2)} por T\nvs ${baseTxt}: S/ ${numero(r.precio_base,2)} por T\n` +
       `Bolsa: (S/ ${numero(r.precio,2)} − S/ ${numero(r.precio_base,2)}) × ${numero(r.toneladas)} T = ${r.bolsa >= 0 ? "+" : "−"}S/ ${numero(Math.abs(r.bolsa))}`;
-    if(r.atipica) texto += "\nATÍPICA: el precio más que se duplica o cae a menos de la mitad (dato a revisar en MB51); no suma en la bolsa ni en la selección.";
+    if(r.atipica) texto += "\nATÍPICA: el precio más que se duplica o cae a menos de la mitad (dato a revisar en MB51 o en los ajustes de la FBL3N); no suma en la bolsa ni en la selección.";
     return texto;
   };
   const detalleAcumulado = (mes, d, ipu, nombre="") => {
