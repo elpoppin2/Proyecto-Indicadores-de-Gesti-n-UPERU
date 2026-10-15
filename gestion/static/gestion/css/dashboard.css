@@ -1416,3 +1416,21 @@ details.desglose-simple > summary {
 details.desglose-simple > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 details.desglose-simple[open] > summary { margin-bottom: 10px; }
 @media print { details.desglose-simple { display: none !important; } }
+
+/* Botón "Ver detalle del cálculo del IPU" (Precios de entrada): un details
+   cuyo summary se ve como botón; al abrirlo muestra la tabla del cálculo. */
+details.detalle-calculo { margin-top: 18px; border-top: 1px dashed var(--line); padding-top: 14px; }
+details.detalle-calculo > summary.boton-detalle {
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; width: fit-content;
+  padding: 8px 14px; border: 1px solid var(--accent-texto); border-radius: 6px; color: var(--accent-texto);
+  font-weight: 600; font-size: 13px; background: var(--surface);
+}
+details.detalle-calculo > summary.boton-detalle::-webkit-details-marker { display: none; }
+details.detalle-calculo > summary.boton-detalle::before { content: "+"; font-weight: 700; }
+details.detalle-calculo[open] > summary.boton-detalle::before { content: "−"; }
+details.detalle-calculo > summary.boton-detalle:hover { background: var(--accent-texto); color: var(--accent-ink); }
+details.detalle-calculo > summary.boton-detalle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+details.detalle-calculo[open] > summary.boton-detalle { margin-bottom: 12px; }
+.tabla-calculo td, .tabla-calculo th { white-space: nowrap; }
+.codigo-suave { color: var(--muted); font-size: 11.5px; }
+@media print { details.detalle-calculo { display: none !important; } }

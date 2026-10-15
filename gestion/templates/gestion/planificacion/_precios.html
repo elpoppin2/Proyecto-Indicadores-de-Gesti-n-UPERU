@@ -11,7 +11,9 @@
     pedido a un proveedor (101, neto de anulaciones 102), promedio ponderado por toneladas de cada mes. No incluye
     traslados entre centros ni lo que sale de cantera propia o de producción (calizas propias, Clinker), que no tienen
     precio de compra. Los importados (Carbón Importado, Escoria japonesa) se compran en el centro {{ pr.centro_importacion }}
-    (importación): un punto por barco. Un mes sin punto es un mes sin compras.
+    (importación), pero se miden <strong>puestos en destino</strong>: lo que recibe cada planta (U001/U002) por traslado
+    desde {{ pr.centro_importacion }}, al valor con que entra a la planta, más los ajustes de la FBL3N (desestiba,
+    descarga). Un mes sin punto es un mes sin compras ni llegadas a planta.
   </p>
   {% if pr.es_real %}
   <p class="nota">
@@ -215,6 +217,62 @@
         </button>
       {% endfor %}
     </div>
+  {% endif %}
+
+  {% if pr.calculo %}
+    <details class="detalle-calculo" id="detalle-calculo-ipu">
+      <summary class="boton-detalle">Ver detalle del cálculo del IPU ({{ pr.calculo|length }} fila{{ pr.calculo|length|pluralize }})</summary>
+      <p class="nota">
+        Una fila por material, centro y mes con compra de lo filtrado arriba.
+        <strong>Precio</strong> = {% if pr.es_real %}(importe MB51 + ajustes FBL3N){% else %}importe MB51{% endif %} ÷ toneladas.
+        <strong>Precio base</strong> = el del mismo mes un año antes; si ese mes no hubo compra, el último registrado
+        antes (*). <strong>Variación</strong> = precio ÷ precio base − 1. <strong>Bolsa</strong> = (precio − precio base)
+        × toneladas. <strong>IPU</strong> de un conjunto = lo pagado ÷ lo que habrían costado esas mismas toneladas al
+        precio base − 1 (columna «Importe al precio base»). Los importados se miden puestos en planta (U001/U002), no en
+        el centro de importación. Las filas atípicas (!) no suman.
+      </p>
+      {% with t=pr.calculo_total %}
+        {% if t %}
+          <div class="metricas">
+            <div class="metrica"><span class="valor {% if t.variacion_pct > 0 %}dato-negativo{% elif t.variacion_pct < 0 %}dato-positivo{% endif %}">{% if t.variacion_pct is not None %}{% if t.variacion_pct > 0 %}+{% endif %}{{ t.variacion_pct|numero:1 }}%{% else %}—{% endif %}</span><span class="etiqueta">Variación ponderada de lo filtrado (cálculo del IPU)</span></div>
+            <div class="metrica"><span class="valor">{{ t.importe|soles }}</span><span class="etiqueta">Pagado ({{ t.comparadas }} comparaciones{% if t.atipicas %}, sin {{ t.atipicas }} atípica{{ t.atipicas|pluralize }}{% endif %})</span></div>
+            <div class="metrica"><span class="valor">{{ t.base|soles }}</span><span class="etiqueta">Al precio base de un año antes</span></div>
+            <div class="metrica"><span class="valor {% if t.bolsa > 0 %}dato-negativo{% elif t.bolsa < 0 %}dato-positivo{% endif %}">{{ t.bolsa|soles }}</span><span class="etiqueta">Bolsa (pagado − al precio base)</span></div>
+          </div>
+        {% endif %}
+      {% endwith %}
+      <div class="tabla-scroll">
+        <table class="tabla-calculo">
+          <thead>
+            <tr>
+              <th>Mes</th><th>Material</th><th>Centro</th><th class="num">Toneladas</th>
+              <th class="num">Importe MB51 (S/)</th><th class="num">Ajustes FBL3N (S/)</th><th class="num">Importe (S/)</th>
+              <th class="num">Precio (S/ por T)</th><th>Mes base</th><th class="num">Precio base</th>
+              <th class="num">Importe al precio base (S/)</th><th class="num">Variación</th><th class="num">Bolsa (S/)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in pr.calculo %}
+              <tr{% if c.atipica %} class="fila-atenuada"{% endif %}>
+                <td>{{ c.mes }}</td>
+                <td>{{ c.texto }} <span class="codigo-suave">{{ c.material }}</span></td>
+                <td>{{ c.centro|centro }}</td>
+                <td class="num">{{ c.toneladas|numero:0 }}</td>
+                <td class="num">{{ c.importe_mb51|numero:0 }}</td>
+                <td class="num">{% if c.ajuste %}{{ c.ajuste|numero:0 }}{% else %}—{% endif %}</td>
+                <td class="num">{{ c.importe|numero:0 }}</td>
+                <td class="num">{{ c.precio|numero:2 }}</td>
+                <td>{{ c.mes_base|default:"sin compra un año antes" }}</td>
+                <td class="num">{% if c.precio_base is not None %}{{ c.precio_base|numero:2 }}{% else %}—{% endif %}</td>
+                <td class="num">{% if c.base_x_t is not None %}{{ c.base_x_t|numero:0 }}{% else %}—{% endif %}</td>
+                <td class="num {% if c.variacion_pct > 0.05 %}dato-negativo{% elif c.variacion_pct < -0.05 %}dato-positivo{% endif %}">{% if c.variacion_pct is not None %}{% if c.variacion_pct > 0 %}+{% endif %}{{ c.variacion_pct|numero:1 }}%{% if c.atipica %} !{% endif %}{% else %}—{% endif %}</td>
+                <td class="num">{% if c.bolsa is not None %}{{ c.bolsa|numero:0 }}{% else %}—{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
   {% endif %}
 </section>
 {% endif %}

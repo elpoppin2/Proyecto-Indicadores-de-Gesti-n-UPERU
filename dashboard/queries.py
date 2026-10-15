@@ -2666,6 +2666,68 @@ def diagnostico_minmax_sop(mes_snapshot):
 # ---------------------------------------------------------------------------
 _CLASES_ENTRADA_COMPRA = "('101', '102')"
 CENTRO_IMPORTACION = "U004"
+_MINIMO_TRASLADO = 0.02
+
+
+@_cacheado
+def materiales_importados():
+    """Materiales comprados en el centro de importación (101 con proveedor en
+    U004) y trasladados a planta: su precio se mide puesto en destino."""
+    df = _query(f"""
+        SELECT DISTINCT c.material_codigo FROM gestion_movimientomaterial c
+        WHERE c.centro = '{CENTRO_IMPORTACION}' AND c.clase_movimiento = '101' AND c.proveedor <> ''
+              AND EXISTS (SELECT 1 FROM gestion_movimientomaterial t WHERE t.material_codigo = c.material_codigo
+                          AND t.clase_movimiento = '641' AND t.centro = '{CENTRO_IMPORTACION}')
+    """)
+    return set(df["material_codigo"])
+
+
+def _puesto_en_destino(df):
+    """Regla del usuario (2026-10-14): el IPU no considera el centro de
+    importación U004, sino el valor PUESTO EN DESTINO (U001/U002). Las
+    compras de `df` en U004 se reemplazan por lo que cada planta recibe de
+    U004 por traslado (641, neto de anulaciones 642, lado receptor): misma
+    cantidad, al valor con que entra a la planta. Solo el primer destino
+    (desde U004): el Carbón Importado que luego va de U001 a U002 no se
+    cuenta dos veces. Lo comprado en U004 que nunca se traslada (repuestos y
+    suministros del muelle, ~S/ 8 MM) queda fuera del análisis.
+    `df`: material_codigo, centro, mes (texto 'AAAA-MM-01'), toneladas,
+    importe, entradas, proveedores (salida del SQL de los precios)."""
+    if df.empty or not (df["centro"] == CENTRO_IMPORTACION).any():
+        return df
+    materiales = sorted(df.loc[df["centro"] == CENTRO_IMPORTACION, "material_codigo"].unique())
+    destino = _query(f"""
+        SELECT r.material_codigo AS material_codigo, r.centro AS centro,
+               substr(r.fecha_contabilizacion, 1, 7) || '-01' AS mes,
+               SUM(r.cantidad) AS toneladas, SUM(r.importe_moneda_local) AS importe,
+               SUM(CASE WHEN r.clase_movimiento = '641' THEN 1 ELSE 0 END) AS entradas
+        FROM gestion_movimientomaterial r
+        WHERE r.material_codigo IN ({",".join(_texto_sql(m) for m in materiales)})
+              AND r.centro <> '{CENTRO_IMPORTACION}'
+              AND ((r.clase_movimiento = '641' AND r.cantidad > 0) OR (r.clase_movimiento = '642' AND r.cantidad < 0))
+              AND EXISTS (SELECT 1 FROM gestion_movimientomaterial o
+                          WHERE o.documento_material = r.documento_material
+                                AND o.ejercicio_documento_material = r.ejercicio_documento_material
+                                AND o.material_codigo = r.material_codigo AND o.centro = '{CENTRO_IMPORTACION}')
+        GROUP BY r.material_codigo, r.centro, mes
+    """).copy()
+    # Traslados de corrección (unas decenas de T con valor revaluado, p.ej.
+    # 31 T a S/ 5,000 por T) no son un barco llegando a planta: fuera los
+    # meses con menos del _MINIMO_TRASLADO del mayor traslado mensual del material.
+    destino["toneladas"] = destino["toneladas"].astype(float)
+    mayor = destino.groupby("material_codigo")["toneladas"].transform("max")
+    destino = destino[destino["toneladas"] >= mayor * _MINIMO_TRASLADO]
+    proveedores = df[df["centro"] == CENTRO_IMPORTACION].groupby("material_codigo")["proveedores"].max()
+    destino["proveedores"] = destino["material_codigo"].map(proveedores).fillna(1).astype(int)
+    resto = df[df["centro"] != CENTRO_IMPORTACION]
+    # Un material con compra local y traslado desde U004 en el mismo centro y
+    # mes: se suman (entra a la planta por las dos vías).
+    junto = pd.concat([resto, destino[resto.columns]], ignore_index=True)
+    junto["toneladas"] = junto["toneladas"].astype(float)
+    junto["importe"] = junto["importe"].astype(float)
+    return junto.groupby(["material_codigo", "centro", "mes"], as_index=False).agg(
+        toneladas=("toneladas", "sum"), importe=("importe", "sum"),
+        entradas=("entradas", "sum"), proveedores=("proveedores", "max"))
 
 
 @_cacheado
@@ -2693,6 +2755,7 @@ def precios_entrada_sop():
               AND fecha_contabilizacion IS NOT NULL
         GROUP BY material_codigo, centro, mes
     """)
+    df = _puesto_en_destino(df)
     if df.empty:
         return pd.DataFrame(columns=columnas)
     df["toneladas"] = df["toneladas"].astype(float)
@@ -2730,6 +2793,7 @@ def precios_entrada_materiales():
               AND fecha_contabilizacion IS NOT NULL
         GROUP BY material_codigo, centro, mes
     """)
+    df = _puesto_en_destino(df)
     if df.empty:
         return pd.DataFrame(columns=columnas)
     df["toneladas"] = df["toneladas"].astype(float)
@@ -2832,32 +2896,60 @@ def con_precio_real(base):
     if df.empty or aj.empty:
         return df
     aj = aj[aj["material_codigo"].isin(set(df["material_codigo"]))].copy()
+    # Lo ajustado en U004 ya viaja en el valor del traslado a la planta
+    # (puesto en destino, ver _puesto_en_destino): no se suma otra vez.
+    aj = aj[aj["centro"] != CENTRO_IMPORTACION]
+    importados = materiales_importados()
+    columnas = ["ajuste", "ajuste_ordenes", "ajuste_trasladado"]
 
-    # Centro: si el material nunca se compra en el centro del ajuste, al
-    # centro donde sí se compra (el único, o el de importación).
+    # Materiales locales: al mismo centro (si nunca se compra en el centro del
+    # ajuste, al único centro de compra) y al mes de contabilización (si no
+    # hubo compra, al último mes anterior con compra).
+    local = aj[~aj["material_codigo"].isin(importados)].copy()
     centros_compra = df.groupby("material_codigo")["centro"].agg(lambda s: set(s)).to_dict()
 
     def centro_destino(material, centro):
         compra = centros_compra.get(material, set())
         if centro in compra:
             return centro
-        if len(compra) == 1:
-            return next(iter(compra))
-        return CENTRO_IMPORTACION if CENTRO_IMPORTACION in compra else None
+        return next(iter(compra)) if len(compra) == 1 else None
 
-    aj["centro_destino"] = [centro_destino(m, c) for m, c in zip(aj["material_codigo"], aj["centro"])]
-    aj = aj[aj["centro_destino"].notna()]
-    # Mes: el mismo si hubo compra; si no, el último anterior con compra.
+    local["centro_destino"] = [centro_destino(m, c) for m, c in zip(local["material_codigo"], local["centro"])]
+    local = local[local["centro_destino"].notna()]
     compras = df[["material_codigo", "centro", "mes"]].rename(columns={"centro": "centro_destino", "mes": "mes_destino"})
     compras["_clave"] = pd.to_datetime(compras["mes_destino"])
-    aj["_clave"] = pd.to_datetime(aj["mes"])
-    aj = pd.merge_asof(aj.sort_values("_clave"), compras.sort_values("_clave"), on="_clave",
-                       by=["material_codigo", "centro_destino"], direction="backward")
-    aj = aj[aj["mes_destino"].notna()]
-    trasladado = (aj["mes_destino"] != aj["mes"]) | (aj["centro_destino"] != aj["centro"])
-    aj["ajuste_trasladado"] = aj["ajuste"].where(trasladado, 0.0)
-    suma = (aj.groupby(["material_codigo", "centro_destino", "mes_destino"])[["ajuste", "ajuste_ordenes", "ajuste_trasladado"]]
-            .sum().reset_index().rename(columns={"centro_destino": "centro", "mes_destino": "mes"}))
+    local["_clave"] = pd.to_datetime(local["mes"])
+    local = pd.merge_asof(local.sort_values("_clave"), compras.sort_values("_clave"), on="_clave",
+                          by=["material_codigo", "centro_destino"], direction="backward")
+    local = local[local["mes_destino"].notna()]
+    trasladado = (local["mes_destino"] != local["mes"]) | (local["centro_destino"] != local["centro"])
+    local["ajuste_trasladado"] = local["ajuste"].where(trasladado, 0.0)
+    partes = [local.groupby(["material_codigo", "centro_destino", "mes_destino"])[columnas].sum().reset_index()
+              .rename(columns={"centro_destino": "centro", "mes_destino": "mes"})]
+
+    # Importados (puestos en destino): el carbón que ajusta Condorcocha llegó
+    # por Atocongo, así que el ajuste no se ata a la planta donde se registró:
+    # va al material y mes (o al último mes anterior con llegada a planta) y se
+    # reparte entre las plantas que recibieron ese mes según sus toneladas.
+    imp = aj[aj["material_codigo"].isin(importados)]
+    if not imp.empty:
+        imp = imp.groupby(["material_codigo", "mes"], as_index=False)[["ajuste", "ajuste_ordenes"]].sum()
+        llegadas = df[df["material_codigo"].isin(importados)].groupby(["material_codigo", "mes"], as_index=False)["toneladas"].sum()
+        meses_llegada = llegadas[["material_codigo", "mes"]].rename(columns={"mes": "mes_destino"})
+        meses_llegada["_clave"] = pd.to_datetime(meses_llegada["mes_destino"])
+        imp["_clave"] = pd.to_datetime(imp["mes"])
+        imp = pd.merge_asof(imp.sort_values("_clave"), meses_llegada.sort_values("_clave"), on="_clave",
+                            by="material_codigo", direction="backward")
+        imp = imp[imp["mes_destino"].notna()]
+        imp["ajuste_trasladado"] = imp["ajuste"].where(imp["mes_destino"] != imp["mes"], 0.0)
+        imp = imp.groupby(["material_codigo", "mes_destino"], as_index=False)[columnas].sum()
+        filas = df.loc[df["material_codigo"].isin(importados), ["material_codigo", "centro", "mes", "toneladas"]]
+        filas = filas.merge(imp.rename(columns={"mes_destino": "mes"}), on=["material_codigo", "mes"])
+        participacion = filas["toneladas"] / filas.groupby(["material_codigo", "mes"])["toneladas"].transform("sum")
+        for c in columnas:
+            filas[c] = filas[c] * participacion
+        partes.append(filas[["material_codigo", "centro", "mes", *columnas]])
+    suma = pd.concat(partes, ignore_index=True).groupby(["material_codigo", "centro", "mes"], as_index=False)[columnas].sum()
     df = df.drop(columns=["ajuste", "ajuste_trasladado", "ajuste_ordenes"]).merge(
         suma, on=["material_codigo", "centro", "mes"], how="left")
     for c in ("ajuste", "ajuste_trasladado", "ajuste_ordenes"):

@@ -2341,6 +2341,7 @@ def _contexto_precios_entrada(request):
         tipo_sel = "real"
     if tipo_sel == "mb51":
         base = base.assign(importe=base["importe_mb51"], precio=base["precio_mb51"])
+    historia = base  # el precio base de un mes puede ser anterior al período mostrado
     periodo_sel = request.GET.get("periodo_precios", "24")
     if periodo_sel not in _PERIODOS_PRECIOS:
         periodo_sel = "24"
@@ -2410,7 +2411,9 @@ def _contexto_precios_entrada(request):
     meses_fbl3n = q.meses_con_fbl3n()
     meses_vista = set(df["mes"]) if not df.empty else set()
     sin_fbl3n = sorted(m for m in meses_vista if m not in meses_fbl3n)
+    calculo, calculo_total = _calculo_ipu(historia, df)
     return {
+        "calculo": calculo, "calculo_total": calculo_total,
         "tipos": [{"valor": k, "texto": v} for k, v in _TIPOS_PRECIO.items()], "tipo_sel": tipo_sel,
         "es_real": tipo_sel == "real",
         "meses_sin_fbl3n": sin_fbl3n, "tramos_sin_fbl3n": _tramos_de_meses(sin_fbl3n),
@@ -2427,6 +2430,46 @@ def _contexto_precios_entrada(request):
         "grafico": grafico, "detalle": detalle,
         "desde": min(df["mes"]) if not df.empty else None, "hasta": max(df["mes"]) if not df.empty else None,
     }
+
+
+def _calculo_ipu(historia, df):
+    """Detalle del cálculo del IPU de lo filtrado en Precios de entrada
+    (pedido del usuario): una fila por material/centro/mes de `df` con su
+    precio (MB51 y ajustes FBL3N), el precio base de un año antes (o el último
+    registrado antes, *), la variación y la bolsa; y el total ponderado igual
+    que el IPU (lo pagado ÷ lo que habría costado al precio base − 1). El
+    precio base sale de `historia` (sin recortar por período)."""
+    if df.empty:
+        return [], None
+    pares = df[["material_codigo", "centro"]].drop_duplicates()
+    inflacion = q.inflacion_precios(historia.merge(pares, on=["material_codigo", "centro"]), 12)
+    filas = df.merge(inflacion[["material_codigo", "centro", "mes", "mes_base", "precio_base", "base_sustituida",
+                                "variacion", "bolsa", "atipica"]],
+                     on=["material_codigo", "centro", "mes"], how="left")
+    filas = filas.sort_values(["mes", "texto_breve", "centro"], ascending=[False, True, True])
+    resultado = []
+    for r in filas.itertuples():
+        con_base = pd.notna(r.precio_base)
+        resultado.append({
+            "mes": _mes_corto(r.mes), "material": r.material_codigo, "texto": r.texto_breve, "centro": r.centro,
+            "toneladas": r.toneladas, "importe_mb51": r.importe_mb51,
+            "ajuste": r.ajuste if abs(r.ajuste) >= 1 else 0.0, "importe": r.importe, "precio": r.precio,
+            "mes_base": (_mes_corto(r.mes_base) + (" *" if r.base_sustituida else "")) if con_base else "",
+            "precio_base": r.precio_base if con_base else None,
+            "variacion_pct": r.variacion * 100 if con_base else None,
+            "bolsa": r.bolsa if con_base else None,
+            "base_x_t": r.precio_base * r.toneladas if con_base else None,
+            "atipica": bool(r.atipica) if con_base else False,
+        })
+    comparables = inflacion[inflacion["mes"].isin(set(df["mes"]))]
+    comparables = comparables.merge(pares, on=["material_codigo", "centro"])
+    total = None
+    if not comparables.empty:
+        c = q.inflacion_canasta(comparables)
+        total = {**c, "variacion_pct": c["variacion"] * 100 if c["variacion"] is not None else None,
+                 "base": c["importe"] - c["bolsa"], "filas": len(resultado),
+                 "comparadas": int((~comparables["atipica"]).sum()), "atipicas": int(comparables["atipica"].sum())}
+    return resultado, total
 
 
 def _tramos_de_meses(meses):
