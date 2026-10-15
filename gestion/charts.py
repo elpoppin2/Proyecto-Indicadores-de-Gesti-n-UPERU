@@ -510,12 +510,15 @@ def evolucion_precio(serie, etiqueta_mes, base=None, ancho_minimo=640, izq=58, d
 
     crudos = [(x0 + indice[m] * paso, y_de(p), m, p, t) for m, p, t in serie]
     linea = " ".join(f"{'M' if i == 0 else 'L'}{x:.1f} {y:.1f}" for i, (x, y, _, _, _) in enumerate(crudos))
-    alternar = paso < 34
+    lineas = [[(x, y) for x, y, *_ in crudos]]
+    if base:
+        lineas.append([(x0 + indice[m] * paso, y_de(p)) for m, p in base])
+    tops = _ubicar_etiquetas([(x, y, f"{p:,.1f}") for x, y, _, p, _ in crudos], lineas, techo_zona=tope_barras - 14)
     puntos = [{
         "x": f"{x:.1f}", "y": f"{y:.1f}", "x_pct": pct_x(x), "y_pct": pct_y(y),
         "titulo": f"{etiqueta_mes(m)}: S/ {p:,.2f} por T · {t:,.0f} T",
-        "etiqueta": f"{p:,.1f}", "posicion": "abajo" if alternar and i % 2 else "arriba",
-    } for i, (x, y, m, p, t) in enumerate(crudos)]
+        "etiqueta": f"{p:,.1f}", "top_pct": pct_y(top),
+    } for (x, y, m, p, t), top in zip(crudos, tops)]
 
     mayor = max(t for _, _, t in serie) or 1.0
     ancho_barra = max(min(paso * 0.55, 14.0), 2.0)
@@ -544,6 +547,64 @@ def evolucion_precio(serie, etiqueta_mes, base=None, ancho_minimo=640, izq=58, d
         "grilla": grilla, "grilla_t": grilla_t, "tope_barras": f"{tope_barras:.1f}",
         "base_barras": f"{base_barras:.1f}", "tonelaje_maximo": _toneladas_corto(mayor), "linea_base": linea_base,
     }
+
+
+_ALTO_ETIQUETA, _HOLGURA_ETIQUETA = 11.0, 3.0
+
+
+def _ubicar_etiquetas(puntos, lineas, techo_zona):
+    """Posición vertical (borde superior, unidades del viewBox) de la etiqueta
+    de cada punto para que ninguna cruce las líneas del gráfico ni se pise con
+    otra (pedido del usuario: "que todos se vean, que no se crucen con la
+    línea"). Para cada etiqueta se mira la altura de las líneas en todo su
+    ancho y se la pone por encima del punto más alto o por debajo del más
+    bajo de ese tramo; primero del lado natural (arriba en un pico, abajo en
+    un valle) y, si choca con una ya ubicada, del otro lado o más alejada.
+    `puntos`: (x, y, texto); `lineas`: polilíneas [(x, y), ...];
+    `techo_zona`: límite inferior (no bajar hasta las barras)."""
+
+    def alturas(xa, xb):
+        ys = []
+        for pl in lineas:
+            if len(pl) == 1 and xa <= pl[0][0] <= xb:
+                ys.append(pl[0][1])
+            for (x1, y1), (x2, y2) in zip(pl, pl[1:]):
+                if x2 < xa or x1 > xb:
+                    continue
+                for xx in (max(xa, x1), min(xb, x2)):
+                    ys.append(y1 + (y2 - y1) * (xx - x1) / (x2 - x1) if x2 != x1 else y1)
+        return ys
+
+    ubicadas, tops = [], []
+    for i, (x, y, texto) in enumerate(puntos):
+        mitad = (len(texto) * 5.6 + 4) / 2
+        xa, xb = x - mitad, x + mitad
+        ys = alturas(xa, xb) + [y]
+        vecinos = [puntos[j][1] for j in (i - 1, i + 1) if 0 <= j < len(puntos)]
+        pico = not vecinos or y <= sum(vecinos) / len(vecinos)  # y crece hacia abajo
+        arriba = min(ys) - _HOLGURA_ETIQUETA - _ALTO_ETIQUETA
+        abajo = max(ys) + _HOLGURA_ETIQUETA
+        lados = [("arriba", arriba), ("abajo", abajo)] if pico else [("abajo", abajo), ("arriba", arriba)]
+
+        def libre(top):
+            return (top >= 0 and top + _ALTO_ETIQUETA <= techo_zona
+                    and not any(xa < ux1 and ux0 < xb and top < uy1 and uy0 < top + _ALTO_ETIQUETA
+                                for ux0, ux1, uy0, uy1 in ubicadas))
+
+        elegido = None
+        for paso in range(4):  # alejarse de a una línea si choca con otra etiqueta
+            for lado, top in lados:
+                candidato = top - paso * _ALTO_ETIQUETA if lado == "arriba" else top + paso * _ALTO_ETIQUETA
+                if libre(candidato):
+                    elegido = candidato
+                    break
+            if elegido is not None:
+                break
+        if elegido is None:
+            elegido = max(0.0, lados[0][1])
+        ubicadas.append((xa, xb, elegido, elegido + _ALTO_ETIQUETA))
+        tops.append(elegido)
+    return tops
 
 
 def _paso_marca(marcas):

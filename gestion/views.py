@@ -2391,7 +2391,8 @@ def _contexto_precios_entrada(request):
                 "precio_real": (r.importe_mb51 + r.ajuste) / r.toneladas, "ajuste_por_t": r.ajuste / r.toneladas,
                 # Mismo criterio que la inflación (q._RAZON_ATIPICA): el ajuste
                 # más que duplica el precio o lo baja a menos de la mitad.
-                "atipico": not (1 / q._RAZON_ATIPICA <= (r.importe_mb51 + r.ajuste) / r.importe_mb51 <= q._RAZON_ATIPICA),
+                "atipico": (r.material_codigo, r.centro) not in q.PRODUCCION_PROPIA and not (
+                    1 / q._RAZON_ATIPICA <= (r.importe_mb51 + r.ajuste) / r.importe_mb51 <= q._RAZON_ATIPICA),
                 "con_fbl3n": r.con_fbl3n,
                 "entradas": r.entradas, "proveedores": r.proveedores,
                 "variacion_pct": None if anterior is None else (r.precio / anterior - 1) * 100,
@@ -2434,55 +2435,76 @@ def _contexto_precios_entrada(request):
 _CENTRO_CORTO = {"U001": "AT", "U002": "CC"}
 
 
+def _ipu_por_anio(historia, anios):
+    """IPU interanual acumulado de cada año de `anios` para las filas de
+    `historia` (precio real, toda la historia: la base de enero sale del año
+    anterior): {año: variación} con el acumulado del último mes comparado del
+    año (q.ipu_por_mes). Un año sin comparaciones no aparece."""
+    inflacion = q.inflacion_precios(historia, 12)
+    if inflacion.empty:
+        return {}
+    ipu = q.ipu_por_mes(inflacion, 12)
+    resultado = {}
+    for anio in anios:
+        meses = [m for m in ipu if m.year == anio]
+        if meses:
+            resultado[anio] = ipu[max(meses)]["acumulado"] * 100
+    return resultado
+
+
 def _matriz_tco(historia, df):
     """Detalle de precios TCO (precio real: MB51 + ajustes FBL3N, importados
     puestos en planta) en el formato que pidió el usuario: una fila por
-    material y centro de lo filtrado, el precio promedio de entrada del año
-    base y, de izquierda a derecha, el precio de cada mes desde enero del año
-    siguiente hasta el último mes con datos (p.ej. Pu promedio 2024, Ene-25 …
-    Oct-26). Mes sin compra = vacío. `historia` sin recortar por período."""
+    material y centro de lo filtrado y, de izquierda a derecha, el precio de
+    cada mes del año anterior y del actual (p.ej. Ene-25 … Oct-26), con el
+    IPU acumulado de cada año al cierre de sus meses; abajo, el IPU de todo lo
+    filtrado. Solo esos dos años (pedido del usuario). Mes sin compra =
+    vacío. `historia` sin recortar por período (el IPU de enero compara
+    contra el año anterior)."""
     if df.empty:
         return None
     pares = df[["material_codigo", "centro"]].drop_duplicates()
     h = historia.merge(pares, on=["material_codigo", "centro"])
-    h = h.assign(importe_tco=h["importe_mb51"] + h["ajuste"], anio=[m.year for m in h["mes"]])
+    h = h.assign(importe_tco=h["importe_mb51"] + h["ajuste"])
     ultimo = max(h["mes"])
-    anio_base = ultimo.year - 2
-    meses = [datetime.date(anio_base + 1 + i // 12, i % 12 + 1, 1)
-             for i in range((ultimo.year - anio_base - 1) * 12 + ultimo.month)]
-    anios = []
-    for m in meses:
-        if not anios or anios[-1]["anio"] != m.year:
-            # Encabezado de cada año alternando color (como el formato del usuario).
-            anios.append({"anio": m.year, "meses": 0, "clase": "ab"[len(anios) % 2]})
-        anios[-1]["meses"] += 1
-    clase_anio = {a["anio"]: a["clase"] for a in anios}
+    anios = [ultimo.year - 1, ultimo.year]
+    meses_de = {a: [datetime.date(a, mes, 1) for mes in range(1, 13 if a < ultimo.year else ultimo.month + 1)]
+                for a in anios}
+    columnas = []
+    for a in anios:
+        columnas += [{"tipo": "mes", "texto": _mes_corto(m), "mes": m} for m in meses_de[a]]
+        columnas.append({"tipo": "ipu", "texto": f"IPU {a}", "anio": a})
     filas = []
     for (material, centro), g in h.groupby(["material_codigo", "centro"]):
-        base = g[g["anio"] == anio_base]
         por_mes = {r.mes: r for r in g.itertuples()}
+        if not any(m in por_mes for a in anios for m in meses_de[a]):
+            continue
+        ipu = _ipu_por_anio(g, anios)
+        # En producción propia la liquidación ES el costo (no un ajuste sobre
+        # MB51): no se marca como atípica.
+        propio = (material, centro) in q.PRODUCCION_PROPIA
         celdas = []
-        for m in meses:
-            r = por_mes.get(m)
+        for c in columnas:
+            if c["tipo"] == "ipu":
+                celdas.append({"ipu": ipu.get(c["anio"])})
+                continue
+            r = por_mes.get(c["mes"])
             if r is None:
                 celdas.append(None)
                 continue
-            precio = r.importe_tco / r.toneladas
-            celdas.append({"precio": precio, "anio": m.year,
-                           "atipico": not (1 / q._RAZON_ATIPICA <= r.importe_tco / r.importe_mb51 <= q._RAZON_ATIPICA),
-                           "titulo": f"{_mes_corto(m)}: {r.toneladas:,.0f} T · MB51 S/ {r.importe_mb51:,.0f}"
-                                     f" + ajustes FBL3N S/ {r.ajuste:,.0f} = S/ {r.importe_tco:,.0f}"})
-        if not any(celdas) and base.empty:
-            continue
-        filas.append({
-            "material": material, "texto": g["texto_breve"].iloc[0], "centro": _CENTRO_CORTO.get(centro, centro),
-            "orden_centro": centro,
-            "promedio_base": base["importe_tco"].sum() / base["toneladas"].sum() if not base.empty else None,
-            "celdas": celdas,
-        })
+            celdas.append({"precio": r.importe_tco / r.toneladas,
+                           "atipico": not propio and not (
+                               1 / q._RAZON_ATIPICA <= r.importe_tco / r.importe_mb51 <= q._RAZON_ATIPICA),
+                           "titulo": f"{c['texto']}: {r.toneladas:,.0f} T · "
+                                     + (f"traslado S/ {r.importe_mb51:,.0f} + liquidación de la orden S/ {r.ajuste:,.0f}"
+                                        if propio else f"MB51 S/ {r.importe_mb51:,.0f} + ajustes S/ {r.ajuste:,.0f}")
+                                     + f" = S/ {r.importe_tco:,.0f}"})
+        filas.append({"material": material, "texto": g["texto_breve"].iloc[0],
+                      "centro": _CENTRO_CORTO.get(centro, centro), "orden_centro": centro, "celdas": celdas})
     filas.sort(key=lambda f: (f["orden_centro"], f["material"]))
-    return {"anio_base": anio_base, "anios": anios, "filas": filas,
-            "meses_anio": [{"texto": _mes_corto(m), "clase": clase_anio[m.year]} for m in meses]}
+    total = _ipu_por_anio(h, anios)
+    return {"anios": anios, "columnas": columnas, "filas": filas,
+            "total": [total.get(c["anio"]) if c["tipo"] == "ipu" else "" for c in columnas]}
 
 
 def _tramos_de_meses(meses):

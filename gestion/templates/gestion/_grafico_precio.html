@@ -26,7 +26,7 @@
   <span class="titulo-eje-y">S/ por T</span>
   {% for l in g.grilla %}<span class="etiqueta-eje-y" style="top:{{ l.y_pct }}%; width:{{ g.izq_pct }}%;">{{ l.texto }}</span>{% endfor %}
   {% for l in g.grilla_t %}<span class="etiqueta-eje-y eje-toneladas" style="top:{{ l.y_pct }}%; width:{{ g.izq_pct }}%;">{{ l.texto }}</span>{% endfor %}
-  {% for pt in g.puntos %}<span class="etiqueta-valor etiqueta-{{ pt.posicion }}" style="left:{{ pt.x_pct }}%; top:{{ pt.y_pct }}%;">{{ pt.etiqueta }}</span>{% endfor %}
+  {% for pt in g.puntos %}<span class="etiqueta-valor etiqueta-libre" style="left:{{ pt.x_pct }}%; top:{{ pt.top_pct }}%;">{{ pt.etiqueta }}</span>{% endfor %}
   {% for b in g.barras %}<span class="etiqueta-barra-t" style="left:{{ b.x_pct }}%; top:{{ b.y_pct }}%;">{{ b.etiqueta }}</span>{% endfor %}
   {% for e in g.eje %}<span class="etiqueta-mes{% if g.girado %} etiqueta-mes-girada{% endif %}" style="left:{{ e.x_pct }}%;{% if g.girado %} top:{{ g.eje_top_pct }}%;{% endif %}">{{ e.texto }}</span>{% endfor %}
 </div>

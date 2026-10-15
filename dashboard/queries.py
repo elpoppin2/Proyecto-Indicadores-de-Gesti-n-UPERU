@@ -2669,6 +2669,77 @@ CENTRO_IMPORTACION = "U004"
 _MINIMO_TRASLADO = 0.02
 
 
+# Materiales de producción propia que el usuario mide en el IPU/TCO como uno
+# comprado (pedido del usuario, oct-2026: la "Caliza CC" de su reporte):
+# (material, centro que la recibe) -> centro que la envía. La caliza extraída
+# entra a Atocongo por traslado desde Condorcocha (al valor estándar de U002) y
+# su costo real llega con la liquidación mensual de la orden CAL_ROCA_AT (KO88/
+# CO88, clase PP; X2 = anulación) a la cuenta 2310002000 (FBL3N). Precio =
+# (valor del traslado + liquidación) ÷ toneladas de entrada (traslado neto +
+# ajustes de humedad/traslado Z15/Z16/Z31/Z32): las mismas toneladas que la
+# fila Entradas de la CKM3N (verificado: 39,624.01 T en set-26).
+PRODUCCION_PROPIA = {("14-00000024", "U001"): "U002"}
+CLASES_LIQUIDACION_PRODUCCION = ("PP", "X2")
+
+
+def _produccion_propia(df, materiales=None):
+    """`df` (salida del SQL de precios) más una fila por mes de cada material
+    de PRODUCCION_PROPIA (si `materiales` lo incluye): toneladas de entrada e
+    importe = valor del traslado (la liquidación entra como ajuste en
+    con_precio_real). Un mes con el traslado sin valor en MB51 (pasó en
+    jul-25) toma el valor por tonelada del mes anterior."""
+    filas = []
+    for (material, centro), origen in PRODUCCION_PROPIA.items():
+        if materiales is not None and material not in materiales:
+            continue
+        m = _query(f"""
+            SELECT substr(fecha_contabilizacion, 1, 7) || '-01' AS mes, centro, clase_movimiento AS cl,
+                   SUM(CASE WHEN cantidad > 0 THEN cantidad ELSE 0 END) AS t_pos,
+                   SUM(CASE WHEN cantidad < 0 THEN cantidad ELSE 0 END) AS t_neg,
+                   SUM(cantidad) AS t, SUM(importe_moneda_local) AS imp,
+                   SUM(CASE WHEN cantidad > 0 THEN 1 ELSE 0 END) AS n_pos
+            FROM gestion_movimientomaterial
+            WHERE material_codigo = {_texto_sql(material)} AND centro IN ({_texto_sql(centro)}, {_texto_sql(origen)})
+                  AND clase_movimiento IN ('641', '642', 'Z15', 'Z16', 'Z31', 'Z32') AND fecha_contabilizacion IS NOT NULL
+            GROUP BY 1, 2, 3
+        """)
+        if m.empty:
+            continue
+        for c in ("t_pos", "t_neg", "t", "imp"):
+            m[c] = m[c].astype(float)
+        valor_anterior = None
+        for mes, g in sorted(m.groupby("mes"), key=lambda x: x[0]):
+            d, o = g[g["centro"] == centro], g[g["centro"] == origen]
+            traslado = d.loc[d["cl"] == "641", "t_pos"].sum() + d.loc[d["cl"] == "642", "t_neg"].sum()
+            toneladas = traslado + d.loc[d["cl"].isin(["Z15", "Z16", "Z31", "Z32"]), "t"].sum()
+            valor = -o.loc[o["cl"].isin(["641", "642"]), "imp"].sum()
+            if traslado <= 0.5:
+                continue
+            if valor <= 0 and valor_anterior:
+                valor = valor_anterior * traslado
+            valor_anterior = valor / traslado if valor > 0 else valor_anterior
+            filas.append({"material_codigo": material, "centro": centro, "mes": mes, "toneladas": toneladas,
+                          "importe": valor, "entradas": int(d.loc[d["cl"] == "641", "n_pos"].sum()), "proveedores": 0})
+    if not filas:
+        return df
+    return pd.concat([df, pd.DataFrame(filas)[df.columns]], ignore_index=True)
+
+
+def liquidaciones_produccion_propia():
+    """Liquidación de las órdenes (FBL3N, clases PP/X2) de los materiales de
+    PRODUCCION_PROPIA en su centro, por mes: material_codigo, centro, mes, liquidacion."""
+    claves = " OR ".join(f"(material_codigo = {_texto_sql(m)} AND centro = {_texto_sql(c)})" for m, c in PRODUCCION_PROPIA)
+    df = _query(f"""
+        SELECT material_codigo, centro, substr(fecha_contabilizacion, 1, 7) || '-01' AS mes, SUM(importe) AS liquidacion
+        FROM gestion_ajustepreciofbl3n
+        WHERE ({claves}) AND clase_documento IN {CLASES_LIQUIDACION_PRODUCCION}
+        GROUP BY 1, 2, 3
+    """)
+    if not df.empty:
+        df["mes"] = pd.to_datetime(df["mes"]).dt.date
+    return df
+
+
 @_cacheado
 def materiales_importados():
     """Materiales comprados en el centro de importación (101 con proveedor en
@@ -2755,7 +2826,7 @@ def precios_entrada_sop():
               AND fecha_contabilizacion IS NOT NULL
         GROUP BY material_codigo, centro, mes
     """)
-    df = _puesto_en_destino(df)
+    df = _produccion_propia(_puesto_en_destino(df), set(materiales))
     if df.empty:
         return pd.DataFrame(columns=columnas)
     df["toneladas"] = df["toneladas"].astype(float)
@@ -2793,7 +2864,7 @@ def precios_entrada_materiales():
               AND fecha_contabilizacion IS NOT NULL
         GROUP BY material_codigo, centro, mes
     """)
-    df = _puesto_en_destino(df)
+    df = _produccion_propia(_puesto_en_destino(df))
     if df.empty:
         return pd.DataFrame(columns=columnas)
     df["toneladas"] = df["toneladas"].astype(float)
@@ -2892,6 +2963,11 @@ def con_precio_real(base):
         df[c] = 0.0
     meses = meses_con_fbl3n()
     df["con_fbl3n"] = df["mes"].isin(meses)
+    # Producción propia sin la FBL3N del mes (la liquidación de la orden se
+    # registra en el cierre): sin la liquidación su precio sería solo el
+    # traslado estándar (~S/ 7 por T), así que ese mes todavía no tiene precio.
+    propio = pd.Series([(m, c) in PRODUCCION_PROPIA for m, c in zip(df["material_codigo"], df["centro"])], index=df.index)
+    df = df[~(propio & ~df["con_fbl3n"])]
     aj = ajustes_precio_fbl3n()
     if df.empty or aj.empty:
         return df
@@ -2899,6 +2975,10 @@ def con_precio_real(base):
     # Lo ajustado en U004 ya viaja en el valor del traslado a la planta
     # (puesto en destino, ver _puesto_en_destino): no se suma otra vez.
     aj = aj[aj["centro"] != CENTRO_IMPORTACION]
+    # Producción propia: solo la liquidación de su orden (abajo), no el
+    # reparto del cierre del Material Ledger ni lo demás de la cuenta 2310002000.
+    propios = {m for m, _ in PRODUCCION_PROPIA}
+    aj = aj[~aj["material_codigo"].isin(propios)]
     importados = materiales_importados()
     columnas = ["ajuste", "ajuste_ordenes", "ajuste_trasladado"]
 
@@ -2949,6 +3029,22 @@ def con_precio_real(base):
         for c in columnas:
             filas[c] = filas[c] * participacion
         partes.append(filas[["material_codigo", "centro", "mes", *columnas]])
+
+    # Producción propia: la liquidación de la orden del mes (o, si ese mes no
+    # hubo traslado, del último mes anterior con traslado).
+    liq = liquidaciones_produccion_propia()
+    liq = liq.merge(df[["material_codigo", "centro"]].drop_duplicates(), on=["material_codigo", "centro"]) if not liq.empty else liq
+    if not liq.empty:
+        destinos = df[["material_codigo", "centro", "mes"]].rename(columns={"mes": "mes_destino"})
+        destinos["_clave"] = pd.to_datetime(destinos["mes_destino"])
+        liq = liq.assign(_clave=pd.to_datetime(liq["mes"]))
+        liq = pd.merge_asof(liq.sort_values("_clave"), destinos.sort_values("_clave"), on="_clave",
+                            by=["material_codigo", "centro"], direction="backward")
+        liq = liq[liq["mes_destino"].notna()]
+        partes.append(pd.DataFrame({
+            "material_codigo": liq["material_codigo"], "centro": liq["centro"], "mes": liq["mes_destino"],
+            "ajuste": liq["liquidacion"].astype(float), "ajuste_ordenes": 0.0,
+            "ajuste_trasladado": liq["liquidacion"].astype(float).where(liq["mes_destino"] != liq["mes"], 0.0)}))
     suma = pd.concat(partes, ignore_index=True).groupby(["material_codigo", "centro", "mes"], as_index=False)[columnas].sum()
     df = df.drop(columns=["ajuste", "ajuste_trasladado", "ajuste_ordenes"]).merge(
         suma, on=["material_codigo", "centro", "mes"], how="left")

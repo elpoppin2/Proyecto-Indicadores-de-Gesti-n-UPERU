@@ -353,6 +353,9 @@ td.estado-sobre_maximo { background: rgba(214, 160, 40, .2); }
 .chart-precio .etiqueta-eje-y { font-size: 10px; }
 .chart-precio .eje-toneladas { color: #8a8a8a; font-size: 9px; }
 .chart-precio .etiqueta-valor { font-size: 9px; text-shadow: 0 0 3px var(--surface), 0 0 3px var(--surface); }
+/* Posición calculada en charts._ubicar_etiquetas (borde superior): fuera de
+   las líneas y sin pisarse entre sí. */
+.chart-precio .etiqueta-valor.etiqueta-libre { transform: translateX(-50%); line-height: 11px; }
 .etiqueta-barra-t {
   position: absolute; transform: translate(-50%, calc(-100% - 2px)); font-family: "IBM Plex Mono", monospace;
   font-size: 8.5px; color: var(--muted); white-space: nowrap; pointer-events: none;
@@ -1448,31 +1451,18 @@ details.detalle-calculo > summary.boton-detalle:hover { background: var(--accent
 details.detalle-calculo > summary.boton-detalle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 details.detalle-calculo[open] > summary.boton-detalle { margin-bottom: 12px; }
 .tabla-calculo td, .tabla-calculo th { white-space: nowrap; }
-/* Matriz de precios TCO (formato del usuario): año base en azul oscuro, un
-   color por año en el encabezado de meses, celdas atípicas en amarillo. */
-:root {
-  --tco-base: #1f3864; --tco-base-ink: #ffffff; --tco-anio-a: #dbe5f1; --tco-anio-b: #e2efda;
-  --tco-anio-a-fuerte: #b4c6e7; --tco-anio-b-fuerte: #c6e0b4; --tco-atipico: #fff2a8; --tco-ink: #1a1a1a;
-}
+/* Matriz de precios TCO: encabezados con el estilo normal de las tablas (el
+   usuario pidió quitar el azul y el verde), columnas IPU separadas con un
+   filete y en negrita, celdas atípicas en amarillo. */
+:root { --tco-atipico: #fff2a8; --tco-ink: #1a1a1a; }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --tco-base: #2f4f86; --tco-anio-a: #23324a; --tco-anio-b: #253a2a;
-    --tco-anio-a-fuerte: #2f4566; --tco-anio-b-fuerte: #31502f; --tco-atipico: #5c5316; --tco-ink: #f1f1f1;
-  }
+  :root:not([data-theme="light"]) { --tco-atipico: #5c5316; --tco-ink: #f1f1f1; }
 }
-:root[data-theme="dark"] {
-  --tco-base: #2f4f86; --tco-anio-a: #23324a; --tco-anio-b: #253a2a;
-  --tco-anio-a-fuerte: #2f4566; --tco-anio-b-fuerte: #31502f; --tco-atipico: #5c5316; --tco-ink: #f1f1f1;
-}
+:root[data-theme="dark"] { --tco-atipico: #5c5316; --tco-ink: #f1f1f1; }
 .matriz-tco { font-variant-numeric: tabular-nums; font-size: 12.5px; }
 .matriz-tco th, .matriz-tco td { white-space: nowrap; padding: 4px 8px; }
 .matriz-tco thead th { text-align: center; vertical-align: middle; }
-.matriz-tco th.tco-base { background: var(--tco-base); color: var(--tco-base-ink); }
-.matriz-tco td.tco-base-celda { background: var(--tco-anio-a); color: var(--tco-ink); font-weight: 600; }
-.matriz-tco th.tco-anio-a { background: var(--tco-anio-a-fuerte); color: var(--tco-ink); }
-.matriz-tco th.tco-anio-b { background: var(--tco-anio-b-fuerte); color: var(--tco-ink); }
-.matriz-tco th.tco-mes-a { background: var(--tco-anio-a); color: var(--tco-ink); }
-.matriz-tco th.tco-mes-b { background: var(--tco-anio-b); color: var(--tco-ink); }
+.matriz-tco .tco-ipu { font-weight: 700; border-left: 2px solid var(--table-line); border-right: 2px solid var(--table-line); }
 .matriz-tco td.tco-atipico { background: var(--tco-atipico); color: var(--tco-ink); }
 .matriz-tco td[title] { cursor: help; }
 .codigo-suave { color: var(--muted); font-size: 11.5px; }

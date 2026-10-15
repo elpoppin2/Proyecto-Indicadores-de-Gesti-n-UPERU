@@ -207,21 +207,18 @@
       <p class="nota">
         Precio TCO por tonelada (S/ por T) = (importe de MB51 + ajustes de valor de la FBL3N) ÷ toneladas de cada mes,
         con los importados puestos en planta (AT = Atocongo U001, CC = Condorcocha U002). Los materiales son los de los
-        filtros de arriba; los meses van siempre de enero de {{ mt.anios.0.anio }} al último mes con datos, y
-        <strong>Pu Promedio Entrada {{ mt.anio_base }}</strong> es el promedio ponderado de ese año. Celda vacía = mes sin
-        compra. En amarillo, meses donde los ajustes de la FBL3N más que duplican el precio de MB51 o lo bajan a menos de
-        la mitad (revisar en el detalle del material). Pasa el mouse sobre un precio para ver cómo se calcula.
+        filtros de arriba; los meses son los de {{ mt.anios.0 }} y {{ mt.anios.1 }}. <strong>IPU</strong> = acumulado del año
+        contra el mismo tramo del año anterior (lo pagado ÷ lo que habrían costado esas toneladas al precio de un año antes
+        − 1); la última fila es el IPU de todos los materiales de la tabla. Celda vacía = mes sin compra. En amarillo,
+        meses donde los ajustes de la FBL3N más que duplican el precio de MB51 o lo bajan a menos de la mitad. Pasa el
+        mouse sobre un precio para ver cómo se calcula.
       </p>
       <div class="tabla-scroll">
         <table class="matriz-tco">
           <thead>
             <tr>
-              <th rowspan="2">Código</th><th rowspan="2">Item / Material</th><th rowspan="2">Centro</th>
-              <th rowspan="2" class="num tco-base">Pu Promedio Entrada {{ mt.anio_base }}</th>
-              {% for a in mt.anios %}<th colspan="{{ a.meses }}" class="tco-anio tco-anio-{{ a.clase }}">{{ a.anio }}</th>{% endfor %}
-            </tr>
-            <tr>
-              {% for m in mt.meses_anio %}<th class="num tco-mes tco-mes-{{ m.clase }}">{{ m.texto }}</th>{% endfor %}
+              <th>Código</th><th>Item / Material</th><th>Centro</th>
+              {% for c in mt.columnas %}<th class="num{% if c.tipo == 'ipu' %} tco-ipu{% endif %}">{{ c.texto }}</th>{% endfor %}
             </tr>
           </thead>
           <tbody>
@@ -230,13 +227,20 @@
                 <td class="codigo-suave">{{ f.material }}</td>
                 <td>{{ f.texto }}</td>
                 <td>{{ f.centro }}</td>
-                <td class="num tco-base-celda">{% if f.promedio_base is not None %}{{ f.promedio_base|numero:2 }}{% endif %}</td>
                 {% for c in f.celdas %}
-                  {% if c %}<td class="num{% if c.atipico %} tco-atipico{% endif %}" title="{{ c.titulo }}">{{ c.precio|numero:2 }}</td>{% else %}<td class="num tco-vacio"></td>{% endif %}
+                  {% if c is None %}<td class="num"></td>
+                  {% elif 'ipu' in c %}<td class="num tco-ipu">{% if c.ipu is not None %}{% if c.ipu > 0 %}+{% endif %}{{ c.ipu|numero:1 }}%{% else %}—{% endif %}</td>
+                  {% else %}<td class="num{% if c.atipico %} tco-atipico{% endif %}" title="{{ c.titulo }}">{{ c.precio|numero:2 }}</td>{% endif %}
                 {% endfor %}
               </tr>
             {% endfor %}
           </tbody>
+          <tfoot>
+            <tr class="fila-total">
+              <td colspan="3">IPU de los materiales de la tabla</td>
+              {% for v in mt.total %}<td class="num{% if v != '' %} tco-ipu{% endif %}">{% if v != '' and v is not None %}{% if v > 0 %}+{% endif %}{{ v|numero:1 }}%{% elif v is None %}—{% endif %}</td>{% endfor %}
+            </tr>
+          </tfoot>
         </table>
       </div>
     </details>
