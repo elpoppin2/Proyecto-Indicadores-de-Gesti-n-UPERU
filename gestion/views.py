@@ -2433,6 +2433,8 @@ def _contexto_precios_entrada(request):
 
 
 _CENTRO_CORTO = {"U001": "AT", "U002": "CC"}
+# Primer año de la matriz de precios TCO (pedido del usuario: desde 2024).
+_ANIO_INICIO_TCO = 2024
 
 
 def _ipu_por_anio(historia, anios):
@@ -2456,9 +2458,9 @@ def _matriz_tco(historia, df):
     """Detalle de precios TCO (precio real: MB51 + ajustes FBL3N, importados
     puestos en planta) en el formato que pidió el usuario: una fila por
     material y centro de lo filtrado y, de izquierda a derecha, el precio de
-    cada mes del año anterior y del actual (p.ej. Ene-25 … Oct-26), con el
-    IPU acumulado de cada año al cierre de sus meses; abajo, el IPU de todo lo
-    filtrado. Solo esos dos años (pedido del usuario). Mes sin compra = el
+    cada mes desde enero de _ANIO_INICIO_TCO hasta el último (p.ej. Ene-24 …
+    Oct-26), con el IPU acumulado de cada año al cierre de sus meses; abajo,
+    el IPU de todo lo filtrado (pedido del usuario). Mes sin compra = el
     último precio, marcado como repetido. `historia` sin recortar por período (el IPU de enero compara
     contra el año anterior)."""
     if df.empty:
@@ -2467,7 +2469,7 @@ def _matriz_tco(historia, df):
     h = historia.merge(pares, on=["material_codigo", "centro"])
     h = h.assign(importe_tco=h["importe_mb51"] + h["ajuste"])
     ultimo = max(h["mes"])
-    anios = [ultimo.year - 1, ultimo.year]
+    anios = list(range(min(_ANIO_INICIO_TCO, ultimo.year), ultimo.year + 1))
     meses_de = {a: [datetime.date(a, mes, 1) for mes in range(1, 13 if a < ultimo.year else ultimo.month + 1)]
                 for a in anios}
     columnas = []

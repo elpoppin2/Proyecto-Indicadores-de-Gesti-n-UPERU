@@ -130,6 +130,14 @@ if DATABASES['default']['ENGINE'] == 'django.db.backends.sqlite3':
         "PRAGMA mmap_size=3221225472;"
         "PRAGMA busy_timeout=30000;"
     )
+    # Sesiones en archivos y no en la base: la carga diaria tiene la base
+    # tomada para escribir varios minutos (más que el busy_timeout) y,
+    # mientras tanto, guardar la sesión (ingresar, cada visita) fallaba con
+    # "database is locked" y la página respondía "Server Error". Con esto el
+    # dashboard solo lee de la base (ver también gestion/apps.py: last_login).
+    SESSION_ENGINE = 'django.contrib.sessions.backends.file'
+    SESSION_FILE_PATH = BASE_DIR / '.sesiones'
+    SESSION_FILE_PATH.mkdir(exist_ok=True)
 
 
 # Password validation

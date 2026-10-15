@@ -1465,6 +1465,20 @@ details.detalle-calculo[open] > summary.boton-detalle { margin-bottom: 12px; }
 .matriz-tco .tco-ipu { font-weight: 700; border-left: 2px solid var(--table-line); border-right: 2px solid var(--table-line); }
 .matriz-tco td.tco-atipico { background: var(--tco-atipico); color: var(--tco-ink); }
 .matriz-tco td[title] { cursor: help; }
+/* Código, material y centro fijos al desplazar la matriz hacia la derecha
+   (pedido del usuario): anchos fijos para poder apilar los "left" y fondo
+   opaco para tapar los meses que pasan por debajo. */
+.matriz-tco .tco-fijo {
+  position: sticky; z-index: 1; box-sizing: border-box; background: var(--surface);
+  overflow: hidden; text-overflow: ellipsis;
+}
+.matriz-tco .tco-f1 { left: 0; width: 96px; min-width: 96px; max-width: 96px; }
+.matriz-tco .tco-f2 { left: 96px; width: 280px; min-width: 280px; max-width: 280px; }
+.matriz-tco .tco-f3 { left: 376px; width: 64px; min-width: 64px; max-width: 64px; box-shadow: 2px 0 0 var(--table-line); }
+.matriz-tco .tco-f123 { left: 0; width: 440px; min-width: 440px; max-width: 440px; box-shadow: 2px 0 0 var(--table-line); }
+.matriz-tco thead .tco-fijo { z-index: 3; background: var(--table-header); }
+.matriz-tco tbody tr:nth-child(even) .tco-fijo { background: var(--surface-2); }
+.matriz-tco tbody tr:hover .tco-fijo { background: var(--line); }
 /* Mes sin compra: se repite el último precio, en gris y cursiva. */
 .matriz-tco td.tco-repetido { color: var(--muted); font-style: italic; }
 .codigo-suave { color: var(--muted); font-size: 11.5px; }

@@ -12,3 +12,6 @@ staticfiles/
 
 # Caché de consultas del dashboard (se regenera sola, ver dashboard/queries.py)
 .cache_consultas/
+
+# Sesiones de usuarios del dashboard (ver config/settings.py)
+.sesiones/
