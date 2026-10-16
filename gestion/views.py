@@ -4017,30 +4017,74 @@ def _soles_marca(valor):
     return f"S/ {valor:,.0f}"
 
 
+# Paneles de la pestaña Indicadores de cada categoría, en orden. Por defecto
+# todos (los que apliquen a la categoría); Suministros Industriales solo IPU,
+# Cuentas por pagar, Inventario e IRI de 12 meses (pedido por el usuario,
+# 2026-10-16).
+_PANELES_CATEGORIA_DEFECTO = ("compras", "proveedores", "inventario", "salud", "abastecimiento", "ipu", "pmp")
+_PANELES_CATEGORIA = {
+    "SUMINISTROS INDUSTRIALES": ("ipu", "pmp", "inventario", "iri"),
+}
+_IRI_MESES = 12
+
+
+def _iri_por_mes(categoria, meses_serie=_IRI_MESES + 1):
+    """IRI (Índice de Rotación de Inventarios) de 12 meses de `categoria` al
+    cierre de cada uno de los últimos `meses_serie` meses cerrados: consumo
+    valorizado de los 12 meses que terminan en ese mes ÷ inventario promedio
+    (valor MB5B al cierre de esos 12 meses). Lista de dicts mes, iri,
+    consumo, inventario (promedio), dias (365 ÷ IRI); solo los meses con los
+    12 meses completos de datos."""
+    cerrado = q._sumar_meses(datetime.date.today().replace(day=1), -1)
+    consumo = q.consumo_valorizado_mensual_por_categoria()
+    consumo = {m: v for m, v in zip(consumo.loc[consumo["categoria"] == categoria, "mes"],
+                                     consumo.loc[consumo["categoria"] == categoria, "consumo_valor"])}
+    cortes = [c for c in _cortes_inventario() if c.replace(day=1) <= cerrado]
+    inventario = {f.replace(day=1): v for f, v in _serie_inventario(cortes, categoria)}
+    filas = []
+    for i in range(meses_serie - 1, -1, -1):
+        mes = q._sumar_meses(cerrado, -i)
+        ventana = [q._sumar_meses(mes, -k) for k in range(_IRI_MESES)]
+        if not all(m in inventario and m in consumo for m in ventana):
+            continue
+        total = sum(consumo[m] for m in ventana)
+        promedio = sum(inventario[m] for m in ventana) / _IRI_MESES
+        if promedio <= 0:
+            continue
+        iri = total / promedio
+        filas.append({"mes": mes, "desde": ventana[-1], "iri": iri, "consumo": total, "inventario": promedio,
+                      "dias": 365 / iri if iri > 0 else None})
+    return filas
+
+
 def _cat_indicadores(request, categoria, tiene_inventario):
     """Pestaña Indicadores de una categoría: un panel por pestaña con su
     número clave y el gráfico que lo explica, siempre al último dato
     disponible (con los filtros por defecto de cada pestaña, no los que se
-    hayan cambiado). Devuelve los paneles y cuántos materiales críticos están
-    en riesgo (el aviso rojo de arriba de la página)."""
+    hayan cambiado). Qué paneles y en qué orden: _PANELES_CATEGORIA. Devuelve
+    los paneles y cuántos materiales críticos están en riesgo (el aviso rojo
+    de arriba de la página)."""
     nombres_zona = {z["clave"]: z["nombre"] for z in _zonas_categoria(categoria, tiene_inventario)}
+    claves = _PANELES_CATEGORIA.get(categoria, _PANELES_CATEGORIA_DEFECTO)
     sin_filtros = copy.copy(request)
     sin_filtros.GET = QueryDict()
-    paneles = []
+    por_clave = {}
 
-    def panel(zona, titulo, cifra, sub, tipo, g, tono="", estado="", leyenda=(), nota="", ancho=False, vacio=""):
-        paneles.append({
+    def panel(clave, zona, titulo, cifra, sub, tipo, g, tono="", estado="", leyenda=(), nota="", ancho=False, vacio=""):
+        por_clave[clave] = {
             "zona": zona, "zona_nombre": nombres_zona[zona], "titulo": titulo, "cifra": cifra, "sub": sub,
             "tipo": tipo, "g": g, "tono": tono, "estado": estado, "leyenda": list(leyenda), "nota": nota,
             "ancho": ancho, "vacio": vacio,
-        })
+        }
 
     # 1. Compras del año a la fecha, contra los mismos meses del año anterior.
-    co = _cat_compras(sin_filtros, categoria, tiene_inventario)
-    por_mes = co["compras_por_mes"]
+    co = _cat_compras(sin_filtros, categoria, tiene_inventario) if {"compras", "proveedores"} & set(claves) else None
+    por_mes = co["compras_por_mes"] if co else None
     titulo = "Compras del año"
-    if not por_mes:
-        panel("compras", titulo, "—", "", "", None, vacio="Sin compras registradas en esta categoría.", ancho=True)
+    if "compras" not in claves:
+        pass
+    elif not por_mes:
+        panel("compras", "compras", titulo, "—", "", "", None, vacio="Sin compras registradas en esta categoría.", ancho=True)
     else:
         ultimo_mes = por_mes[-1][0]
         anio = ultimo_mes.year
@@ -4049,7 +4093,7 @@ def _cat_indicadores(request, categoria, tiene_inventario):
         fila_anio = next((f for f in co["compras"] if f["anio"] == anio), None)
         contrato = f" · {fila_anio['pct_contrato']:.1f}% bajo contrato" if fila_anio else ""
         estado = f"{(actual / previo - 1) * 100:+.1f}% vs {anio - 1}" if previo else ""
-        panel("compras", titulo, _soles_mm(actual),
+        panel("compras", "compras", titulo, _soles_mm(actual),
               f"Ene–{_MESES_ABREV_GUION[ultimo_mes.month]} {anio}{contrato}"
               + (f" · mismo tramo de {anio - 1}: {_soles_mm(previo)}" if previo else ""),
               "columnas", co["compras_mensual"]["grafico"] if co["compras_mensual"] else None, "neutro", estado,
@@ -4057,9 +4101,11 @@ def _cat_indicadores(request, categoria, tiene_inventario):
 
     # 2. Concentración de proveedores (Top 5) del año, con Lead Time y Fill Rate.
     titulo = "Concentración de proveedores"
-    pareto = co["pareto"]
-    if not pareto or not pareto["top_proveedores"]:
-        panel("compras", titulo, "—", "", "", None, vacio="Sin compras en lo que va del año.")
+    pareto = co["pareto"] if co else None
+    if "proveedores" not in claves:
+        pass
+    elif not pareto or not pareto["top_proveedores"]:
+        panel("proveedores", "compras", titulo, "—", "", "", None, vacio="Sin compras en lo que va del año.")
     else:
         pct = float(pareto["pct_concentracion_top"])
         tono, estado = (("alerta", "Alta dependencia") if pct >= 80 else
@@ -4077,7 +4123,7 @@ def _cat_indicadores(request, categoria, tiene_inventario):
                   "texto": f"{float(p['pct']):.1f}%", "clase": "mal",
                   "detalle": f"{p['proveedor']}\nS/ {float(p['valor']):,.0f} · {float(p['pct']):.1f}% de las compras"}
                  for p in top]
-        panel("compras", titulo, f"{pct:.1f}%",
+        panel("proveedores", "compras", titulo, f"{pct:.1f}%",
               f"De las compras de {co['sc']['texto']} en los {co['sc']['top']} proveedores más grandes"
               + (" · " + " · ".join(extras) if extras else ""),
               "escala", charts.barras_escala(filas, 0, tope), tono, estado)
@@ -4085,22 +4131,26 @@ def _cat_indicadores(request, categoria, tiene_inventario):
     criticos_en_riesgo = 0
     if tiene_inventario:
         inv = _cat_inventario(sin_filtros, categoria, tiene_inventario)
+        criticos_en_riesgo = inv["criticos"]["en_riesgo"] if inv["criticos"] else 0
         # 3. Valor del inventario: el último corte de cada uno de los últimos
         # 13 meses (desde Set-26 hay cortes diarios: va el último de cada mes).
         valores = _serie_inventario(_cortes_inventario()[-13:], categoria)
         titulo = "Valor del inventario"
-        if not valores:
-            panel("inventario", titulo, "—", "", "", None, vacio="Sin inventario registrado.")
+        if "inventario" not in claves:
+            pass
+        elif not valores:
+            panel("inventario", "inventario", titulo, "—", "", "", None, vacio="Sin inventario registrado.")
         else:
             rot = inv["rotacion"]
             partes = [f"Al {valores[-1][0]:%d/%m/%Y}"]
-            if rot["rotacion_anual"] is not None:
+            # Con el panel del IRI (12 meses) no se repite la rotación de 6 meses: serían dos cifras distintas.
+            if rot["rotacion_anual"] is not None and "iri" not in claves:
                 partes.append(f"rotación {rot['rotacion_anual']:.2f} veces al año")
-            if rot["dias_inventario"] is not None:
+            if rot["dias_inventario"] is not None and "iri" not in claves:
                 partes.append(f"{rot['dias_inventario']:,.0f} días de inventario")
             estado = (f"{(valores[-1][1] / valores[-2][1] - 1) * 100:+.1f}% vs mes anterior"
                       if len(valores) > 1 and valores[-2][1] else "")
-            panel("inventario", titulo, _soles_mm(valores[-1][1]), " · ".join(partes), "lineas",
+            panel("inventario", "inventario", titulo, _soles_mm(valores[-1][1]), " · ".join(partes), "lineas",
                   charts.lineas_mensuales(
                       [{"nombre": "Valor", "clase": "serie-0",
                         "puntos": [(f.replace(day=1), v, f"Al {f:%d/%m/%Y}\nS/ {v:,.0f}") for f, v in valores]}],
@@ -4108,10 +4158,36 @@ def _cat_indicadores(request, categoria, tiene_inventario):
                   "neutro", estado, nota="Valor del inventario (MB5B) al cierre de cada mes, últimos 13 meses "
                                          "(el mes en curso, a su último corte).")
 
-        # 4. Salud del inventario: críticos en riesgo, sin movimiento y ABC.
+        # IRI: rotación de inventarios de 12 meses, al cierre de cada uno de los últimos 12 meses.
+        iri = _iri_por_mes(categoria) if "iri" in claves else []
+        titulo = "Rotación de inventarios (IRI)"
+        if "iri" not in claves:
+            pass
+        elif not iri:
+            panel("iri", "inventario", titulo, "—", "", "", None, vacio="Faltan 12 meses de consumo e inventario para calcularlo.")
+        else:
+            ultimo, serie = iri[-1], iri[-_IRI_MESES:]
+            hace_un_anio = next((f for f in iri if f["mes"] == q._sumar_meses(ultimo["mes"], -12)), None)
+            estado = f"{ultimo['iri'] - hace_un_anio['iri']:+.2f} vs {_mes_corto(hace_un_anio['mes'])}" if hace_un_anio else ""
+            panel("iri", "inventario", titulo, f"{ultimo['iri']:.2f} veces",
+                  f"{_mes_corto(ultimo['desde'])}–{_mes_corto(ultimo['mes'])} · consumo {_soles_mm(ultimo['consumo'])} ÷ "
+                  f"inventario promedio {_soles_mm(ultimo['inventario'])}"
+                  + (f" · {ultimo['dias']:,.0f} días de inventario" if ultimo["dias"] else ""),
+                  "lineas", charts.lineas_mensuales(
+                      [{"nombre": "IRI", "clase": "serie-0",
+                        "puntos": [(f["mes"], f["iri"],
+                                    f"{_mes_corto(f['desde'])}–{_mes_corto(f['mes'])}\nIRI {f['iri']:.2f} veces"
+                                    f"\nConsumo S/ {f['consumo']:,.0f} ÷ inventario promedio S/ {f['inventario']:,.0f}")
+                                   for f in serie]}],
+                      _mes_corto, lambda v: f"{v:.2f}", desde_cero=True, max_etiquetas_eje=7),
+                  "neutro", estado,
+                  nota="Consumo valorizado (MB51) de los 12 meses que terminan en cada mes ÷ valor promedio del "
+                       "inventario (MB5B) al cierre de esos 12 meses. Más alto = el inventario rota más rápido.")
+
+    # 4. Salud del inventario: críticos en riesgo, sin movimiento y ABC.
+    if tiene_inventario and "salud" in claves:
         titulo = "Salud del inventario"
         criticos, obsoletos, abc = inv["criticos"], inv["obsoletos"], inv["abc"]
-        criticos_en_riesgo = criticos["en_riesgo"] if criticos else 0
         partes = []
         if criticos:
             partes.append(f"de {criticos['materiales_criticos']:,} materiales críticos")
@@ -4140,24 +4216,24 @@ def _cat_indicadores(request, categoria, tiene_inventario):
         leyenda_abc = [("col-abc-a", "Clase A"), ("col-abc-b", "Clase B"), ("col-abc-c", "Clase C")]
         nota_abc = "Barras: clasificación ABC del inventario (A = 80% del valor, B = hasta 95%, C = el resto)."
         if criticos:
-            panel("inventario", titulo, f"{criticos_en_riesgo:,}", "Materiales críticos con menos de 1 mes de cobertura, "
+            panel("salud", "inventario", titulo, f"{criticos_en_riesgo:,}", "Materiales críticos con menos de 1 mes de cobertura, "
                   + " · ".join(partes), "pilas", g, "alerta" if criticos_en_riesgo else "ok",
                   "En riesgo" if criticos_en_riesgo else "Sin riesgo", leyenda=leyenda_abc, nota=nota_abc)
         else:
             # Sin materiales críticos marcados en el maestro: la cifra pasa a
             # ser el capital inmovilizado (sin movimiento en 3 años).
-            panel("inventario", titulo, _soles_mm(float(obsoletos["valor_obsoleto"])) if obsoletos else "—",
+            panel("salud", "inventario", titulo, _soles_mm(float(obsoletos["valor_obsoleto"])) if obsoletos else "—",
                   (f"Sin movimiento en 3 años ({obsoletos['materiales_obsoletos']:,} materiales)" if obsoletos
                    else "Sin materiales sin movimiento") + " · sin materiales críticos marcados en el maestro",
                   "pilas", g, "aviso" if obsoletos else "ok", "Inmovilizado" if obsoletos else "Sin inmovilizado",
                   leyenda=leyenda_abc, nota=nota_abc)
 
     # 5. Abastecimiento S&OP: cumplimiento del último mes cerrado, por centro.
-    if "abastecimiento" in nombres_zona:
+    if "abastecimiento" in nombres_zona and "abastecimiento" in claves:
         titulo = "Cumplimiento del plan de abastecimiento"
         ab = _cat_abastecimiento(sin_filtros, categoria, tiene_inventario)["ab"]
         if not ab or not ab["centros"] or ab["cumplimiento_pct"] is None:
-            panel("abastecimiento", titulo, "—", "", "", None, vacio="Sin plan ni ingresos del último mes cerrado.")
+            panel("abastecimiento", "abastecimiento", titulo, "—", "", "", None, vacio="Sin plan ni ingresos del último mes cerrado.")
         else:
             pct = ab["cumplimiento_pct"]
             filas = [{"nombre": q.nombre_centro(f["centro"]).title(), "sub": f"{f['real']:,.0f} de {f['plan']:,.0f} T",
@@ -4167,15 +4243,17 @@ def _cat_indicadores(request, categoria, tiene_inventario):
                      for f in ab["centros"]]
             tope = min(max(120, max(f["valor"] for f in filas) * 1.08), 200)
             tono, estado = (("ok", "Cumplido") if pct >= 100 else ("aviso", "Por debajo") if pct >= 80 else ("alerta", "Bajo el plan"))
-            panel("abastecimiento", titulo, f"{pct:.1f}%",
+            panel("abastecimiento", "abastecimiento", titulo, f"{pct:.1f}%",
                   f"{q.formato_mes_anio(ab['mes'])} · {ab['total_real']:,.0f} T ingresadas de {ab['total_plan']:,.0f} T planificadas",
                   "escala", charts.barras_escala(filas, 0, tope, referencias=[(100, "100%")]), tono, estado)
 
     # 6. Precios e IPU: acumulado del año (interanual) y cada mes.
-    pr = _cat_precios(sin_filtros, categoria, tiene_inventario)["pr"]
+    pr = _cat_precios(sin_filtros, categoria, tiene_inventario)["pr"] if "ipu" in claves else None
     titulo = "IPU · Índice de Precios Unacem"
-    if not pr["resumen"] or not pr["puntos"]:
-        panel("precios", titulo, "—", "", "", None, vacio=pr["aviso"] or "Sin compras con base de comparación.")
+    if pr is None:
+        pass
+    elif not pr["resumen"] or not pr["puntos"]:
+        panel("ipu", "precios", titulo, "—", "", "", None, vacio=pr["aviso"] or "Sin compras con base de comparación.")
     else:
         a = pr["resumen"]["por_anio"][-1]
         tono, estado = (("alerta", "Sube") if a["pct"] > 0.5 else ("ok", "Baja") if a["pct"] < -0.5 else ("neutro", "Estable"))
@@ -4191,7 +4269,7 @@ def _cat_indicadores(request, categoria, tiene_inventario):
                    "etiqueta_final": f"{puntos[-1]['acumulado'] * 100:+.1f}%"},
             ancho=480, alto=200,  # panel de media página: menos etiquetas de mes, sin que se pisen
         )
-        panel("precios", titulo, f"{a['pct']:+.1f}%",
+        panel("ipu", "precios", titulo, f"{a['pct']:+.1f}%",
               f"{a['anio']} acumulado a {a['hasta']} vs el mismo tramo de {a['anio'] - 1} · bolsa "
               f"{'+' if a['bolsa'] >= 0 else '−'}{_soles_mm(abs(a['bolsa']))} · {pr['resumen']['materiales']:,} materiales",
               "columnas", g, tono, estado,
@@ -4199,15 +4277,17 @@ def _cat_indicadores(request, categoria, tiene_inventario):
               nota="Precio real de compra (MB51 + ajustes FBL3N) de cada mes contra el mismo mes del año anterior; la línea acumula desde enero.")
 
     # 7. Cuentas por pagar: PMP del año y su evolución.
-    cx = _cat_cuentas(sin_filtros, categoria, tiene_inventario)["cx"]
+    cx = _cat_cuentas(sin_filtros, categoria, tiene_inventario)["cx"] if "pmp" in claves else None
     titulo = "Plazo medio de pago"
-    if not cx["pmp_anios"]:
-        panel("cuentas", titulo, "—", "", "", None, vacio="Sin compras registradas en esta categoría.")
+    if cx is None:
+        pass
+    elif not cx["pmp_anios"]:
+        panel("pmp", "cuentas", titulo, "—", "", "", None, vacio="Sin compras registradas en esta categoría.")
     else:
         ultimo = cx["pmp_anios"][-1]
         estado = f"{ultimo['diferencia']:+.0f} días vs {ultimo['anio'] - 1}" if ultimo["diferencia"] is not None else ""
         serie = cx["pmp_serie"][-_COMPRAS_MESES:]
-        panel("cuentas", titulo, f"{ultimo['pmp']:.0f} días",
+        panel("pmp", "cuentas", titulo, f"{ultimo['pmp']:.0f} días",
               f"Compras de {ultimo['periodo']}, mismos meses que el año anterior"
               + (f" · {cx['pct_60']:.0f}% del valor a 60 días o más" if cx.get("pct_60") is not None else "")
               + (f" · cada día más de plazo = {_soles_mm(cx['caja_por_dia'])} de caja" if cx.get("caja_por_dia") else ""),
@@ -4217,6 +4297,7 @@ def _cat_indicadores(request, categoria, tiene_inventario):
                   _mes_corto, lambda v: f"{v:.0f} d", desde_cero=True, max_etiquetas_eje=8),
               "neutro", estado, nota="Días de pago pactados en las órdenes de compra, ponderados por valor (mes a mes).")
 
+    paneles = [por_clave[c] for c in claves if c in por_clave]
     # Paneles de media página en número impar: el último ocupa el ancho
     # completo (si no, queda solo en su fila con un hueco al lado).
     medios = [p for p in paneles if not p["ancho"]]

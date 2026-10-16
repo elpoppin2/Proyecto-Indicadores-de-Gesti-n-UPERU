@@ -1,12 +1,27 @@
 import glob
 import os
 
-from django.db import transaction
+from django.db import connection, transaction
 from django.core.management.base import BaseCommand, CommandError
 
 from gestion.models import InventarioMensual
 from ._csv_utils import codigo, decimal, fecha, leer_filas, texto
 from ._seguimiento_archivos import fuera_de_ventana, necesita_importar, registrar_importado
+
+
+def podar_cortes_diarios():
+    """Deja un solo corte de inventario por mes: el más reciente. Desde
+    Set-26 el robot reemplaza cada día el MB5B del mes en curso con el corte
+    de ese día y cada carga sumaba un corte nuevo (~39 mil filas diarias),
+    pero todo el dashboard usa solo el último corte de cada mes. Pedido del
+    usuario: proyecto lo más ligero posible (2026-10-16). Devuelve las filas
+    quitadas."""
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            DELETE FROM gestion_inventariomensual
+            WHERE fecha NOT IN (SELECT MAX(fecha) FROM gestion_inventariomensual GROUP BY substr(fecha, 1, 7))
+        """)
+        return cursor.rowcount
 
 
 class Command(BaseCommand):
@@ -61,6 +76,9 @@ class Command(BaseCommand):
             total_general += total
             self.stdout.write(f"  {os.path.basename(archivo)}: {total} filas")
 
+        podados = podar_cortes_diarios()
+        if podados:
+            self.stdout.write(f"  Cortes intermedios del mes quitados: {podados} filas")
         self.stdout.write(self.style.SUCCESS(
             f"Inventario: {total_general} filas procesadas en {len(archivos) - saltados - cerrados} archivo(s)"
             f" ({saltados} sin cambios, {cerrados} de meses cerrados, saltados)."

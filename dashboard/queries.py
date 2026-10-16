@@ -1657,6 +1657,30 @@ def consumo_valorizado_6_meses_por_material(fecha):
 
 
 @_cacheado
+def consumo_valorizado_mensual_por_categoria():
+    """Consumo en valor (S/, mismas reglas que consumo_valorizado_6_meses_por_material)
+    por categoría y mes: insumo del IRI de 12 meses (pestaña Indicadores de las
+    categorías). Columnas: categoria, mes (date, día 1), consumo_valor."""
+    df = _query(f"""
+        SELECT material_codigo AS material_codigo, substr(fecha_contabilizacion, 1, 7) || '-01' AS mes,
+               -SUM(importe_moneda_local) AS consumo_valor
+        FROM gestion_movimientomaterial
+        WHERE {FILTRO_CLASE_MOVIMIENTO_CONSUMO}
+              AND fecha_contabilizacion IS NOT NULL
+              AND material_codigo != ''
+              AND {FILTRO_EXCLUYE_LOTE_USADO_REPUESTOS}
+        GROUP BY material_codigo, mes
+    """)
+    if df.empty:
+        return pd.DataFrame(columns=["categoria", "mes", "consumo_valor"])
+    df = df.merge(catalogo_materiales()[["material_codigo", "categoria"]].drop_duplicates("material_codigo"),
+                  on="material_codigo", how="left")
+    df["mes"] = pd.to_datetime(df["mes"]).dt.date
+    df["consumo_valor"] = df["consumo_valor"].astype(float)
+    return df.groupby(["categoria", "mes"], as_index=False)["consumo_valor"].sum()
+
+
+@_cacheado
 def rotacion_inventario_por_material(fecha):
     """Índice de Rotación de Inventario por material (veces) = Consumo promedio (MB51,
     6 últimos meses calendario que terminan en `fecha`) ÷ Inventario de cierre (MB5B,

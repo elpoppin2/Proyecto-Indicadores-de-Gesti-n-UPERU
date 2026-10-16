@@ -64,7 +64,8 @@ class InventarioMensual(models.Model):
     valor_final = models.DecimalField(max_digits=18, decimal_places=4, default=0)
     denominacion_tipo_material = models.CharField(max_length=255, blank=True)
     denominacion_grupo_articulos = models.CharField(max_length=255, blank=True)
-    fecha = models.DateField(db_index=True, verbose_name="A fecha")
+    # Sin índice propio: lo resuelve idx_inv_valor_cubriente, que empieza por fecha (migración 0019).
+    fecha = models.DateField(verbose_name="A fecha")
     area_valoracion = models.CharField(max_length=20, blank=True)
 
     class Meta:
@@ -77,7 +78,6 @@ class InventarioMensual(models.Model):
             )
         ]
         indexes = [
-            models.Index(fields=["fecha", "material_codigo"]),
             # Índice "cubriente" de las series de Valor de Inventario (histórico
             # completo, ~1.5 M filas): trae todo lo que esas sumas necesitan,
             # así SQLite las resuelve leyendo solo el índice en vez de ir fila
@@ -194,30 +194,35 @@ class MovimientoMaterial(models.Model):
         (ORIGEN_SERVICIOS, "Servicios"),
     ]
 
-    origen_datos = models.CharField(max_length=12, choices=ORIGEN_OPCIONES, db_index=True)
+    # Índices (migración 0019, proyecto más ligero): solo los que usan las
+    # consultas del dashboard (medido con EXPLAIN QUERY PLAN de todas las
+    # páginas): fecha_contabilizacion, los de Meta.indexes y la clave única.
+    # material_codigo, clase_movimiento y documento_material los cubren
+    # índices compuestos que empiezan por ellos; el resto no se usaba.
+    origen_datos = models.CharField(max_length=12, choices=ORIGEN_OPCIONES)
 
-    material_codigo = models.CharField(max_length=40, blank=True, db_index=True, verbose_name="Material")
+    material_codigo = models.CharField(max_length=40, blank=True, verbose_name="Material")
     sociedad = models.CharField(max_length=20, blank=True, verbose_name="Sociedad")
-    centro = models.CharField(max_length=20, blank=True, db_index=True, verbose_name="Centro")
+    centro = models.CharField(max_length=20, blank=True, verbose_name="Centro")
     nombre_centro = models.CharField(max_length=100, blank=True, verbose_name="Nombre 1")
-    proveedor = models.CharField(max_length=40, blank=True, db_index=True, verbose_name="Proveedor")
+    proveedor = models.CharField(max_length=40, blank=True, verbose_name="Proveedor")
     pedido = models.CharField(max_length=40, blank=True, verbose_name="Pedido")
     posicion = models.CharField(max_length=20, blank=True, verbose_name="Posición")
     descripcion_material = models.CharField(max_length=255, blank=True, verbose_name="Descripción material")
-    documento_material = models.CharField(max_length=40, blank=True, db_index=True, verbose_name="Documento material")
+    documento_material = models.CharField(max_length=40, blank=True, verbose_name="Documento material")
     fecha_contabilizacion = models.DateField(null=True, blank=True, db_index=True, verbose_name="Fecha contabiliz.")
     cantidad = models.DecimalField(max_digits=18, decimal_places=4, null=True, blank=True, verbose_name="Cantidad")
     cantidad_um_entrada = models.DecimalField(max_digits=18, decimal_places=4, null=True, blank=True, verbose_name="Ctd.en UM entrada")
     unidad_medida_entrada = models.CharField(max_length=20, blank=True, verbose_name="Un.medida de entrada")
     clase_transaccion = models.CharField(max_length=20, blank=True, verbose_name="Clase de trans./eve.")
-    clase_movimiento = models.CharField(max_length=20, blank=True, db_index=True, verbose_name="Clase de movimiento")
+    clase_movimiento = models.CharField(max_length=20, blank=True, verbose_name="Clase de movimiento")
     usuario = models.CharField(max_length=60, blank=True, verbose_name="Nombre del usuario")
     destino_mercancia = models.CharField(max_length=100, blank=True, verbose_name="Dest.mercancía")
     importe_moneda_local = models.DecimalField(max_digits=18, decimal_places=4, null=True, blank=True, verbose_name="Impte.mon.local")
     moneda = models.CharField(max_length=10, blank=True, verbose_name="Moneda")
     referencia = models.CharField(max_length=100, blank=True, verbose_name="Referencia")
     ejercicio_documento_material = models.CharField(max_length=20, blank=True, verbose_name="Ejerc.documento mat.")
-    fecha_documento = models.DateField(null=True, blank=True, db_index=True, verbose_name="Fecha de documento")
+    fecha_documento = models.DateField(null=True, blank=True, verbose_name="Fecha de documento")
     fecha_entrada = models.DateField(null=True, blank=True, verbose_name="Fecha de entrada")
     texto_clase_movimiento = models.CharField(max_length=100, blank=True, verbose_name="Texto clase de mov.")
     cuenta_mayor = models.CharField(max_length=40, blank=True, verbose_name="Cuenta de mayor")
@@ -229,7 +234,7 @@ class MovimientoMaterial(models.Model):
     cliente = models.CharField(max_length=40, blank=True, verbose_name="Cliente")
     pedido_de_cliente = models.CharField(max_length=40, blank=True, verbose_name="Pedido de cliente")
     stock_especial = models.CharField(max_length=20, blank=True, verbose_name="Stock especial")
-    posicion_documento_material = models.CharField(max_length=20, blank=True, db_index=True, verbose_name="Posición doc.mat.")
+    posicion_documento_material = models.CharField(max_length=20, blank=True, verbose_name="Posición doc.mat.")
     activo_fijo = models.CharField(max_length=40, blank=True, verbose_name="Activo fijo")
     subnumero = models.CharField(max_length=20, blank=True, verbose_name="Subnúmero")
     contador = models.CharField(max_length=20, blank=True, verbose_name="Contador")
@@ -280,7 +285,6 @@ class MovimientoMaterial(models.Model):
         ]
         indexes = [
             models.Index(fields=["material_codigo", "fecha_contabilizacion"]),
-            models.Index(fields=["centro", "fecha_contabilizacion"]),
             # Índice de cobertura para el cálculo de consumo del Índice de Rotación:
             # filtra por clase de movimiento + rango de fechas y agrupa por material,
             # todo desde el índice sin tocar la tabla (3.5M filas).
