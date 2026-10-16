@@ -15,6 +15,7 @@ urlpatterns = [
     path("planificacion/premios/exportar/", views.exportar_premios, name="exportar_premios"),
     path("planificacion/energia/exportar/", views.exportar_energia, name="exportar_energia"),
     path("planificacion/asistente/", views.asistente_planificacion, name="asistente_planificacion"),
+    path("logistica-materias-primas/", views.logistica_materias_primas, name="logistica_materias_primas"),
     path("<slug:slug>/exportar/", views.exportar_excel, name="exportar_excel_categoria"),
     path("<slug:slug>/rotacion-materiales/", views.rotacion_materiales_pagina, name="rotacion_materiales_pagina"),
     path("<slug:slug>/detalle/<slug:clave>/", views.desglose_filas, name="desglose_filas"),

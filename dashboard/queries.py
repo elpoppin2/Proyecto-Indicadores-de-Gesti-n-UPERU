@@ -3,6 +3,8 @@ conexión de Django (más eficiente que el ORM para agregaciones sobre tablas de
 millones de filas) y devuelven DataFrames de pandas listos para graficar."""
 
 import calendar
+import contextlib
+import contextvars
 import copy
 import datetime
 import functools
@@ -145,9 +147,46 @@ def _cacheado(funcion):
     la clave por si alguna ventana de fechas depende de ella."""
     @functools.wraps(funcion)
     def envoltura(*args, **kwargs):
-        clave = ("fn", funcion.__qualname__, repr(args), repr(sorted(kwargs.items())), datetime.date.today())
+        clave = ("fn", funcion.__qualname__, repr(args), repr(sorted(kwargs.items())), datetime.date.today(),
+                 alcance_actual())
         return _cache_obtener(clave, lambda: funcion(*args, **kwargs))
     return envoltura
+
+
+# Alcance de materiales: una página puede mostrar las mismas secciones de
+# Planificación solo para algunos (material, centro), p.ej. Logística de
+# Materias Primas (pedido por el usuario el 2026-10-16). Mientras rige
+# (`with alcance_materiales(pares):`), las consultas base del Plan vs Real
+# (plan, ingresos de báscula, entregas, traslados) devuelven solo esos pares,
+# y todo lo que se calcula encima queda acotado. Va en la clave de @_cacheado
+# y de la caché de vistas, así una página no pisa lo guardado por la otra.
+_ALCANCE_MATERIALES = contextvars.ContextVar("alcance_materiales", default=None)
+
+
+@contextlib.contextmanager
+def alcance_materiales(pares):
+    token = _ALCANCE_MATERIALES.set(tuple(sorted(pares)) if pares else None)
+    try:
+        yield
+    finally:
+        _ALCANCE_MATERIALES.reset(token)
+
+
+def alcance_actual():
+    """Pares (material, centro) del alcance vigente, o None (sin acotar)."""
+    return _ALCANCE_MATERIALES.get()
+
+
+def _en_alcance(df, centro=None):
+    """Filas de `df` (material_codigo + centro, o el `centro` dado si la
+    consulta ya viene de un solo centro) dentro del alcance vigente."""
+    pares = _ALCANCE_MATERIALES.get()
+    if pares is None or df.empty:
+        return df
+    pares = set(pares)
+    centros = [centro] * len(df) if centro else df["centro"]
+    dentro = [par in pares for par in zip(df["material_codigo"], centros)]
+    return df[dentro].reset_index(drop=True)
 
 
 def formato_soles(valor):
@@ -1742,14 +1781,14 @@ def plan_abastecimiento_por_material(mes):
     con la versión más reciente del plan cargado (el snapshot más nuevo): si
     se recarga el plan al mes siguiente, la proyección se actualiza sola, no
     queda una foto vieja congelada."""
-    return _query(f"""
+    return _en_alcance(_query(f"""
         SELECT material_codigo AS material_codigo, centro_destino AS centro,
                SUM(cantidad_plan) AS cantidad_plan
         FROM gestion_planabastecimientosop
         WHERE mes_planificado = %s AND {_FILTRO_CON_CODIGO_SOP}
               AND mes_snapshot = (SELECT MAX(mes_snapshot) FROM gestion_planabastecimientosop)
         GROUP BY material_codigo, centro_destino
-    """, [mes])
+    """, [mes]))
 
 
 # Ingresos de báscula que se cuentan con otra fecha que la del ticket
@@ -1778,14 +1817,14 @@ def ingresos_fisicos_por_material(mes):
     mes calendario `mes` (por FECHA_INGRESO_EFECTIVA). Definido por el
     usuario: no se toma de MB51 para estos materiales."""
     fecha_inicio, fecha_fin = _limites_mes(mes)
-    return _query(f"""
+    return _en_alcance(_query(f"""
         SELECT material_codigo AS material_codigo, centro AS centro,
                SUM(cantidad) AS cantidad_real
         FROM gestion_ingresofisicosop
         WHERE {FECHA_INGRESO_EFECTIVA} BETWEEN %s AND %s
               AND tipo_operacion IN ({_IN_TIPOS_OPERACION_RECEPCION})
         GROUP BY material_codigo, centro
-    """, [fecha_inicio, fecha_fin])
+    """, [fecha_inicio, fecha_fin]))
 
 
 def ingresos_fisicos_por_proveedor(mes):
@@ -1796,7 +1835,7 @@ def ingresos_fisicos_por_proveedor(mes):
     de origen (ATOCONGO, PUCARA...). Usado por el Detalle por material de
     Cumplimiento. Pedido por el usuario (después llegará el plan por proveedor)."""
     fecha_inicio, fecha_fin = _limites_mes(mes)
-    return _query(f"""
+    return _en_alcance(_query(f"""
         SELECT material_codigo AS material_codigo, centro AS centro, proveedor_codigo AS proveedor_codigo,
                proveedor AS proveedor, MAX(tipo_operacion) AS tipo_operacion,
                SUM(cantidad) AS cantidad_real, COUNT(*) AS carros
@@ -1804,7 +1843,7 @@ def ingresos_fisicos_por_proveedor(mes):
         WHERE {FECHA_INGRESO_EFECTIVA} BETWEEN %s AND %s
               AND tipo_operacion IN ({_IN_TIPOS_OPERACION_RECEPCION})
         GROUP BY material_codigo, centro, proveedor_codigo, proveedor
-    """, [fecha_inicio, fecha_fin])
+    """, [fecha_inicio, fecha_fin]))
 
 
 @_cacheado
@@ -1838,7 +1877,7 @@ def entregas_por_proveedor_sop():
     df["texto_breve"] = df["texto_breve"].where(df["texto_breve"].notna() & (df["texto_breve"] != ""), df["descripcion"]).fillna("")
     sin_categoria_en_plan = df["categoria"].isna() & df["material_codigo"].isin(materiales_planificados_sop())
     df.loc[sin_categoria_en_plan, "categoria"] = "MATERIAS PRIMAS"
-    df = df[df["categoria"].isin(CATEGORIAS_PLANIFICACION_SOP)]
+    df = _en_alcance(df[df["categoria"].isin(CATEGORIAS_PLANIFICACION_SOP)])
     return df[columnas].sort_values(["mes", "material_codigo", "centro", "proveedor"]).reset_index(drop=True)
 
 
@@ -1858,13 +1897,13 @@ def traslados_recibidos(mes, centro):
     `mes`, por material y planta de origen (el "proveedor" del ticket), con
     toneladas y carros."""
     fecha_inicio, fecha_fin = _limites_mes(mes)
-    return _query(f"""
+    return _en_alcance(_query(f"""
         SELECT material_codigo AS material_codigo, MAX(descripcion_material) AS descripcion,
                proveedor AS origen, SUM(cantidad) AS toneladas, COUNT(*) AS carros
         FROM gestion_ingresofisicosop
         WHERE {FECHA_INGRESO_EFECTIVA} BETWEEN %s AND %s AND centro = %s AND tipo_operacion = '5'
         GROUP BY material_codigo, proveedor
-    """, [fecha_inicio, fecha_fin, centro])
+    """, [fecha_inicio, fecha_fin, centro]), centro=centro)
 
 
 def _con_categoria_efectiva_planificacion(df, plan):
@@ -1958,7 +1997,7 @@ def evaluacion_diaria_abastecimiento(mes, categoria=None, centro=None, material=
     """, [fecha_inicio, fecha_fin])
 
     catalogo = catalogo_materiales()[["material_codigo", "categoria"]]
-    real = real.merge(catalogo, on="material_codigo", how="left")
+    real = _en_alcance(real).merge(catalogo, on="material_codigo", how="left")
     real = _con_categoria_efectiva_planificacion(real, plan_abastecimiento_por_material(mes))
     real = real[real["categoria"].isin(CATEGORIAS_PLANIFICACION_SOP)]
     if categoria:

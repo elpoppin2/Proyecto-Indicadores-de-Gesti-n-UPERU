@@ -3,7 +3,7 @@
 {% if categorias_nav %}
   <nav class="nav-categorias" aria-label="Páginas">
     {% for c in categorias_nav %}
-      <a href="{{ c.url }}" class="nav-link {% if c.activo %}activo{% endif %}"{% if c.activo %} aria-current="page"{% endif %}>{{ c.nombre|nombre_visible }}</a>
+      <a href="{{ c.url }}" class="nav-link {% if c.activo %}activo{% endif %}"{% if c.activo %} aria-current="page"{% endif %}>{% if c.nombre_fijo %}{{ c.nombre }}{% else %}{{ c.nombre|nombre_visible }}{% endif %}</a>
     {% endfor %}
   </nav>
 {% endif %}

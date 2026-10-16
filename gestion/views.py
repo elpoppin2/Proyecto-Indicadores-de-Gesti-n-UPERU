@@ -72,6 +72,9 @@ def _construir_nav(slug_activo):
         {"nombre": "PORTADA", "slug": "portada", "url": reverse("portada")},
         {"nombre": "OVERVIEW", "slug": "overview", "url": reverse("overview")},
         {"nombre": "PLANIFICACIÓN", "slug": "planificacion", "url": reverse("planificacion")},
+        # Nombre tal como lo pidió el usuario (sin pasar por nombre_visible).
+        {"nombre": "Logística de Materias Primas", "slug": "logistica", "url": reverse("logistica_materias_primas"),
+         "nombre_fijo": True},
     ]
     nav += [{"nombre": c, "slug": s, "url": reverse("categoria_detalle", kwargs={"slug": s})}
             for c, s in ((c, _slug(c)) for c in categorias)]
@@ -590,30 +593,67 @@ def planificacion(request):
       de queries (por sus propios filtros), así que lo ya visto sale al toque.
     Cada sección tiene sus segmentadores independientes (parámetros GET con
     su sufijo propio: mes_plan, centro_consumo, material_factor...)."""
+    return _pagina_zonas(request, "planificacion", "Planificación", _ZONAS_PLANIFICACION, _PANELES_OVERVIEW,
+                         asistente_visible=True)
+
+
+@login_required
+def logistica_materias_primas(request):
+    """Logística de Materias Primas: la misma página de Planificación, pero
+    solo con los materiales de ALCANCE_LOGISTICA y las pestañas Indicadores,
+    Cumplimiento y Fletes (esta última la definirá el usuario). Las secciones
+    son las de Planificación: el alcance acota las consultas base (ver
+    queries.alcance_materiales), así las dos páginas no se desfasan. Pedido
+    por el usuario el 2026-10-16."""
+    with q.alcance_materiales(ALCANCE_LOGISTICA):
+        return _pagina_zonas(request, "logistica", "Logística de Materias Primas", _ZONAS_LOGISTICA,
+                             _PANELES_LOGISTICA, zonas_paneles={"cumplimiento"}, por_material=True,
+                             plantillas_zona=_PLANTILLAS_ZONA_LOGISTICA)
+
+
+def _pagina_zonas(request, slug, titulo, zonas, paneles, zonas_paneles=None, por_material=False,
+                  plantillas_zona=None, asistente_visible=False):
+    """Página organizada en zonas (pestañas) con las secciones de
+    Planificación: la página trae solo Indicadores y cada zona, sección o
+    franja de números clave se pide aparte (?_zona= / ?_seccion= / ?_kpis=,
+    ver zonas.js y base.html). `paneles`/`zonas_paneles`/`por_material`: qué
+    gráficos dibuja Indicadores (ver _html_indicadores). `plantillas_zona`:
+    zonas sin secciones de Planificación que se dibujan con su propia
+    plantilla."""
+    secciones_por_zona = {clave: secciones for clave, _, _, secciones in zonas}
+    plantillas_zona = plantillas_zona or {}
+
+    def indicadores():
+        return _html_indicadores(request, paneles=paneles, zonas=zonas_paneles, por_material=por_material)
+
     seccion, zona = request.GET.get("_seccion"), request.GET.get("_zona")
     if seccion or zona:
         if not q.meses_planificacion_disponibles():
             return HttpResponse("")
         if seccion == "sec-indicadores":  # filtro Mes de Indicadores
-            html = _html_indicadores(request)
+            html = indicadores()
         elif seccion:
-            html = _html_seccion(request, seccion) if seccion in _SECCIONES_PLANIFICACION else ""
+            propias = {s for lista in secciones_por_zona.values() for s in lista}
+            html = _html_seccion(request, seccion) if seccion in propias else ""
         elif zona == "indicadores":
-            html = _html_indicadores(request)
+            html = indicadores()
+        elif zona in plantillas_zona:
+            html = render_to_string(plantillas_zona[zona])
         else:
             # Números clave de la zona arriba, luego sus secciones.
-            html = "\n".join([_html_kpis_zona(request, zona), *(_html_seccion(request, s) for s in _SECCIONES_POR_ZONA.get(zona, []))])
+            html = "\n".join([_html_kpis_zona(request, zona), *(_html_seccion(request, s) for s in secciones_por_zona.get(zona, []))])
         return HttpResponse(html)
     if request.GET.get("_kpis"):
         return HttpResponse(_html_kpis_zona(request, request.GET["_kpis"]) if q.meses_planificacion_disponibles() else "")
 
-    categorias_nav, _ = _construir_nav("planificacion")
-    contexto = {"categoria": "PLANIFICACIÓN", "categorias_nav": categorias_nav, "es_planificacion": True}
+    categorias_nav, _ = _construir_nav(slug)
+    contexto = {"categoria": titulo.upper(), "titulo_pagina": titulo, "categorias_nav": categorias_nav,
+                "es_planificacion": True, "asistente_visible": asistente_visible}
     if not q.meses_planificacion_disponibles():
         contexto["sin_datos"] = True
         return render(request, "gestion/planificacion.html", contexto)
-    contexto["zonas"] = [{"clave": c, "nombre": n, "descripcion": d, "secciones": " ".join(s)} for c, n, d, s in _ZONAS_PLANIFICACION]
-    contexto["indicadores_html"] = mark_safe(_html_indicadores(request))
+    contexto["zonas"] = [{"clave": c, "nombre": n, "descripcion": d, "secciones": " ".join(s)} for c, n, d, s in zonas]
+    contexto["indicadores_html"] = mark_safe(indicadores())
     contexto["asistente_activo"] = asistente.activo()
     return render(request, "gestion/planificacion.html", contexto)
 
@@ -991,7 +1031,24 @@ _ZONAS_PLANIFICACION = [
     ("precios", "Precios e IPU", "Precios de entrada e inflación", ["sec-precios", "sec-inflacion", "sec-inflacion-mensual"]),
     ("calidad", "Calidad y energía", "Análisis, premios y costo por Gcal", ["sec-calidad", "sec-premios", "sec-energia"]),
 ]
-_SECCIONES_POR_ZONA = {clave: secciones for clave, _, _, secciones in _ZONAS_PLANIFICACION}
+
+# Logística de Materias Primas (pedido por el usuario el 2026-10-16): los
+# (material, centro) que muestra, sus zonas y los gráficos de su Indicadores.
+ALCANCE_LOGISTICA = (
+    ("07-00003137", "U001"),  # Caliza Terceros Roca Fuerte (Atocongo)
+    ("07-00000027", "U001"),  # Puzolana Ayacucho (Atocongo)
+    ("07-00000025", "U001"),  # Sílices de Terceros (Atocongo)
+    ("14-00000037", "U002"),  # Clinker Tipo I: traslado de Atocongo a Condorcocha
+    ("06-00000003", "U002"),  # Carbón Importado: traslado de Atocongo a Condorcocha
+)
+_ZONAS_LOGISTICA = [
+    ("indicadores", "Indicadores", "Resumen de cumplimiento", []),
+    ("cumplimiento", "Cumplimiento", "Plan de abastecimiento vs ingresos",
+     ["sec-plan-mensual", "sec-plan-detalle", "sec-cumplimiento-mensual", "sec-entregas"]),
+    ("fletes", "Fletes", "Costo de transporte", []),
+]
+_PLANTILLAS_ZONA_LOGISTICA = {"fletes": "gestion/logistica/_fletes.html"}
+_PANELES_LOGISTICA = ("planificacion",)
 
 # Contextos que usan los gráficos de la pestaña Indicadores y los números
 # clave de arriba de cada zona (nombre -> sección).
@@ -1040,7 +1097,9 @@ def _parametros_seccion(request, sufijos):
 
 
 def _clave_planificacion(tipo, *partes):
-    return ("planificacion", tipo, *partes, datetime.date.today().isoformat(), _HUELLA_VISTAS)
+    # Con el alcance: Logística de Materias Primas usa las mismas secciones
+    # con menos materiales y no debe tomar lo guardado por Planificación.
+    return ("planificacion", tipo, *partes, datetime.date.today().isoformat(), _HUELLA_VISTAS, q.alcance_actual())
 
 
 def _contexto_seccion(request, seccion):
@@ -1089,13 +1148,16 @@ def _meses_indicadores(c):
     return sorted((m for m in meses if m <= hoy_mes), reverse=True)
 
 
-def _html_indicadores(request, mes_forzado=None):
+def _html_indicadores(request, mes_forzado=None, paneles=_PANELES_OVERVIEW, zonas=None, por_material=False):
     """HTML de la pestaña Indicadores: un gráfico por indicador (usa los
     contextos de las otras secciones, con sus filtros). Con el filtro Mes
     (?mes_indicadores=2026-08-01) cada indicador pasa a ese mes; sin él, el
     último mes cerrado. `mes_forzado`: lo usa el exportador del HTML estático
-    para dibujar cada mes. Pedido por el usuario."""
-    secciones = {nombre: _SECCIONES_INDICADORES[nombre] for nombre in _PANELES_OVERVIEW}
+    para dibujar cada mes. `paneles`: contextos que usa; `zonas`: solo los
+    gráficos de esas zonas (None = todos); `por_material`: agrega el
+    cumplimiento por material (Logística de Materias Primas). Pedido por el
+    usuario."""
+    secciones = {nombre: _SECCIONES_INDICADORES[nombre] for nombre in paneles}
     sufijos = sorted({s for sid in secciones.values() for s in _SECCIONES_PLANIFICACION[sid][3]} | {"indicadores"})
     valor_mes = request.GET.get("mes_indicadores", "") if mes_forzado is None else mes_forzado
 
@@ -1118,7 +1180,7 @@ def _html_indicadores(request, mes_forzado=None):
                 disponible = contextos.get(nombre) and mes in (contextos[nombre].get(clave) or [])
                 contextos[nombre] = _contexto_seccion(con_mes, _SECCIONES_INDICADORES[nombre]) if disponible else None
         return render_to_string("gestion/planificacion/_indicadores.html", {
-            "paneles": _paneles_indicadores(request, contextos, mes),
+            "paneles": _paneles_indicadores(request, contextos, mes, zonas=zonas, por_material=por_material),
             "meses": meses, "mes_sel": mes,
         })
 
@@ -1300,6 +1362,35 @@ def _panel_traslados(panel, vacio, tope, pl, centro, hoy_mes):
           charts.barras_escala(filas, 0, tope(filas), referencias=[(100, "Plan")]), tono, estado,
           leyenda=[("bien", f"≥ {_CUMPLIMIENTO_BIEN}%"), ("regular", f"{_CUMPLIMIENTO_MAL}–{_CUMPLIMIENTO_BIEN}%"),
                    ("mal", f"< {_CUMPLIMIENTO_MAL}%")], nota=nota)
+
+
+def _panel_cumplimiento_material(panel, vacio, tope, pl, base, centro, mes_txt):
+    """Cumplimiento del plan de abastecimiento material por material (mismo
+    mes y filtros que la Evaluación mensual), para las páginas con pocos
+    materiales (Logística de Materias Primas)."""
+    titulo = "Cumplimiento por material"
+    con_plan = base[base["cantidad_plan"] > 0].sort_values("cantidad_plan", ascending=False)
+    if con_plan.empty:
+        vacio("cumplimiento", titulo)
+        return
+    filas = []
+    for r in con_plan.itertuples():
+        v = r.cantidad_real / r.cantidad_plan * 100
+        filas.append({
+            "nombre": _nombre_material(r.texto_breve or r.material_codigo), "sub": centro(r.centro).title(),
+            "valor": v, "texto": f"{v:,.1f}%",
+            "clase": "bien" if v >= _CUMPLIMIENTO_BIEN else "mal" if v < _CUMPLIMIENTO_MAL else "regular",
+            "detalle": f"{r.texto_breve} ({centro(r.centro)}) · {mes_txt}\nPlan {r.cantidad_plan:,.0f} T · "
+                       f"Real {r.cantidad_real:,.0f} T · diferencia {_signo(r.cantidad_real - r.cantidad_plan, 0)} T",
+        })
+    en_meta = sum(f["clase"] == "bien" for f in filas)
+    tono, estado = (("ok", "Todos en meta") if en_meta == len(filas) else
+                    ("alerta", "Revisar") if any(f["clase"] == "mal" for f in filas) else ("aviso", "Bajo la meta"))
+    panel("cumplimiento", titulo, f"{en_meta} de {len(filas)}", f"Materiales en meta (≥ {_CUMPLIMIENTO_BIEN}%) · {mes_txt}",
+          "escala", charts.barras_escala(filas, 0, tope(filas), referencias=[(100, "Plan")]), tono, estado,
+          leyenda=[("bien", f"≥ {_CUMPLIMIENTO_BIEN}%"), ("regular", f"{_CUMPLIMIENTO_MAL}–{_CUMPLIMIENTO_BIEN}%"),
+                   ("mal", f"< {_CUMPLIMIENTO_MAL}%")],
+          nota="Ingresos físicos (báscula) ÷ plan de abastecimiento de cada material en su centro.")
 
 
 def _panel_ritmo(panel, vacio, pl, centro, hoy_mes):
@@ -1553,7 +1644,7 @@ def _panel_primer_quiebre(panel, vacio, p, centro):
                "negativo (quiebre) o cae bajo su mínimo. 3 meses = lead time del Carbón Importado.")
 
 
-def _paneles_indicadores(request, c, mes=None):
+def _paneles_indicadores(request, c, mes=None, zonas=None, por_material=False):
     """Pestaña Indicadores: un gráfico por indicador con su resultado (la
     cifra clave, su estado y el gráfico que la explica), con los filtros que
     tenga cada pestaña. Pedido por el usuario: la pestaña era solo tarjetas
@@ -1565,13 +1656,17 @@ def _paneles_indicadores(request, c, mes=None):
     contextos con mes propio ya vienen calculados para ese mes (None si no
     tienen datos de él); la serie mes a mes del IPU se corta en ese mes y su
     cifra es la de ese mes. Los centros se muestran por su nombre (ATOCONGO,
-    CONDORCOCHA), no por código, pedido por el usuario."""
+    CONDORCOCHA), no por código, pedido por el usuario.
+    `zonas`: solo los paneles de esas zonas (None = todos). `por_material`:
+    agrega el cumplimiento por material (páginas con pocos materiales)."""
     nombres_zona = {clave: nombre for clave, nombre, _, _ in _ZONAS_PLANIFICACION}
     hoy_mes = datetime.date.today().replace(day=1)
     paneles = []
     centro = q.nombre_centro
 
     def panel(zona, titulo, cifra, sub, tipo, g, tono="", estado="", leyenda=(), nota="", ancho=False):
+        if zonas is not None and zona not in zonas:
+            return
         paneles.append({
             "zona": zona, "zona_nombre": nombres_zona[zona], "titulo": titulo, "cifra": cifra, "sub": sub,
             "tipo": tipo, "g": g, "tono": tono, "estado": estado, "leyenda": list(leyenda), "nota": nota,
@@ -1580,6 +1675,8 @@ def _paneles_indicadores(request, c, mes=None):
 
     def vacio(zona, titulo, ancho=False, mensaje=None):
         """Panel sin datos (el mes elegido no tiene, o los filtros de la pestaña)."""
+        if zonas is not None and zona not in zonas:
+            return
         panel(zona, titulo, "—", "", "", None, ancho=ancho)
         paneles[-1]["vacio"] = mensaje or (f"Sin datos de {q.formato_mes_anio(mes)}." if mes else
                                            "Sin datos para graficar con los filtros de esta pestaña.")
@@ -1628,7 +1725,10 @@ def _paneles_indicadores(request, c, mes=None):
                   charts.barras_escala(filas, 0, tope(filas), referencias=[(100, "Plan")]), tono, estado,
                   leyenda=[("bien", f"≥ {_CUMPLIMIENTO_BIEN}%"), ("regular", f"{_CUMPLIMIENTO_MAL}–{_CUMPLIMIENTO_BIEN}%"),
                            ("mal", f"< {_CUMPLIMIENTO_MAL}%")],
-                  nota="Ingresos físicos (báscula) ÷ plan de abastecimiento de cada centro, todos sus materiales.")
+                  nota="Ingresos físicos (báscula) ÷ plan de abastecimiento de cada centro, "
+                       + ("los materiales de esta página." if q.alcance_actual() else "todos sus materiales."))
+        if por_material:
+            _panel_cumplimiento_material(panel, vacio, tope, pl, base, centro, mes_txt)
 
     _panel_traslados(panel, vacio, tope, pl, centro, hoy_mes)
     _panel_ritmo(panel, vacio, pl, centro, hoy_mes)

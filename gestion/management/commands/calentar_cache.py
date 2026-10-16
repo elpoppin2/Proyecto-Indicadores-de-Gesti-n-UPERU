@@ -29,6 +29,10 @@ class Command(BaseCommand):
         paginas = ["/portada/", "/overview/", "/planificacion/"] + [
             f"/planificacion/?_zona={clave}" for clave, _, _, secciones in views._ZONAS_PLANIFICACION if secciones
         ]
+        # Logística de Materias Primas: mismas secciones con menos materiales.
+        paginas += ["/logistica-materias-primas/"] + [
+            f"/logistica-materias-primas/?_zona={clave}" for clave, _, _, secciones in views._ZONAS_LOGISTICA if secciones
+        ]
         # Igual las categorías: la página trae Indicadores y cada pestaña se pide aparte.
         con_inventario = set(views.q.categorias_inventario_disponibles())
         for c in views._categorias_disponibles():
