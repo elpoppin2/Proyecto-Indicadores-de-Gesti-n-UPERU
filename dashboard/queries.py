@@ -2744,29 +2744,21 @@ def liquidaciones_produccion_propia():
 def materiales_importados():
     """Materiales comprados en el centro de importación (101 con proveedor en
     U004) y trasladados a planta: su precio se mide puesto en destino."""
+    # Agrupado en una sola pasada (~1 s; con EXISTS correlacionado eran ~60 s).
     df = _query(f"""
-        SELECT DISTINCT c.material_codigo FROM gestion_movimientomaterial c
-        WHERE c.centro = '{CENTRO_IMPORTACION}' AND c.clase_movimiento = '101' AND c.proveedor <> ''
-              AND EXISTS (SELECT 1 FROM gestion_movimientomaterial t WHERE t.material_codigo = c.material_codigo
-                          AND t.clase_movimiento = '641' AND t.centro = '{CENTRO_IMPORTACION}')
+        SELECT material_codigo FROM gestion_movimientomaterial
+        WHERE +centro = '{CENTRO_IMPORTACION}' AND clase_movimiento IN ('101', '641')
+        GROUP BY material_codigo
+        HAVING SUM(clase_movimiento = '101' AND proveedor <> '') > 0 AND SUM(clase_movimiento = '641') > 0
     """)
     return set(df["material_codigo"])
 
 
-def _puesto_en_destino(df):
-    """Regla del usuario (2026-10-14): el IPU no considera el centro de
-    importación U004, sino el valor PUESTO EN DESTINO (U001/U002). Las
-    compras de `df` en U004 se reemplazan por lo que cada planta recibe de
-    U004 por traslado (641, neto de anulaciones 642, lado receptor): misma
-    cantidad, al valor con que entra a la planta. Solo el primer destino
-    (desde U004): el Carbón Importado que luego va de U001 a U002 no se
-    cuenta dos veces. Lo comprado en U004 que nunca se traslada (repuestos y
-    suministros del muelle, ~S/ 8 MM) queda fuera del análisis.
-    `df`: material_codigo, centro, mes (texto 'AAAA-MM-01'), toneladas,
-    importe, entradas, proveedores (salida del SQL de los precios)."""
-    if df.empty or not (df["centro"] == CENTRO_IMPORTACION).any():
-        return df
-    materiales = sorted(df.loc[df["centro"] == CENTRO_IMPORTACION, "material_codigo"].unique())
+def _traslados_desde_importacion(materiales):
+    """Lo que cada planta recibe de U004 por traslado (641, neto de
+    anulaciones 642, lado receptor; solo el primer destino), por
+    material/centro/mes: toneladas, importe (valor del traslado), entradas.
+    Sin los traslados de corrección (ver _MINIMO_TRASLADO)."""
     destino = _query(f"""
         SELECT r.material_codigo AS material_codigo, r.centro AS centro,
                substr(r.fecha_contabilizacion, 1, 7) || '-01' AS mes,
@@ -2786,8 +2778,207 @@ def _puesto_en_destino(df):
     # 31 T a S/ 5,000 por T) no son un barco llegando a planta: fuera los
     # meses con menos del _MINIMO_TRASLADO del mayor traslado mensual del material.
     destino["toneladas"] = destino["toneladas"].astype(float)
+    destino["importe"] = destino["importe"].astype(float)
     mayor = destino.groupby("material_codigo")["toneladas"].transform("max")
-    destino = destino[destino["toneladas"] >= mayor * _MINIMO_TRASLADO]
+    return destino[destino["toneladas"] >= mayor * _MINIMO_TRASLADO]
+
+
+# ---------------------------------------------------------------------------
+# Importados por embarque (pedido del usuario, 2026-10-15). Los cargos de un
+# barco (flete, desestiba, demurrage, aduanas, diferencias de factura) llegan
+# a la FBL3N semanas o meses después del ingreso a U004: asignados a su mes
+# de contabilización distorsionaban el precio de otro mes y, como revalúan el
+# stock de U004, terminaban viajando en el traslado de OTRO barco. Ahora:
+# - Embarque = ingresos (101/102 con proveedor en U004) de un mismo pedido
+#   separados por menos de _DIAS_ENTRE_BARCOS días (un pedido marco trae
+#   varios barcos: 4500011752 = Sep-24, Mar-25 y Jul-25).
+# - Cada partida de la FBL3N del material (en U004, U001 o U002) va a su
+#   embarque: por el pedido 45xxxxxxxx que trae en el pedido o en el texto
+#   ("PD4500011752-DESESTIBA", "45/10996 DEMURRAGE"), al barco de ese pedido
+#   llegado más recientemente antes de la partida; sin pedido, al último
+#   barco llegado antes de la partida. Lo anterior al primer barco cargado
+#   (embarques de 2023) queda fuera.
+# - Costo del embarque = (valor del ingreso + sus partidas) ÷ toneladas
+#   recibidas. Lo que cada planta recibe de U004 se valoriza por FIFO con el
+#   costo de los barcos de donde salió (un barco solo abastece desde su
+#   llegada). Toneladas sin barco cargado que las cubra (falta la MB51 de
+#   ese ingreso) quedan al valor del traslado, sin ajustes.
+# Solo para importados que se compran únicamente en U004 (Carbón Importado,
+# Escoria japonesa...); los demás siguen con el reparto por mes.
+# ---------------------------------------------------------------------------
+_PEDIDO_EN_TEXTO = re.compile(r"(?<!\d)45(\d{8})(?!\d)|(?<!\d)45/(\d{4,8})(?!\d)")
+_DIAS_ENTRE_BARCOS = 45
+
+
+def _pedido_de_partida(*campos):
+    """Pedido de importación (45xxxxxxxx) citado en una partida, o None."""
+    for campo in campos:
+        for m in _PEDIDO_EN_TEXTO.finditer(campo or ""):
+            return "45" + (m.group(1) or m.group(2).zfill(8))
+    return None
+
+
+def _embarque_de_partidas(partidas, barcos):
+    """Embarque de cada partida de la FBL3N (columnas material_codigo,
+    fecha, documento_compras, texto, referencia) según los `barcos` de
+    embarques_importados: (embarques, criterios), en el orden de `partidas`.
+    Criterio: "pedido" (cita el pedido del barco), "fecha" (último barco
+    llegado antes) o "anterior" (antes del primer barco cargado: fuera)."""
+    # Listas simples por material (ordenadas por llegada): miles de partidas.
+    por_material = {}
+    for b in barcos.sort_values("llegada").itertuples():
+        por_material.setdefault(b.material_codigo, []).append((b.llegada, b.pedido, b.embarque))
+    asignados, criterios = [], []
+    for material, fecha, doc, texto, ref in zip(partidas["material_codigo"], partidas["fecha"],
+                                                partidas["documento_compras"], partidas["texto"], partidas["referencia"]):
+        b = por_material.get(material)
+        if b is None:
+            asignados.append(None); criterios.append("")
+            continue
+        pedido = _pedido_de_partida(doc, texto, ref)
+        del_pedido = [x for x in b if x[1] == pedido] if pedido else []
+        llegados = [x for x in b if x[0] <= fecha]
+        if del_pedido:
+            antes = [x for x in del_pedido if x[0] <= fecha]
+            asignados.append((antes[-1] if antes else del_pedido[0])[2]); criterios.append("pedido")
+        elif llegados:
+            asignados.append(llegados[-1][2]); criterios.append("fecha")
+        else:
+            asignados.append(None); criterios.append("anterior")
+    return asignados, criterios
+
+
+@_cacheado
+def embarques_importados():
+    """(embarques, partidas) de los importados comprados solo en U004.
+    embarques: material_codigo, embarque, pedido, llegada, toneladas, importe
+    (MB51), ajuste (FBL3N al precio), ajuste_ordenes, partidas.
+    partidas: material_codigo, numero_documento, fecha, centro, importe,
+    embarque (None = fuera) y criterio (pedido / fecha / anterior)."""
+    vacio = (pd.DataFrame(columns=["material_codigo", "embarque", "pedido", "llegada", "toneladas", "importe",
+                                   "ajuste", "ajuste_ordenes", "partidas"]),
+             pd.DataFrame(columns=["material_codigo", "numero_documento", "fecha", "centro", "importe",
+                                   "embarque", "criterio"]))
+    importados = sorted(materiales_importados())
+    if not importados:
+        return vacio
+    lista = ",".join(_texto_sql(m) for m in importados)
+    compras = _query(f"""
+        SELECT material_codigo, centro, pedido, fecha_contabilizacion AS fecha,
+               SUM(cantidad) AS toneladas, SUM(importe_moneda_local) AS importe
+        FROM gestion_movimientomaterial
+        WHERE material_codigo IN ({lista}) AND +clase_movimiento IN {_CLASES_ENTRADA_COMPRA} AND proveedor <> ''
+              AND fecha_contabilizacion IS NOT NULL
+        GROUP BY material_codigo, centro, pedido, fecha_contabilizacion
+    """)
+    if compras.empty:
+        return vacio
+    solo_u004 = compras.groupby("material_codigo")["centro"].agg(lambda s: set(s) == {CENTRO_IMPORTACION})
+    compras = compras[compras["material_codigo"].isin(set(solo_u004[solo_u004].index))].copy()
+    compras["fecha"] = pd.to_datetime(compras["fecha"]).dt.date
+    compras["toneladas"] = compras["toneladas"].astype(float)
+    compras["importe"] = compras["importe"].astype(float)
+
+    barcos = []
+    for (material, pedido), g in compras.sort_values("fecha").groupby(["material_codigo", "pedido"]):
+        actual, anterior = None, None
+        for r in g.itertuples():
+            if actual is None or (r.fecha - anterior).days > _DIAS_ENTRE_BARCOS:
+                actual = {"material_codigo": material, "pedido": pedido, "llegada": r.fecha, "toneladas": 0.0, "importe": 0.0}
+                barcos.append(actual)
+            actual["toneladas"] += r.toneladas
+            actual["importe"] += r.importe
+            anterior = r.fecha
+    barcos = pd.DataFrame([b for b in barcos if b["toneladas"] > 0.5])
+    if barcos.empty:
+        return vacio
+    barcos = barcos.sort_values(["material_codigo", "llegada"]).reset_index(drop=True)
+    barcos["embarque"] = [f"{p} ({formato_mes_anio_abrev(f)})" for p, f in zip(barcos["pedido"], barcos["llegada"])]
+
+    partidas = _query(f"""
+        SELECT material_codigo, numero_documento, fecha_contabilizacion AS fecha, centro, clase_documento,
+               documento_compras, texto, referencia, importe
+        FROM gestion_ajustepreciofbl3n
+        WHERE material_codigo IN ({",".join(_texto_sql(m) for m in barcos["material_codigo"].unique())}) AND importe <> 0
+    """)
+    partidas["fecha"] = pd.to_datetime(partidas["fecha"]).dt.date
+    partidas["importe"] = partidas["importe"].astype(float)
+    partidas["embarque"], partidas["criterio"] = _embarque_de_partidas(partidas, barcos)
+    ordenes = partidas["clase_documento"].isin(CLASES_LIQUIDACION_ORDENES)
+    suma = partidas[partidas["embarque"].notna()].assign(
+        ajuste=partidas["importe"].where(~ordenes, 0.0), ajuste_ordenes=partidas["importe"].where(ordenes, 0.0)
+    ).groupby("embarque").agg(ajuste=("ajuste", "sum"), ajuste_ordenes=("ajuste_ordenes", "sum"),
+                              partidas=("importe", "size"))
+    barcos = barcos.merge(suma, left_on="embarque", right_index=True, how="left")
+    for c in ("ajuste", "ajuste_ordenes"):
+        barcos[c] = barcos[c].fillna(0.0)
+    barcos["partidas"] = barcos["partidas"].fillna(0).astype(int)
+    return (barcos[vacio[0].columns].reset_index(drop=True),
+            partidas[vacio[1].columns].reset_index(drop=True))
+
+
+@_cacheado
+def reparto_por_embarque():
+    """Lo recibido en cada planta desde U004 (material/centro/mes, mismos
+    traslados que _puesto_en_destino) valorizado por FIFO con sus embarques:
+    toneladas, importe (MB51 de los barcos + valor del traslado de lo que no
+    tiene barco cargado), ajuste, ajuste_ordenes, sin_embarque (T) y
+    embarques (texto)."""
+    columnas = ["material_codigo", "centro", "mes", "toneladas", "importe", "ajuste", "ajuste_ordenes",
+                "sin_embarque", "embarques"]
+    barcos, _ = embarques_importados()
+    if barcos.empty:
+        return pd.DataFrame(columns=columnas)
+    traslados = _traslados_desde_importacion(sorted(barcos["material_codigo"].unique()))
+    filas = []
+    for material, t in traslados.groupby("material_codigo"):
+        cola = [{"embarque": b.embarque, "llegada": b.llegada.replace(day=1), "quedan": b.toneladas,
+                 "mb51": b.importe / b.toneladas, "ajuste": b.ajuste / b.toneladas,
+                 "ordenes": b.ajuste_ordenes / b.toneladas}
+                for b in barcos[barcos["material_codigo"] == material].itertuples()]
+        for r in t.sort_values(["mes", "centro"]).itertuples():
+            mes = datetime.date.fromisoformat(r.mes)
+            falta, mb51, ajuste, ordenes, usados = r.toneladas, 0.0, 0.0, 0.0, []
+            for b in cola:
+                if falta <= 1e-6:
+                    break
+                if b["quedan"] <= 1e-6 or b["llegada"] > mes:
+                    continue
+                toma = min(falta, b["quedan"])
+                mb51 += toma * b["mb51"]; ajuste += toma * b["ajuste"]; ordenes += toma * b["ordenes"]
+                b["quedan"] -= toma; falta -= toma
+                usados.append(b["embarque"])
+            sin = max(falta, 0.0)
+            filas.append({"material_codigo": material, "centro": r.centro, "mes": r.mes, "toneladas": r.toneladas,
+                          "importe": mb51 + sin * r.importe / r.toneladas, "ajuste": ajuste, "ajuste_ordenes": ordenes,
+                          "sin_embarque": sin, "embarques": ", ".join(usados)})
+    return pd.DataFrame(filas, columns=columnas)
+
+
+def _puesto_en_destino(df):
+    """Regla del usuario (2026-10-14): el IPU no considera el centro de
+    importación U004, sino el valor PUESTO EN DESTINO (U001/U002). Las
+    compras de `df` en U004 se reemplazan por lo que cada planta recibe de
+    U004 por traslado (641, neto de anulaciones 642, lado receptor): misma
+    cantidad, al valor con que entra a la planta. Solo el primer destino
+    (desde U004): el Carbón Importado que luego va de U001 a U002 no se
+    cuenta dos veces. Lo comprado en U004 que nunca se traslada (repuestos y
+    suministros del muelle, ~S/ 8 MM) queda fuera del análisis.
+    `df`: material_codigo, centro, mes (texto 'AAAA-MM-01'), toneladas,
+    importe, entradas, proveedores (salida del SQL de los precios)."""
+    if df.empty or not (df["centro"] == CENTRO_IMPORTACION).any():
+        return df
+    materiales = sorted(df.loc[df["centro"] == CENTRO_IMPORTACION, "material_codigo"].unique())
+    destino = _traslados_desde_importacion(materiales).copy()
+    # Importados por embarque: el valor MB51 de lo recibido es el del ingreso
+    # del barco de donde salió (FIFO), no el valor del traslado (que trae
+    # revaluaciones de U004 de otros barcos). Ver embarques_importados.
+    reparto = reparto_por_embarque()
+    if not reparto.empty:
+        destino = destino.merge(reparto[["material_codigo", "centro", "mes", "importe"]].rename(columns={"importe": "_fifo"}),
+                                on=["material_codigo", "centro", "mes"], how="left")
+        destino["importe"] = destino["_fifo"].where(destino["_fifo"].notna(), destino["importe"])
+        destino = destino.drop(columns="_fifo")
     proveedores = df[df["centro"] == CENTRO_IMPORTACION].groupby("material_codigo")["proveedores"].max()
     destino["proveedores"] = destino["material_codigo"].map(proveedores).fillna(1).astype(int)
     resto = df[df["centro"] != CENTRO_IMPORTACION]
@@ -2895,6 +3086,8 @@ def precios_entrada_materiales():
 # facturada el mes siguiente) pasa al último mes anterior con compra; uno
 # registrado en un centro donde el material nunca se compra (la desestiba del
 # Carbón Importado va a U001, la compra es en U004) pasa al centro de compra.
+# Los importados comprados solo en U004 no siguen esta regla: sus ajustes se
+# juntan con su barco (ver embarques_importados / reparto_por_embarque).
 # ---------------------------------------------------------------------------
 CLASES_LIQUIDACION_ORDENES = ("PM", "X1")
 
@@ -2980,6 +3173,11 @@ def con_precio_real(base):
     propios = {m for m, _ in PRODUCCION_PROPIA}
     aj = aj[~aj["material_codigo"].isin(propios)]
     importados = materiales_importados()
+    # Importados por embarque: sus ajustes vienen del FIFO de embarques
+    # (abajo), no del mes de contabilización.
+    reparto = reparto_por_embarque()
+    por_embarque = set(reparto["material_codigo"])
+    aj = aj[~aj["material_codigo"].isin(por_embarque)]
     columnas = ["ajuste", "ajuste_ordenes", "ajuste_trasladado"]
 
     # Materiales locales: al mismo centro (si nunca se compra en el centro del
@@ -3029,6 +3227,11 @@ def con_precio_real(base):
         for c in columnas:
             filas[c] = filas[c] * participacion
         partes.append(filas[["material_codigo", "centro", "mes", *columnas]])
+
+    if not reparto.empty:
+        r = reparto.assign(mes=pd.to_datetime(reparto["mes"]).dt.date)
+        r = r.merge(df[["material_codigo", "centro", "mes"]], on=["material_codigo", "centro", "mes"])
+        partes.append(r.assign(ajuste_trasladado=0.0)[["material_codigo", "centro", "mes", *columnas]])
 
     # Producción propia: la liquidación de la orden del mes (o, si ese mes no
     # hubo traslado, del último mes anterior con traslado).
@@ -3091,6 +3294,12 @@ def ajustes_fbl3n_detalle(materiales, desde=None, hasta=None):
                           zip(df["clase_documento"], df["codigo_transaccion"], df["texto"])]
         df["fecha_contabilizacion"] = pd.to_datetime(df["fecha_contabilizacion"]).dt.date
         df["en_precio"] = ~df["clase_documento"].isin(CLASES_LIQUIDACION_ORDENES)
+        # Importados por embarque: a qué barco se asignó cada partida.
+        barcos, _ = embarques_importados()
+        barcos = barcos[barcos["material_codigo"].isin(materiales)]
+        if not barcos.empty:
+            df["embarque"], df["criterio_embarque"] = _embarque_de_partidas(
+                df.rename(columns={"fecha_contabilizacion": "fecha"}), barcos)
     return df
 
 

@@ -2376,11 +2376,26 @@ def _contexto_precios_entrada(request):
     # gerencia); los que no tienen base anual, al final.
     tarjetas.sort(key=lambda t: (t["variacion_anual"] is None, -(t["variacion_anual"] or 0)))
 
-    detalle, grafico, ajustes, ajustes_resumen = [], None, [], []
+    detalle, grafico, ajustes, ajustes_resumen, embarques = [], None, [], [], []
     if len(tarjetas) == 1:
         g = df.sort_values("mes")
         anterior = None
+        # Importados por embarque (queries.embarques_importados): de qué
+        # barcos salió lo recibido cada mes y la composición de cada barco.
+        material_uno = tarjetas[0]["material_codigo"]
+        reparto = q.reparto_por_embarque()
+        reparto = reparto[reparto["material_codigo"] == material_uno]
+        de_barco = {(r.centro, datetime.date.fromisoformat(r.mes)): r for r in reparto.itertuples()}
+        barcos, _ = q.embarques_importados()
+        for b in barcos[barcos["material_codigo"] == material_uno].itertuples():
+            embarques.append({
+                "embarque": b.embarque, "pedido": b.pedido, "llegada": b.llegada, "toneladas": b.toneladas,
+                "importe": b.importe, "ajuste": b.ajuste, "partidas": b.partidas,
+                "precio_mb51": b.importe / b.toneladas, "precio_real": (b.importe + b.ajuste) / b.toneladas,
+                "ajuste_por_t": b.ajuste / b.toneladas,
+            })
         for r in g.itertuples():
+            barco = de_barco.get((r.centro, r.mes))
             detalle.append({
                 "mes": r.mes, "toneladas": r.toneladas, "importe": r.importe, "precio": r.precio,
                 # Céntimos sueltos (líneas de flete en 0,00/−0,02) no son un ajuste.
@@ -2394,6 +2409,9 @@ def _contexto_precios_entrada(request):
                 "atipico": (r.material_codigo, r.centro) not in q.PRODUCCION_PROPIA and not (
                     1 / q._RAZON_ATIPICA <= (r.importe_mb51 + r.ajuste) / r.importe_mb51 <= q._RAZON_ATIPICA),
                 "con_fbl3n": r.con_fbl3n,
+                "embarques": barco.embarques if barco is not None else "",
+                # Restos chicos (stock de inicio de 2024, redondeos) no se marcan.
+                "sin_embarque": barco.sin_embarque if barco is not None and barco.sin_embarque > 0.02 * r.toneladas else 0.0,
                 "entradas": r.entradas, "proveedores": r.proveedores,
                 "variacion_pct": None if anterior is None else (r.precio / anterior - 1) * 100,
             })
@@ -2419,7 +2437,7 @@ def _contexto_precios_entrada(request):
         "meses_sin_fbl3n": sin_fbl3n, "tramos_sin_fbl3n": _tramos_de_meses(sin_fbl3n),
         "fbl3n_desde": min(meses_fbl3n) if meses_fbl3n else None,
         "fbl3n_hasta": max(meses_fbl3n) if meses_fbl3n else None,
-        "ajustes": ajustes, "ajustes_resumen": ajustes_resumen,
+        "ajustes": ajustes, "ajustes_resumen": ajustes_resumen, "embarques": embarques,
         "ajustes_total": len(lista) if len(tarjetas) == 1 else 0,
         "max_ajustes": _MAX_AJUSTES_LISTA,
         "periodos": [{"valor": k, "texto": v[0]} for k, v in _PERIODOS_PRECIOS.items()], "periodo_sel": periodo_sel,
@@ -2478,6 +2496,10 @@ def _matriz_tco(historia, df):
         columnas.append({"tipo": "ipu", "texto": f"IPU {a}", "anio": a})
     filas = []
     primer_mes = meses_de[anios[0]][0]
+    # Importados por embarque: de qué barco salió lo recibido cada mes.
+    reparto = q.reparto_por_embarque()
+    de_barco = {(r.material_codigo, r.centro, datetime.date.fromisoformat(r.mes)): r.embarques
+                for r in reparto.itertuples() if r.embarques}
     for (material, centro), g in h.groupby(["material_codigo", "centro"]):
         por_mes = {r.mes: r for r in g.itertuples()}
         if not any(m in por_mes for a in anios for m in meses_de[a]):
@@ -2509,7 +2531,9 @@ def _matriz_tco(historia, df):
                            "titulo": f"{c['texto']}: {r.toneladas:,.0f} T · "
                                      + (f"traslado S/ {r.importe_mb51:,.0f} + liquidación de la orden S/ {r.ajuste:,.0f}"
                                         if propio else f"MB51 S/ {r.importe_mb51:,.0f} + ajustes S/ {r.ajuste:,.0f}")
-                                     + f" = S/ {r.importe_tco:,.0f}"})
+                                     + f" = S/ {r.importe_tco:,.0f}"
+                                     + (f" · embarque {de_barco[(material, centro, c['mes'])]}"
+                                        if (material, centro, c["mes"]) in de_barco else "")})
         filas.append({"material": material, "texto": g["texto_breve"].iloc[0],
                       "centro": _CENTRO_CORTO.get(centro, centro), "orden_centro": centro, "celdas": celdas})
     filas.sort(key=lambda f: (f["orden_centro"], f["material"]))

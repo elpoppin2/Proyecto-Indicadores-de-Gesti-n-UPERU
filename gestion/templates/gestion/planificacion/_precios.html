@@ -11,9 +11,10 @@
     <p>Precio de compra en S/ por T desde MB51: entradas por pedido a un proveedor (101, neto de anulaciones 102), promedio
     ponderado por las toneladas de cada mes. No incluye traslados entre centros ni lo que sale de cantera propia o de
     producción (calizas propias, Clinker), que no tienen precio de compra. Un mes sin punto es un mes sin compras ni llegadas a planta.</p>
-    <p><strong>Puesto en destino:</strong> los importados (Carbón Importado, Escoria japonesa) se compran en el centro
-    {{ pr.centro_importacion }} y se miden en lo que recibe cada planta (U001/U002) por traslado desde {{ pr.centro_importacion }},
-    al valor con que entra a la planta, más los ajustes de la FBL3N (desestiba, descarga).</p>
+    <p><strong>Puesto en destino, por embarque:</strong> los importados (Carbón Importado, Escoria japonesa) se compran en el centro
+    {{ pr.centro_importacion }} y se miden en lo que recibe cada planta (U001/U002) desde {{ pr.centro_importacion }}. Cada barco
+    junta su ingreso en MB51 con todas sus partidas de la FBL3N (por el pedido que citan, o la fecha), aunque se registren
+    meses después; cada tonelada recibida lleva el costo del barco del que salió (el primero en llegar sale primero).</p>
     {% if pr.es_real %}
     <p><strong>Precio real</strong> = (importe de MB51 + ajustes de la FBL3N) ÷ toneladas. Los ajustes llegan a la cuenta de
     existencias sin pasar por MB51: diferencias de factura, fletes, desestiba y cargos de importación (MIRO), anulaciones (MR8M)
@@ -81,12 +82,41 @@
           <span class="leyenda-item"><span class="leyenda-marca barra-toneladas"></span>Toneladas compradas en el mes (máx. {{ g.tonelaje_maximo }})</span>
         </div>
       {% endif %}
+      {% if pr.embarques %}
+        <h3 class="subtitulo">Composición por embarque</h3>
+        <p class="nota">Costo completo de cada barco: su ingreso en MB51 más todas las partidas de la FBL3N que le corresponden (flete, desestiba, demurrage, aduanas, diferencias de factura), aunque se registren meses después. Cada tonelada que llega a planta lleva el costo del barco del que salió.</p>
+        <div class="tabla-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Embarque (pedido)</th><th>Llegada a U004</th><th class="num">Toneladas</th>
+                <th class="num">Importe MB51 (S/)</th><th class="num">Ajustes FBL3N (S/)</th><th class="num">Partidas</th>
+                <th class="num">Precio MB51 (S/ por T)</th><th class="num">Ajuste por T</th><th class="num">Precio real (S/ por T)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for b in pr.embarques %}
+                <tr>
+                  <td>{{ b.pedido }}</td><td>{{ b.llegada|date:"d/m/Y" }}</td>
+                  <td class="num">{{ b.toneladas|numero:0 }}</td>
+                  <td class="num">{{ b.importe|numero:0 }}</td>
+                  <td class="num">{{ b.ajuste|numero:0 }}</td>
+                  <td class="num">{{ b.partidas }}</td>
+                  <td class="num">{{ b.precio_mb51|numero:2 }}</td>
+                  <td class="num">{% if b.ajuste_por_t > 0 %}+{% endif %}{{ b.ajuste_por_t|numero:2 }}</td>
+                  <td class="num dato-destacado">{{ b.precio_real|numero:2 }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
       <h3 class="subtitulo">Detalle mensual</h3>
       <div class="tabla-scroll">
         <table>
           <thead>
             <tr>
-              <th>Mes</th><th class="num">Toneladas</th>
+              <th>Mes</th>{% if pr.embarques %}<th>Embarque</th>{% endif %}<th class="num">Toneladas</th>
               <th class="num">Importe MB51 (S/)</th><th class="num">Ajustes FBL3N (S/)</th>
               <th class="num">Precio MB51 (S/ por T)</th><th class="num">Precio real (S/ por T)</th>
               <th class="num">Ajuste por T</th>
@@ -99,6 +129,7 @@
             {% for d in pr.detalle %}
               <tr>
                 <td>{{ d.mes|mesanio }}{% if not d.con_fbl3n %} *{% endif %}</td>
+                {% if pr.embarques %}<td>{{ d.embarques|default:"—" }}{% if d.sin_embarque %} <span class="nota-celda" title="{{ d.sin_embarque|numero:0 }} T sin el ingreso de su barco en la MB51 cargada: quedan al valor del traslado, sin ajustes">‡</span>{% endif %}</td>{% endif %}
                 <td class="num">{{ d.toneladas|numero:0 }}</td>
                 <td class="num">{{ d.importe_mb51|numero:0 }}</td>
                 <td class="num">{% if d.con_fbl3n or d.ajuste %}{{ d.ajuste|numero:0 }}{% if d.ajuste_trasladado %} <span class="nota-celda" title="Incluye S/ {{ d.ajuste_trasladado|numero:0 }} de meses sin compra o de otro centro">†</span>{% endif %}{% else %}—{% endif %}</td>
@@ -114,7 +145,7 @@
           </tbody>
         </table>
       </div>
-      <p class="nota">* Sin FBL3N cargada: precio real = precio MB51. † Incluye ajustes de meses sin compra o de otro centro. ! El ajuste duplica o reduce a menos de la mitad el precio de MB51: revisar sus partidas abajo.</p>
+      <p class="nota">* Sin FBL3N cargada: precio real = precio MB51. † Incluye ajustes de meses sin compra o de otro centro. ! El ajuste duplica o reduce a menos de la mitad el precio de MB51: revisar sus partidas abajo.{% if pr.embarques %} ‡ Toneladas cuyo barco no tiene su ingreso en la MB51 cargada: quedan al valor del traslado, sin ajustes.{% endif %}</p>
 
       {% if pr.ajustes %}
         <h3 class="subtitulo">Ajustes de la FBL3N del período ({{ pr.ajustes_total }} partida{{ pr.ajustes_total|pluralize }})</h3>
@@ -141,6 +172,7 @@
                   <th>Fecha contab.</th><th>Centro</th><th>Concepto</th><th>Clase</th><th>Transacción</th>
                   <th>Nº documento</th><th>Pedido</th><th>Referencia</th><th>Texto</th><th>Usuario</th>
                   <th class="num">Importe (S/)</th><th class="num">Moneda doc.</th>
+                  {% if pr.embarques %}<th>Embarque asignado</th>{% endif %}
                 </tr>
               </thead>
               <tbody>
@@ -158,6 +190,7 @@
                     <td>{{ a.usuario }}</td>
                     <td class="num">{{ a.importe|numero:2 }}</td>
                     <td class="num">{% if a.moneda_documento != "PEN" %}{{ a.importe_moneda_documento|numero:2 }} {{ a.moneda_documento }}{% endif %}</td>
+                    {% if pr.embarques %}<td>{% if a.embarque %}{{ a.embarque }} <span class="texto-tenue">({% if a.criterio_embarque == "pedido" %}por pedido{% else %}por fecha{% endif %})</span>{% else %}<span class="texto-tenue">Embarque anterior a 2024</span>{% endif %}</td>{% endif %}
                   </tr>
                 {% endfor %}
               </tbody>
