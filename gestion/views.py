@@ -1034,12 +1034,19 @@ _ZONAS_PLANIFICACION = [
 
 # Logística de Materias Primas (pedido por el usuario el 2026-10-16): los
 # (material, centro) que muestra, sus zonas y los gráficos de su Indicadores.
+# Lista definida por el usuario (2026-10-16). La Puzolana Ayacucho de
+# Condorcocha no tiene plan S&OP: aparece con sus ingresos y sin meta.
 ALCANCE_LOGISTICA = (
+    ("14-00000023", "U001"),  # Caliza Pucará (Atocongo)
     ("07-00003137", "U001"),  # Caliza Terceros Roca Fuerte (Atocongo)
-    ("07-00000027", "U001"),  # Puzolana Ayacucho (Atocongo)
-    ("07-00000025", "U001"),  # Sílices de Terceros (Atocongo)
-    ("14-00000037", "U002"),  # Clinker Tipo I: traslado de Atocongo a Condorcocha
+    ("14-00000024", "U001"),  # Caliza Roca Extraída (Atocongo)
+    ("07-00003395", "U001"),  # Caliza Terceros HCIM (Atocongo)
     ("06-00000003", "U002"),  # Carbón Importado: traslado de Atocongo a Condorcocha
+    ("07-00000025", "U001"),  # Sílices de Terceros (Atocongo)
+    ("07-00000055", "U001"),  # Puzolana de Terceros (Atocongo)
+    ("07-00000027", "U001"),  # Puzolana Ayacucho (Atocongo)
+    ("07-00000027", "U002"),  # Puzolana Ayacucho (Condorcocha)
+    ("14-00000037", "U002"),  # Clinker Tipo I ATO: traslado de Atocongo a Condorcocha
 )
 _ZONAS_LOGISTICA = [
     ("indicadores", "Indicadores", "Resumen de cumplimiento", []),
