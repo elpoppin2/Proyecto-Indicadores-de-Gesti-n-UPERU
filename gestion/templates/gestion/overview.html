@@ -4,24 +4,8 @@
 {% block contenido %}
 <div class="wrap">
 
-  <header class="pagina">
-    <div class="marca">
-      <img class="logo-empresa" src="{% static 'gestion/img/unacem-logo.svg' %}" alt="UNACEM" width="256" height="58">
-      <span class="marca-separador" aria-hidden="true"></span>
-    <div class="encabezado-texto">
-      <span class="eyebrow">Indicadores de Gestión Supply Chain</span>
-      <h1>OVERVIEW</h1>
-    </div>
-    </div>
-    <div class="sesion">
-      {% if not sin_datos %}
-        <a class="btn-link" id="link-exportar" href="{% url 'exportar_excel_overview' %}?{{ request.GET.urlencode }}">Exportar a Excel</a>
-      {% endif %}
-      <button type="button" id="theme-toggle" class="btn-link">Modo oscuro</button>
-      <span>{{ request.user.username }}</span>
-      <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" class="btn-link">Cerrar sesión</button></form>
-    </div>
-  </header>
+  {% if not sin_datos %}{% url 'exportar_excel_overview' as exportar_base %}{% endif %}
+  {% include "gestion/_cabecera.html" with titulo="Overview" %}
 
   {% include "gestion/_nav.html" %}
 
@@ -42,8 +26,8 @@
       {% if sc %}{% include "gestion/_segmentadores_compras.html" with sc=sc objetivo="bloque-compras" %}{% endif %}
 
       <section class="bloque" id="sec-compras">
-        <h2>Compras — todas las categorías · {{ sc.texto }}</h2>
-        <p class="nota">"Var. YoY" compara el valor del período contra los mismos meses del año anterior. Haz clic en una categoría para ver su detalle con el mismo período.</p>
+        <h2>Compras de todas las categorías · {{ sc.texto }}</h2>
+        <p class="nota">Compras de cada categoría en el período. Var. YoY = frente a los mismos meses del año anterior. Elige una categoría para ver su detalle.</p>
         {% if compras %}
           <div class="tabla-scroll">
             <table>
@@ -69,8 +53,8 @@
       </section>
 
       <section class="bloque" id="sec-pareto">
-        <h2>Concentración de Proveedores (Pareto) · {{ sc.texto }}</h2>
-        <p class="nota">% del valor de compras de cada categoría concentrado en sus {{ sc.top }} proveedores más grandes. Un porcentaje alto indica riesgo de dependencia de pocos proveedores.</p>
+        <h2>Concentración de proveedores (Pareto) · {{ sc.texto }}</h2>
+        <p class="nota">Parte de las compras de cada categoría que se concentra en sus {{ sc.top }} proveedores más grandes. Un porcentaje alto es dependencia de pocos proveedores.</p>
         {% if pareto %}
           <div class="tabla-scroll">
             <table>
@@ -93,7 +77,7 @@
 
       <section class="bloque" id="sec-fillrate">
         <h2>Fill Rate · {{ sc.texto }}</h2>
-        <p class="nota">% del valor de líneas de compra de material/importación (Cl. ZNAC/ZIMP, las únicas donde la cantidad pedida y recibida son comparables) entregado completo. Solo categorías con inventario; Repuestos y Suministros Industriales se miden con OTIF (abajo).</p>
+        <p class="nota">Parte del valor pedido que se entregó completo, en pedidos de material e importación (ZNAC/ZIMP). Repuestos y Suministros industriales se miden con OTIF, más abajo.</p>
         {% if fill_rate %}
           <div class="tabla-scroll">
             <table>
@@ -117,8 +101,8 @@
       {% if otif %}{% include "gestion/_otif.html" with o=otif sc=sc por_categoria=True %}{% endif %}
 
       <section class="bloque" id="sec-leadtime">
-        <h2>Lead Time de Proveedores · {{ sc.texto }}</h2>
-        <p class="nota">Días entre la fecha del pedido y la primera Entrada de Mercancía real (MB51), para líneas de material/importación (Cl. ZNAC/ZIMP). Se usa la mediana además del promedio porque la distribución tiene una cola larga (pedidos de importación con lead time mucho mayor al típico).</p>
+        <h2>Lead time de proveedores · {{ sc.texto }}</h2>
+        <p class="nota">Días entre el pedido y la primera entrada de mercancía (MB51), en pedidos de material e importación. La mediana evita que unas pocas importaciones muy largas distorsionen el promedio.</p>
         {% if lead_time %}
           <div class="tabla-scroll">
             <table>
@@ -144,8 +128,8 @@
     </div>
 
     <section class="bloque">
-      <h2>Evolución de PMP (días) — todas las categorías</h2>
-      <p class="nota">Plazo Medio de Pago mensual, ponderado por el valor de compra (Tp.cambio × Valor neto) de cada condición de pago. Toda la historia, sin los filtros de compras.</p>
+      <h2>Evolución del plazo medio de pago (días)</h2>
+      <p class="nota">Plazo medio de pago de cada mes, ponderado por el valor comprado. Toda la historia, sin los filtros de compras.</p>
       {% with g=pmp_evolucion.grafico %}
         {% if g %}
           <div class="chart-wrap">
@@ -178,8 +162,8 @@
         {% include "gestion/_segmentadores_inventario.html" with si=si objetivo="bloque-inventario" %}
 
         <section class="bloque" id="sec-evolucion">
-          <h2>Evolución de Inventario (S/. MM) — todas las categorías</h2>
-          <p class="nota">Valor al último corte de cada mes, en millones de soles{% if si.texto_filtros %} · {{ si.texto_filtros }}{% endif %}. Por defecto, los 12 meses que terminan en el corte elegido arriba.</p>
+          <h2>Evolución del inventario (S/ MM)</h2>
+          <p class="nota">Valor del inventario al cierre de cada mes, en millones de soles{% if si.texto_filtros %} ({{ si.texto_filtros }}){% endif %}.</p>
           <form class="filtros" method="get" data-target="sec-evolucion">
             <div class="campo">
               <label for="mes_inicio_evo">Desde</label>
@@ -223,7 +207,7 @@
         </section>
 
         <section class="bloque" id="sec-inventario">
-          <h2>Inventario — {{ si.mes|corte }} (todas las categorías)</h2>
+          <h2>Inventario al corte de {{ si.mes|corte }}</h2>
           <div class="metricas">
             <div class="metrica"><span class="valor">{{ inventario.materiales_con_stock|numero }}</span><span class="etiqueta">Materiales con stock</span></div>
             <div class="metrica"><span class="valor">{{ inventario.stock_total|numero }}</span><span class="etiqueta">Stock total (unidades)</span></div>
@@ -281,8 +265,8 @@
         </section>
 
         <section class="bloque" id="sec-abc">
-          <h2>Clasificación ABC de Inventario — por categoría</h2>
-          <p class="nota">Materiales ordenados por valor: A = acumulan hasta 80% del valor de su categoría, B = hasta 95%, C = el resto. Ayuda a priorizar qué materiales vigilar de cerca.</p>
+          <h2>Clasificación ABC del inventario por categoría</h2>
+          <p class="nota">Qué materiales concentran el valor: A = hasta el 80% del valor de su categoría, B = hasta el 95%, C = el resto.</p>
           {% if abc %}
             <div class="tabla-scroll">
               <table>
@@ -306,8 +290,8 @@
         </section>
 
         <section class="bloque" id="sec-obsoletos">
-          <h2>Materiales sin Movimiento — por categoría</h2>
-          <p class="nota">Materiales con stock pero sin ningún consumo (MB51) en los últimos 3 años: capital inmovilizado. Umbral mucho más exigente que el resto de indicadores de consumo (6 meses) — pensado para detectar material realmente parado, no solo de baja rotación reciente.</p>
+          <h2>Materiales sin movimiento por categoría</h2>
+          <p class="nota">Materiales con stock y sin ningún consumo en 3 años: capital inmovilizado, no solo de baja rotación.</p>
           {% if obsoletos %}
             <div class="tabla-scroll">
               <table>
@@ -329,8 +313,8 @@
         </section>
 
         <section class="bloque" id="sec-rotacion">
-          <h2>Índice de Rotación de Inventario — por categoría</h2>
-          <p class="nota">Indicador clásico de rotación, en valor (S/.): consumo valorizado promedio mensual (MB51, 6 meses que terminan en el corte elegido) ÷ valor de stock (MB5B), × 12. Se usa valor y no cantidad porque los materiales de una misma categoría pueden tener distinta unidad de medida (kg, ton, unidades…), que no se puede sumar directamente.</p>
+          <h2>Rotación del inventario por categoría</h2>
+          <p class="nota">Cuántas veces al año se renueva el inventario: consumo valorizado mensual de 6 meses ÷ valor del stock × 12. Se mide en soles porque las unidades de una categoría no se pueden sumar.</p>
           {% if rotacion.filas %}
             <div class="tabla-scroll">
               <table>
@@ -355,8 +339,8 @@
         </section>
 
         <section class="bloque" id="sec-criticos">
-          <h2>Cobertura de Materiales Críticos — por categoría</h2>
-          <p class="nota">Materiales marcados como críticos en el maestro (ZMM060). "En riesgo" = cobertura menor a 1 mes al ritmo de consumo actual.</p>
+          <h2>Cobertura de materiales críticos por categoría</h2>
+          <p class="nota">Materiales críticos del maestro (ZMM060). En riesgo = alcanza para menos de 1 mes al ritmo de consumo actual.</p>
           {% if criticos %}
             <div class="tabla-scroll">
               <table>
@@ -379,7 +363,7 @@
         </section>
 
         <section class="bloque" id="sec-variacion">
-          <h2>% Variación de Inventario — por categoría</h2>
+          <h2>Variación del inventario por categoría</h2>
           <p class="nota">Valor al corte elegido arriba ({{ variacion.mes_final|corte }}) contra el mes comparativo.</p>
           {% if variacion.mes_inicial %}
             <form class="filtros" method="get" data-target="sec-variacion">

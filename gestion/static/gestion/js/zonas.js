@@ -411,6 +411,8 @@
     panel.classList.remove('entrando', 'entrando-der', 'entrando-izq');
     void panel.offsetWidth;  // reinicia la animación si se repite
     panel.classList.add(direccion > 0 ? 'entrando-der' : direccion < 0 ? 'entrando-izq' : 'entrando');
+    // Los gráficos de la zona se arman al entrar (graficos.js).
+    document.dispatchEvent(new CustomEvent('uperu:zona-entrando', { detail: { panel: panel } }));
     var turno = panel._turnoEntrada = (panel._turnoEntrada || 0) + 1;
     setTimeout(function () {
       if (panel._turnoEntrada === turno) panel.classList.remove('entrando', 'entrando-der', 'entrando-izq');

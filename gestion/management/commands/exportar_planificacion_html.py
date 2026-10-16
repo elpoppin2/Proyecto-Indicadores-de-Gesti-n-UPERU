@@ -231,6 +231,9 @@ class Command(BaseCommand):
             css = f.read()
         with open(os.path.join(ESTATICOS, "js", "zonas.js"), encoding="utf-8") as f:
             zonas_js = f.read()
+        # Transición de los gráficos al abrir cada zona (mismo archivo que el localhost).
+        with open(os.path.join(ESTATICOS, "js", "graficos.js"), encoding="utf-8") as f:
+            zonas_js += "\n" + f.read()
         # Logo de UNACEM incrustado (el archivo se abre sin servidor).
         import base64
         with open(os.path.join(ESTATICOS, "img", "unacem-logo.svg"), "rb") as f:
@@ -243,13 +246,13 @@ class Command(BaseCommand):
         import re
         from django.test import RequestFactory
         from gestion import views
-        nota_web = "con los filtros aplicados en su pestaña"
+        nota_web = "con los filtros de su pestaña"
 
         def indicadores_de(mes):
             html = views._html_indicadores(RequestFactory().get("/planificacion/"), mes_forzado=mes)
             if nota_web not in html:
                 raise CommandError("Cambió el texto de la nota de Indicadores: actualizar el exportador")
-            html = html.replace(nota_web, "con la vista por defecto de cada pestaña (sin filtros)")
+            html = html.replace(nota_web, "con la vista por defecto de cada pestaña")
             return re.sub(r"\n\s+", "\n", html)  # sin la sangría de la plantilla
 
         indicadores = indicadores_de("")

@@ -1,6 +1,6 @@
 {# Pestaña Indicadores de una categoría (views._cat_indicadores): un panel por pestaña con su número clave y el gráfico que lo explica, al último dato disponible. "Ver detalle" abre la pestaña. #}
 <section class="indicadores-graficos" id="sec-indicadores-categoria">
-  <p class="nota indicadores-nota">Resumen de {{ categoria|title }} al último dato disponible de cada indicador. Pasa el mouse por un gráfico para ver el detalle y entra a la pestaña para ver el análisis completo.</p>
+  <p class="nota indicadores-nota">Resumen de {{ categoria|title }} al último dato de cada indicador. Pasa el mouse por un gráfico para ver el detalle.</p>
   <div class="paneles-indicador">
     {% for p in paneles %}
       {% include "gestion/planificacion/_panel_indicador.html" with p=p i=forloop.counter0 %}

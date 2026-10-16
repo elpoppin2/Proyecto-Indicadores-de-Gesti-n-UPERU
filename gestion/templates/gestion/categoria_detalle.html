@@ -1,27 +1,11 @@
 {% extends "gestion/base.html" %}
 {% load static dashboard_extras %}
-{% block titulo %}{{ categoria|title }} — Indicadores Supply Chain{% endblock %}
+{% block titulo %}{{ categoria|nombre_visible }} — Indicadores Supply Chain{% endblock %}
 {% block contenido %}
 <div class="wrap">
 
-  <header class="pagina">
-    <div class="marca">
-      <img class="logo-empresa" src="{% static 'gestion/img/unacem-logo.svg' %}" alt="UNACEM" width="256" height="58">
-      <span class="marca-separador" aria-hidden="true"></span>
-    <div class="encabezado-texto">
-      <span class="eyebrow">Indicadores de Gestión Supply Chain</span>
-      <h1>{{ categoria|default:"Sin datos" }}</h1>
-    </div>
-    </div>
-    <div class="sesion">
-      {% if not sin_datos %}
-        <a class="btn-link" id="link-exportar" href="{% url 'exportar_excel_categoria' slug=slug %}?{{ request.GET.urlencode }}">Exportar a Excel</a>
-      {% endif %}
-      <button type="button" id="theme-toggle" class="btn-link">Modo oscuro</button>
-      <span>{{ request.user.username }}</span>
-      <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" class="btn-link">Cerrar sesión</button></form>
-    </div>
-  </header>
+  {% if not sin_datos %}{% url 'exportar_excel_categoria' slug=slug as exportar_base %}{% endif %}
+  {% include "gestion/_cabecera.html" with titulo=categoria|nombre_visible|default:"Sin datos" %}
 
   {% include "gestion/_nav.html" %}
 
@@ -29,7 +13,7 @@
   {% if total_criticos_en_riesgo %}
     <div class="alerta">
       <span class="alerta-num">{{ total_criticos_en_riesgo }}</span>
-      <span>material{{ total_criticos_en_riesgo|pluralize:"es" }} crítico{{ total_criticos_en_riesgo|pluralize }} con menos de 1 mes de cobertura — ver <a href="#sec-criticos">Cobertura de Materiales Críticos</a> en la pestaña Inventario.</span>
+      <span>material{{ total_criticos_en_riesgo|pluralize:"es" }} crítico{{ total_criticos_en_riesgo|pluralize }} con menos de 1 mes de cobertura. <a href="#sec-criticos">Ver en Inventario</a></span>
     </div>
   {% endif %}
 
@@ -38,7 +22,7 @@
   {% else %}
 
     {# Pestañas de la categoría (views._zonas_categoria): Indicadores viene en la página; cada otra se pide al abrirla (?_zona=inventario) y zonas.js las precarga en segundo plano. Pedido por el usuario: mismas pestañas que Planificación (Indicadores, Inventario, Precios e IPU...) y las propias de cada categoría. #}
-    <nav class="zonas" role="tablist" aria-label="Pestañas de {{ categoria|title }}">
+    <nav class="zonas" role="tablist" aria-label="Pestañas de {{ categoria|nombre_visible }}">
       {% for z in zonas %}
         <button type="button" class="zona-tab" role="tab" id="zona-tab-{{ z.clave }}" data-zona="{{ z.clave }}" aria-controls="zona-{{ z.clave }}" aria-selected="{% if forloop.first %}true{% else %}false{% endif %}"{% if not forloop.first %} tabindex="-1"{% endif %}><span class="zona-nombre">{{ z.nombre }}</span><span class="zona-desc">{{ z.descripcion }}</span></button>
       {% endfor %}

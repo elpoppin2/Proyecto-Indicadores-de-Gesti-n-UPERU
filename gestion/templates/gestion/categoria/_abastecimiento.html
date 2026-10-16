@@ -8,10 +8,10 @@
 {% else %}
 <section class="bloque" id="sec-sop-categoria">
   <div class="bloque-cabecera">
-    <h2>Cumplimiento del plan de abastecimiento — {{ ab.mes|mesanio }}</h2>
-    <a class="btn-link" href="{% url 'planificacion' %}#cumplimiento">Ver en Planificación <span aria-hidden="true">→</span></a>
+    <h2>Cumplimiento del plan de abastecimiento · {{ ab.mes|mesanio }}</h2>
+    <a class="btn-link" href="{% url 'planificacion' %}#cumplimiento">Ver en Planificación<span class="chevron" aria-hidden="true"></span></a>
   </div>
-  <p class="nota">Ingresos físicos (báscula, ZMM056) contra el Plan de Abastecimiento S&amp;OP de {{ categoria|title }}, por centro. El detalle por material, proveedor y día está en la pestaña Cumplimiento de Planificación.</p>
+  <p class="nota">Toneladas que ingresaron a cada planta (báscula ZMM056) frente al plan de abastecimiento del S&amp;OP. El detalle por material y proveedor está en Planificación.</p>
   <form class="filtros" method="get" data-target="sec-sop-categoria">
     <div class="campo">
       <label for="mes_sopcat">Mes</label>
@@ -54,7 +54,7 @@
 
 <section class="bloque" id="sec-sop-mensual">
   <h2>Cumplimiento mensual</h2>
-  <p class="nota">Real ÷ Plan mes a mes. Un mes sin Plan (todavía no llegó ese snapshot) o sin Real (mes futuro) no tiene barra.</p>
+  <p class="nota">Cumplimiento (real ÷ plan) mes a mes. Un mes sin plan o sin ingresos todavía no tiene barra.</p>
   {% with g=ab.grafico %}
     {% if g %}
       <div class="chart-scroll">

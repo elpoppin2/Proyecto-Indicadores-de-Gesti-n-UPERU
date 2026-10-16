@@ -15,7 +15,8 @@
   })();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
 <style>
 /*__DASHBOARD_CSS__*/
 </style>
@@ -36,12 +37,12 @@
       <img class="logo-empresa" src="__LOGO_UNACEM__" alt="UNACEM" width="256" height="58">
       <span class="marca-separador" aria-hidden="true"></span>
     <div class="encabezado-texto">
-      <span class="eyebrow">Indicadores de Gestión Supply Chain</span>
-      <h1>PLANIFICACIÓN</h1>
+      <span class="eyebrow">Indicadores de gestión de Supply Chain</span>
+      <h1>Planificación</h1>
     </div>
     </div>
     <div class="sesion">
-      <button type="button" id="theme-toggle" class="btn-link">Modo oscuro</button>
+      <button type="button" id="theme-toggle" class="btn-link">Tema oscuro</button>
       <span class="pill-snapshot"><span class="pill-dot"></span>Datos congelados al <b id="fecha-generado">—</b></span>
     </div>
   </header>
@@ -64,11 +65,10 @@
   <div class="franja-kpis" data-kpis-zona="cumplimiento" hidden></div>
   <section class="bloque" id="sec-plan-mensual">
     <h2>Evaluación mensual</h2>
-    <p class="nota">
-      Proceso S&amp;OP, solo Materias Primas y Energía/Combustibles. El Plan viene del archivo mensual de Abastecimiento SOP;
-      los Ingresos Físicos son los tickets de báscula (ZMM056) ya contabilizados en SAP — no se toma de MB51 para estos
-      materiales, la báscula es la fuente de verdad de lo que realmente ingresó a planta.
-    </p>
+    <p class="nota">Toneladas que ingresaron a planta frente al plan de abastecimiento del S&amp;OP (Materias primas y Combustibles).</p>
+    <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+      <p>El plan viene del archivo mensual de Abastecimiento S&amp;OP. Los ingresos son los tickets de báscula (ZMM056) ya contabilizados en SAP: para estos materiales la báscula es la fuente de lo que realmente ingresó, no MB51.</p>
+    </div></details>
     <form class="filtros">
       <div class="campo"><label for="mes_plan">Mes</label><select id="mes_plan"></select></div>
       <div class="campo"><label for="categoria_plan">Categoría</label><select id="categoria_plan"></select></div>
@@ -77,11 +77,8 @@
     <div id="plan-contenido"></div>
   </section>
   <section class="bloque" id="sec-plan-detalle">
-    <h2>Detalle por material y Evaluación diaria</h2>
-    <p class="nota">
-      Filtros propios (Mes/Centro/Material, todos en lista desplegable) — no afectan la Evaluación mensual de arriba.
-      El Material se acota al Centro elegido, para no armar combinaciones sin datos.
-    </p>
+    <h2>Detalle por material y evaluación diaria</h2>
+    <p class="nota">Plan e ingresos de cada material y su avance día a día. Estos filtros no cambian la Evaluación mensual.</p>
     <form class="filtros">
       <div class="campo"><label for="mes_detalle">Mes</label><select id="mes_detalle"></select></div>
       <div class="campo"><label for="centro_detalle">Centro</label><select id="centro_detalle"></select></div>
@@ -94,11 +91,7 @@
       <h2 class="subtitulo">Evaluación diaria</h2>
       <button type="button" class="btn-link" data-imprimir="curva-s-diaria">Descargar / Imprimir</button>
     </div>
-    <p class="nota">
-      Plan diario estimado = Plan mensual (con los filtros de arriba) ÷ días calendario del mes — no es un plan diario
-      real, es una referencia lineal para ver el ritmo necesario. Curva S: acumulado del Plan estimado vs. acumulado
-      de Ingresos Físicos reales, día a día. El Real se corta en el último día ya cerrado.
-    </p>
+    <p class="nota">Ingresos acumulados día a día frente al ritmo necesario. El plan diario es una referencia lineal: plan del mes ÷ días del mes. El real se corta en el último día cerrado.</p>
     <div id="curva-s-diaria">
       <h3 class="titulo-bloque" id="titulo-curva">—</h3>
       <div class="curva-s-fila" id="curva-s-fila"></div>
@@ -106,11 +99,7 @@
   </section>
   <section class="bloque" id="sec-cumplimiento-mensual">
     <h2>Cumplimiento mensual</h2>
-    <p class="nota">
-      Nivel de cumplimiento (Real ÷ Plan) mes a mes, en vez de un solo mes a la vez. Un mes sin Plan (todavía no
-      llegó ese snapshot) o sin Real (mes futuro) no tiene barra — se va completando solo con cada archivo nuevo de
-      Plan de Abastecimiento.
-    </p>
+    <p class="nota">Cumplimiento del plan de abastecimiento (real ÷ plan) mes a mes. Un mes sin plan o sin ingresos todavía no tiene barra.</p>
     <form class="filtros">
       <div class="campo"><label for="categoria_cumplmes">Categoría</label><select id="categoria_cumplmes"></select></div>
       <div class="campo"><label for="centro_cumplmes">Centro</label><select id="centro_cumplmes"></select></div>
@@ -122,11 +111,7 @@
       <h2>Evolución de entregas por proveedor</h2>
       <button type="button" class="btn-link" data-imprimir="sec-entregas">Imprimir</button>
     </div>
-    <p class="nota">
-      Lo que entregó cada proveedor mes a mes, desde los tickets de báscula (ZMM056, recepciones de terceros y propias). En
-      las propias (cantera o traslado entre plantas) el proveedor es la planta de origen. Los 7 proveedores
-      con más toneladas tienen color propio; el resto va junto como Otros. Últimos 12 meses con entregas.
-    </p>
+    <p class="nota">Toneladas entregadas por cada proveedor en los últimos 12 meses (tickets de báscula ZMM056). Los 7 principales tienen color propio; el resto va como Otros. En los ingresos propios, el proveedor es la planta de origen.</p>
     <form class="filtros">
       <div class="campo"><label for="centro_entregas">Centro</label><select id="centro_entregas"></select></div>
       <div class="campo campo-multi"><label for="material_entregas-boton">Material</label><div class="filtro-multi"><select id="material_entregas" multiple hidden data-multi tabindex="-1" aria-hidden="true"></select></div></div>
@@ -157,13 +142,11 @@
       <h2>Consumo por tonelada producida</h2>
       <button type="button" class="btn-link" data-imprimir="sec-consumo-especifico">Descargar / Imprimir</button>
     </div>
-    <p class="nota">
-      Cuántos kg de cada material se gastan por tonelada de clinker o de cemento producida en la misma planta. MB51 registra
-      la producción (101/102 de órdenes de producción) y lo que consume cada orden (261/262): siguiendo esa cadena, cada
-      material queda asignado al producto final al que llega su consumo. Las calizas, arcillas, correctivos y carbones
-      terminan en clinker (vía crudo o combustible sólido); el yeso, las puzolanas, la escoria y el clinker, en cemento. El consumo
-      del mes es el mismo de la Evaluación de consumo. Un mes con MB51 incompleto (p.ej. Feb-2026) queda fuera y se ve como un hueco.
-    </p>
+    <p class="nota">Kilos de cada material por tonelada de clinker o cemento producida en la misma planta.</p>
+    <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+      <p>MB51 registra la producción (101/102 de órdenes de producción) y lo que consume cada orden (261/262); siguiendo esa cadena, cada material queda asignado al producto final al que llega. Calizas, arcillas, correctivos y carbones terminan en clinker; yeso, puzolanas, escoria y clinker, en cemento.</p>
+      <p>El consumo del mes es el de la Evaluación de consumo. Un mes con MB51 incompleto (p.ej. Feb-2026) queda fuera y se ve como un hueco.</p>
+    </div></details>
     <form class="filtros">
       <div class="campo"><label for="mes_factor">Mes</label><select id="mes_factor"></select></div>
       <div class="campo"><label for="centro_factor">Centro</label><select id="centro_factor"></select></div>
@@ -178,12 +161,11 @@
   <div class="franja-kpis" data-kpis-zona="inventario" hidden></div>
   <section class="bloque" id="sec-cobertura">
     <h2>Cobertura de stock</h2>
-    <p class="nota" id="cobertura-nota">
-      Solo materiales que están en el Plan de Abastecimiento SOP (los demás, aunque sean Materias Primas o Combustibles,
-      no se planifican y no interesan acá). Cobertura (días) = Stock de cierre del mes elegido ÷ Consumo diario promedio
-      de los 6 meses que terminan en ese mes. El consumo se toma de MB51: salidas del material hacia el proceso (clases
-      de movimiento que empiezan con "2" — costo, orden de producción, red — más Z01/Z04/353).
-    </p>
+    <p class="nota" id="cobertura-nota">Cuántos días alcanza el stock de cada material del S&amp;OP al ritmo de consumo de los últimos 6 meses.</p>
+    <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+      <p><strong>Cobertura (días)</strong> = stock de cierre del mes elegido ÷ consumo diario promedio de los 6 meses que terminan en ese mes.</p>
+      <p>El consumo sale de MB51: salidas del material al proceso (clases 2xx de costo, orden de producción y red, más Z01/Z04/353). Solo entran los materiales del Plan de Abastecimiento S&amp;OP.</p>
+    </div></details>
     <form class="filtros">
       <div class="campo"><label for="mes_cobertura">Mes</label><select id="mes_cobertura"></select></div>
       <div class="campo"><label for="categoria_cobertura">Categoría</label><select id="categoria_cobertura"></select></div>
@@ -197,9 +179,11 @@
       <h2>Evolución de inventario (S&amp;OP)</h2>
       <button type="button" class="btn-link" data-imprimir="sec-proyeccion">Descargar / Imprimir</button>
     </div>
-    <p class="nota" id="proyeccion-nota">
-      Stock final de cada mes = Stock inicial + Abastecimiento S&amp;OP − Consumo S&amp;OP.
-    </p>
+    <p class="nota" id="proyeccion-nota">Stock proyectado de cada material mes a mes según el S&amp;OP, frente a su mínimo y máximo. Un stock negativo es un quiebre.</p>
+    <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+      <p><strong>Stock final</strong> = stock inicial + abastecimiento S&amp;OP − consumo S&amp;OP − traslados a otro centro (el Carbón Importado llega a Atocongo y lo que se envía a Condorcocha sale de ese stock).</p>
+      <p>El primer mes parte del inventario real de cierre del mes anterior al S&amp;OP (MB5B); cada mes siguiente arranca con el stock final del anterior. El mínimo y el máximo vienen del archivo MinMax S&amp;OP (un mes vacío repite el último valor definido).</p>
+    </div></details>
     <form class="filtros">
       <div class="campo"><label for="sop_proyeccion">S&amp;OP</label><select id="sop_proyeccion"></select></div>
       <div class="campo"><label for="categoria_proyeccion">Categoría</label><select id="categoria_proyeccion"></select></div>
@@ -217,16 +201,12 @@
       <h2>Evolución de precios de entrada</h2>
       <button type="button" class="btn-link" data-imprimir="sec-precios">Descargar / Imprimir</button>
     </div>
-    <p class="nota">
-      Precio de compra por tonelada (S/ por T) de los materiales del S&amp;OP, desde MB51: entradas de mercancía por
-      pedido a un proveedor (101, neto de anulaciones 102), promedio ponderado por toneladas de cada mes. No incluye
-      traslados entre centros ni lo que sale de cantera propia o de producción (calizas propias, Clinker), que no tienen
-      precio de compra. Los importados (Carbón Importado, Escoria japonesa) se compran en el centro U004
-      (importación), pero se miden puestos en destino: lo que recibe cada planta (U001/U002) por traslado desde U004,
-      más los ajustes de la FBL3N. Un mes sin punto es un mes sin compras ni llegadas a planta. <strong>Precio real</strong>: al importe
-      de MB51 se le suman los ajustes de valor de la FBL3N (diferencias de precio de la factura, fletes, desestiba, cargos
-      de importación, anulaciones y MR22).
-    </p>
+    <p class="nota">Precio por tonelada de cada material del S&amp;OP, mes a mes, puesto en la planta que lo recibe. Incluye los ajustes de valor de la FBL3N.</p>
+    <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+      <p>Precio de compra en S/ por T desde MB51: entradas por pedido a un proveedor (101, neto de anulaciones 102), promedio ponderado por las toneladas de cada mes. No incluye traslados entre centros ni lo que sale de cantera propia o de producción. Un mes sin punto es un mes sin compras ni llegadas a planta.</p>
+      <p><strong>Puesto en destino:</strong> los importados (Carbón Importado, Escoria japonesa) se compran en el centro U004 y se miden en lo que recibe cada planta (U001/U002) por traslado desde U004, más los ajustes de la FBL3N.</p>
+      <p><strong>Precio real</strong> = (importe de MB51 + ajustes de la FBL3N: diferencias de factura, fletes, desestiba, cargos de importación, anulaciones y MR22) ÷ toneladas.</p>
+    </div></details>
     <form class="filtros">
       <div class="campo"><label for="periodo_precios">Período</label><select id="periodo_precios"></select></div>
       <div class="campo"><label for="categoria_precios">Categoría</label><select id="categoria_precios"></select></div>
@@ -240,20 +220,13 @@
       <h2>Inflación de precios (interanual)</h2>
       <button type="button" class="btn-link" data-imprimir="sec-inflacion">Descargar / Imprimir</button>
     </div>
-    <p class="nota">
-      Precio real de compra de cada mes (MB51 + ajustes de la FBL3N, mismo criterio que Precios de entrada) contra el mismo mes del año anterior
-      (Ene-26 vs Ene-25). Si ese mes no tuvo compra, se compara contra el último precio registrado antes
-      (Dic-24, Nov-24…), marcado con <span class="marca-sustituida">*</span>. Solo se evalúan los meses con compra.
-      <strong>Bolsa</strong> = (precio del mes − precio base) × toneladas compradas en el mes evaluado: el impacto en soles
-      de la variación, ponderado con la cantidad del período más reciente de cada comparación
-      (2025 vs 2024 con las toneladas de 2025; 2026 vs 2025 con las de 2026). La fila Selección pondera
-      todos los materiales así: lo pagado ÷ lo que habrían costado esas mismas toneladas al precio base.
-      <strong>IPU (Índice de Precios Unacem)</strong> acumulado del año: de enero al mes T contra el
-      mismo tramo del año anterior (Ene–Feb 2026 vs Ene–Feb 2025), ponderado con las toneladas del año más reciente; se reinicia cada enero.
-      Una comparación donde el precio más que se duplica o cae a menos de la mitad se marca con
-      <span class="marca-atipica">!</span> (dato atípico): se
-      muestra, pero no suma en la bolsa ni en la selección.
-    </p>
+    <p class="nota">Cuánto subió o bajó el precio de compra de cada mes frente al mismo mes del año anterior (Ene-26 vs Ene-25), y su impacto en soles (bolsa).</p>
+    <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+      <p>Precio de cada mes: precio real (MB51 + ajustes de la FBL3N), el mismo de Precios de entrada. Solo se evalúan los meses con compra. Si el mes de comparación no tuvo compra, se usa el último precio anterior, marcado con <span class="marca-sustituida">*</span>.</p>
+      <p><strong>Bolsa</strong> = (precio del mes − precio base) × toneladas del mes evaluado: 2025 vs 2024 con las toneladas de 2025, 2026 vs 2025 con las de 2026. La fila Selección pondera todos los materiales: lo pagado ÷ lo que habrían costado esas toneladas al precio base.</p>
+      <p><strong>IPU (Índice de Precios Unacem)</strong> acumulado del año: de enero al mes T contra el mismo tramo del año anterior, ponderado con las toneladas del año más reciente. Se reinicia cada enero.</p>
+      <p>Si el precio se duplica o cae a menos de la mitad, la comparación se marca con <span class="marca-atipica">!</span> (dato atípico): se muestra, pero no suma en la bolsa ni en la selección.</p>
+    </div></details>
     <form class="filtros">
       <div class="campo"><label for="periodo_inflacion">Período</label><select id="periodo_inflacion"></select></div>
       <div class="campo"><label for="categoria_inflacion">Categoría</label><select id="categoria_inflacion"></select></div>
@@ -269,19 +242,12 @@
       <h2>Evaluación mensual de precios</h2>
       <button type="button" class="btn-link" data-imprimir="sec-inflacion-mensual">Descargar / Imprimir</button>
     </div>
-    <p class="nota">
-      Precio real de compra de cada mes (MB51 + ajustes de la FBL3N, mismo criterio que Precios de entrada) contra el mes anterior
-      (Mar-26 vs Feb-26). Si ese mes no tuvo compra, se compara contra el último precio registrado antes
-      (Ene-26, Dic-25…), marcado con <span class="marca-sustituida">*</span>. Solo se evalúan los meses con compra.
-      <strong>Bolsa</strong> = (precio del mes − precio base) × toneladas compradas en el mes evaluado: el impacto en soles
-      de la variación, ponderado con la cantidad del período más reciente de cada comparación. La fila Selección pondera
-      todos los materiales así: lo pagado ÷ lo que habrían costado esas mismas toneladas al precio base.
-      <strong>IPU (Índice de Precios Unacem)</strong> acumulado del año: las variaciones de cada mes encadenadas desde enero,
-      (1 + v₁) × (1 + v₂) × … − 1; se reinicia cada enero.
-      Una comparación donde el precio más que se duplica o cae a menos de la mitad se marca con
-      <span class="marca-atipica">!</span> (dato atípico): se
-      muestra, pero no suma en la bolsa ni en la selección.
-    </p>
+    <p class="nota">Cuánto subió o bajó el precio de compra de cada mes frente al mes anterior (Mar-26 vs Feb-26), y su impacto en soles (bolsa).</p>
+    <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+      <p>Precio de cada mes: precio real (MB51 + ajustes de la FBL3N). Solo se evalúan los meses con compra. Si el mes anterior no tuvo compra, se usa el último precio anterior, marcado con <span class="marca-sustituida">*</span>.</p>
+      <p><strong>Bolsa</strong> = (precio del mes − precio base) × toneladas del mes evaluado. <strong>IPU</strong> acumulado del año: variaciones mensuales encadenadas desde enero, (1 + v₁) × (1 + v₂) × … − 1.</p>
+      <p>Si el precio se duplica o cae a menos de la mitad, la comparación se marca con <span class="marca-atipica">!</span> y no suma.</p>
+    </div></details>
     <form class="filtros">
       <div class="campo"><label for="periodo_mensual">Período</label><select id="periodo_mensual"></select></div>
       <div class="campo"><label for="categoria_mensual">Categoría</label><select id="categoria_mensual"></select></div>
@@ -301,13 +267,11 @@
       <h2>Calidad</h2>
       <button type="button" class="btn-link" data-imprimir="sec-calidad">Descargar / Imprimir</button>
     </div>
-    <p class="nota">
-      Análisis químico de lo que ingresa a planta, desde los tickets de báscula (ZMM056, recepciones de terceros y
-      propias). Cada material muestra solo los parámetros que el laboratorio le mide. Promedios ponderados por las
-      toneladas de los tickets analizados; mínimo, máximo y desviación, por muestra (un número de muestra cubre
-      varios tickets). No tienen análisis en ZMM056 el Carbón Importado, las calizas de cantera propia ni el Clinker.
-      <span id="calidad-nota-fechas"></span>
-    </p>
+    <p class="nota">Análisis químico de lo que ingresa a cada planta, por material y proveedor. <span id="calidad-nota-fechas"></span></p>
+    <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+      <p>Fuente: tickets de báscula de la ZMM056 (recepciones de terceros y propias). Cada material muestra solo los parámetros que el laboratorio le mide. Promedios ponderados por las toneladas de los tickets analizados; mínimo, máximo y desviación, por muestra.</p>
+      <p>No tienen análisis en la ZMM056 el Carbón Importado, las calizas de cantera propia ni el Clinker.</p>
+    </div></details>
     <form class="filtros">
       <div class="campo"><label for="periodo_calidad">Período</label><select id="periodo_calidad"></select></div>
       <div class="campo"><label for="categoria_calidad">Categoría</label><select id="categoria_calidad"></select></div>
@@ -322,13 +286,11 @@
       <h2>Premios y castigos por calidad</h2>
       <button type="button" class="btn-link" data-imprimir="sec-premios">Descargar / Imprimir</button>
     </div>
-    <p class="nota">
-      Cada ingreso de un tercero se paga al precio base del contrato más un premio (calidad mejor que lo pactado) o
-      menos un castigo (calidad peor), que el ticket de báscula (ZMM056) trae en soles y que la entrada de MB51 ya incluye
-      en su importe. Precio base = (importe − premio) ÷ toneladas secas; precio efectivo = importe ÷ toneladas secas.
-      Las toneladas son secas (las que paga el contrato). Los materiales sin premios ni castigos en el período no se
-      ajustan por calidad.
-    </p>
+    <p class="nota">Lo que se pagó de más (premio) o de menos (castigo) por la calidad de cada entrega frente a lo pactado en el contrato.</p>
+    <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+      <p>El ticket de báscula (ZMM056) trae el premio o castigo en soles, y la entrada de MB51 ya lo incluye en su importe. <strong>Precio base</strong> = (importe − premio) ÷ toneladas secas. <strong>Precio efectivo</strong> = importe ÷ toneladas secas.</p>
+      <p>Las toneladas son secas (las que paga el contrato). Los materiales sin premios ni castigos en el período no se ajustan por calidad.</p>
+    </div></details>
     <form class="filtros">
       <div class="campo"><label for="periodo_premios">Período</label><select id="periodo_premios"></select></div>
       <div class="campo"><label for="centro_premios">Centro</label><select id="centro_premios"></select></div>
@@ -342,13 +304,11 @@
       <h2>Costo por energía (carbones)</h2>
       <button type="button" class="btn-link" data-imprimir="sec-energia">Descargar / Imprimir</button>
     </div>
-    <p class="nota">
-      Un carbón con más poder calorífico (PCS) entrega más energía por tonelada, así que se compara lo que cuesta cada
-      Gcal (un millón de kcal): energía = toneladas secas × PCS ÷ 1,000; costo por Gcal = importe pagado (con premio o
-      castigo) ÷ energía. Supone que el PCS del ticket (ZMM056) está en la misma base seca que las toneladas que se pagan.
-      Cada proveedor se compara con el promedio de su material; con varios materiales, cada material con el promedio de
-      la selección.
-    </p>
+    <p class="nota">Cuánto cuesta cada Gcal de energía según el carbón y el proveedor: un carbón con más poder calorífico rinde más por tonelada.</p>
+    <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+      <p><strong>Energía (Gcal)</strong> = toneladas secas × PCS ÷ 1,000. <strong>Costo por Gcal</strong> = importe pagado (con premio o castigo) ÷ energía. Supone que el PCS del ticket (ZMM056) está en la misma base seca que las toneladas que se pagan.</p>
+      <p>Cada proveedor se compara con el promedio de su material; con varios materiales, cada material con el promedio de la selección.</p>
+    </div></details>
     <form class="filtros">
       <div class="campo"><label for="periodo_energia">Período</label><select id="periodo_energia"></select></div>
       <div class="campo"><label for="centro_energia">Centro</label><select id="centro_energia"></select></div>
@@ -838,10 +798,7 @@ function renderSeccion3(){
 
   const fechaStock = DATA.meses_inventario[mes];
   document.getElementById("cobertura-nota").innerHTML =
-    `Solo materiales que están en el Plan de Abastecimiento SOP (los demás, aunque sean Materias Primas o Combustibles, ` +
-    `no se planifican y no interesan acá). Cobertura (días) = Stock de cierre del mes elegido ÷ Consumo diario promedio ` +
-    `de los 6 meses que terminan en ese mes. El consumo se toma de MB51: salidas del material hacia el proceso (clases ` +
-    `de movimiento que empiezan con "2" — costo, orden de producción, red — más Z01/Z04/353). Datos de inventario al ` +
+    `Cuántos días alcanza el stock de cada material del S&amp;OP al ritmo de consumo de los últimos 6 meses. Inventario al ` +
     `${new Date(fechaStock+"T00:00:00").toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'})}.`;
 
   if(!filas.length){ cont.innerHTML = `<p class="aviso">Sin datos de stock/consumo para los filtros seleccionados.</p>`; return; }
@@ -1067,11 +1024,8 @@ function renderSeccion5(){
   const fechaIni = (DATA.proyeccion_inicial || {})[snapshot];
   const fechaTxt = fechaIni ? new Date(fechaIni+"T00:00:00").toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'}) : null;
   document.getElementById("proyeccion-nota").innerHTML =
-    `Stock final de cada mes = Stock inicial + Abastecimiento S&amp;OP − Consumo S&amp;OP − Traslados a otro centro (el Carbón ` +
-    `Importado llega a Atocongo y lo que se envía a Condorcocha sale de ese stock). El primer mes parte del ` +
-    `inventario real de cierre del mes anterior al S&amp;OP (MB5B${fechaTxt ? " al "+fechaTxt : ""}) y cada mes siguiente ` +
-    `arranca con el stock final del anterior. Un stock negativo es un quiebre proyectado: el consumo planificado supera ` +
-    `al stock más el abastecimiento. El mínimo y máximo vienen del archivo MinMax SOP (un mes vacío repite el último valor definido).`;
+    `Stock proyectado de cada material mes a mes según el S&amp;OP, frente a su mínimo y máximo. Un stock negativo es un quiebre.` +
+    (fechaTxt ? ` Parte del inventario de cierre al ${fechaTxt}.` : "");
   let filas = PROY.filter(r=>r.snapshot===snapshot);
   if(categoria) filas = filas.filter(f=>f.categoria===categoria);
   if(centro) filas = filas.filter(f=>f.centro===centro);
@@ -1665,10 +1619,8 @@ function renderSeccion7(){
   const cont = document.getElementById("consumo-contenido");
   const c = calcularConsumo({mes:f7mes.value, categoria:f7cat.value || null, centro:f7centro.value || null, material:f7material.value || null});
   document.getElementById("consumo-nota").innerHTML =
-    `Plan de Consumos del S&amp;OP contra el consumo real de MB51 (salidas al proceso: clases 2xx + Z01/Z04/353, mismo criterio ` +
-    `que Cobertura de stock). Cada mes se compara contra el plan del S&amp;OP más reciente emitido hasta ese mes (hoy, ` +
-    `${mesLabel(c.snapshot || ULTIMO_SNAPSHOT_CONSUMO)}). Solo entran los materiales y centros que trae el plan. Carbón Terceros en ` +
-    `Condorcocha se consume vía su chancado (14-00001112): se muestra como 06-00000005.`;
+    `Consumo real de cada mes frente al plan de consumos del S&amp;OP (plan vigente: ${mesLabel(c.snapshot || ULTIMO_SNAPSHOT_CONSUMO)}). ` +
+    `El Carbón Terceros de Condorcocha se consume vía su chancado (14-00001112) y se muestra como 06-00000005.`;
   if(!c.filas.length){ cont.innerHTML = `<p class="aviso">Sin plan de consumo para los filtros seleccionados.</p>`; return; }
   const pct = v => v == null ? "—" : numero(v, 1)+"%";
   const pill = e => e ? `<span class="pill-consumo consumo-${e}">${e === "sobre" ? "Sobre el plan" : (e === "bajo" ? "Bajo el plan" : "En línea")}</span>` : "";
@@ -2229,7 +2181,7 @@ function renderSeccion9(){
     return;
   }
   cont.innerHTML = `
-    <p class="nota">Ordenado por la variación en 12 meses, de mayor alza a mayor baja. Elige una tarjeta para ver el gráfico completo.</p>
+    <p class="nota">De mayor alza a mayor baja en 12 meses. Elige un material para ver su gráfico y su detalle.</p>
     <div class="grilla-precios">${tarjetas.map(t => { const m = minigraficoPrecio(t.serie), v = t.variacion_anual;
       return `<button type="button" class="tarjeta-precio" data-material-precios="${t.material_codigo}" data-centro-precios="${t.centro}">
         <span class="tarjeta-precio-cabecera"><span class="tarjeta-precio-nombre">${t.texto_breve}</span>
@@ -2622,7 +2574,7 @@ function renderSeccion12(){
   }).sort((a,b) => ordenPy(a.centro, b.centro) || ordenPy(a.material_codigo, b.material_codigo));
   if(!tarjetas.length){ cont.innerHTML = `<p class="aviso">Sin análisis de calidad para los filtros seleccionados.</p>`; return; }
   if(tarjetas.length > 1){
-    cont.innerHTML = `<p class="nota">${conProveedor ? `Solo los ingresos de <strong>${proveedorSel}</strong>. ` : ""}Promedio del período y del último mes con análisis (▲ / ▼: el último mes está más de 1% sobre o bajo el promedio). Elige una tarjeta para ver la evolución de cada parámetro.</p>
+    cont.innerHTML = `<p class="nota">${conProveedor ? `Solo los ingresos de <strong>${proveedorSel}</strong>. ` : ""}Promedio del período y del último mes con análisis (▲ / ▼: más de 1% sobre o bajo el promedio). Elige un material para ver cada parámetro mes a mes.</p>
       <div class="grilla-precios">${tarjetas.map(t => `<button type="button" class="tarjeta-precio tarjeta-calidad" data-material-calidad="${t.material_codigo}" data-centro-calidad="${t.centro}">
         <span class="tarjeta-precio-cabecera"><span class="tarjeta-precio-nombre">${t.texto_breve}</span><span class="tarjeta-precio-codigo">${t.material_codigo} · ${nombreCentro(t.centro)}</span></span>
         <span class="tabla-parametros"><span class="fila-parametro fila-parametro-cabecera"><span></span><span>Período</span><span>${t.ultimo_mes}</span></span>
@@ -3071,7 +3023,7 @@ document.addEventListener("change", evento => {
       if (explicito === "light" || explicito === "dark") return explicito;
       return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     }
-    function actualizarEtiqueta() { boton.textContent = temaActual() === "dark" ? "Modo claro" : "Modo oscuro"; }
+    function actualizarEtiqueta() { boton.textContent = temaActual() === "dark" ? "Tema claro" : "Tema oscuro"; }
     actualizarEtiqueta();
     boton.addEventListener("click", function () {
       var nuevo = temaActual() === "dark" ? "light" : "dark";

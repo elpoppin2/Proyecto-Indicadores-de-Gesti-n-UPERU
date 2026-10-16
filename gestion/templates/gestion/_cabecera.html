@@ -1,0 +1,18 @@
+{% load static %}
+{# Encabezado común de las páginas: logo de UNACEM a la izquierda del título (pedido del usuario) y la sesión a la derecha. Recibe `titulo` y, opcional, `exportar_base` (url del Excel; se le suman los filtros actuales). #}
+<header class="pagina">
+  <div class="marca">
+    <img class="logo-empresa" src="{% static 'gestion/img/unacem-logo.svg' %}" alt="UNACEM" width="256" height="58">
+    <span class="marca-separador" aria-hidden="true"></span>
+    <div class="encabezado-texto">
+      <span class="eyebrow">Indicadores de gestión de Supply Chain</span>
+      <h1>{{ titulo }}</h1>
+    </div>
+  </div>
+  <div class="sesion">
+    {% if exportar_base %}<a class="btn-link" id="link-exportar" href="{{ exportar_base }}?{{ request.GET.urlencode }}">Exportar a Excel</a>{% endif %}
+    <button type="button" id="theme-toggle" class="btn-link">Tema oscuro</button>
+    <span class="sesion-usuario">{{ request.user.username }}</span>
+    <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" class="btn-link">Cerrar sesión</button></form>
+  </div>
+</header>

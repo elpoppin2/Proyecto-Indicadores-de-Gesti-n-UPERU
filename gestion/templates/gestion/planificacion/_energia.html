@@ -9,13 +9,12 @@
       <button type="button" class="btn-link" data-imprimir="sec-energia">Imprimir</button>
     </span>
   </div>
-  <p class="nota">
-    Un carbón con más poder calorífico (PCS) entrega más energía por tonelada, así que se compara lo que cuesta cada
-    Gcal (un millón de kcal): energía = toneladas secas × PCS ÷ 1,000; costo por Gcal = importe pagado (con premio o
-    castigo) ÷ energía. Supone que el PCS del ticket (ZMM056) está en la misma base seca que las toneladas que se pagan.
-    Cada proveedor se compara con el promedio de su material; con varios materiales, cada material con el promedio de
-    la selección.
-  </p>
+  <p class="nota">Cuánto cuesta cada Gcal de energía según el carbón y el proveedor: un carbón con más poder calorífico rinde más por tonelada.</p>
+  <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+    <p><strong>Energía (Gcal)</strong> = toneladas secas × PCS ÷ 1,000. <strong>Costo por Gcal</strong> = importe pagado (con premio o
+    castigo) ÷ energía. Supone que el PCS del ticket (ZMM056) está en la misma base seca que las toneladas que se pagan.</p>
+    <p>Cada proveedor se compara con el promedio de su material; con varios materiales, cada material con el promedio de la selección.</p>
+  </div></details>
   <form class="filtros" method="get" data-target="sec-energia">
     <div class="campo">
       <label for="periodo_energia">Período</label>
@@ -158,10 +157,7 @@
         </tbody>
       </table>
     </div>
-    <p class="nota">
-      Diferencia (S/) = (costo por Gcal del proveedor − promedio) × sus Gcal: lo que se pagó de más (+) o de menos (−)
-      por esa energía frente a comprarla al costo promedio.
-    </p>
+    <p class="nota">Diferencia = (costo por Gcal del proveedor − promedio) × sus Gcal: lo pagado de más (+) o de menos (−) frente al costo promedio.</p>
 
     {% with m=en.mensual %}
     {% if m and m.meses %}

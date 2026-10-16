@@ -9,21 +9,20 @@
     <h2>{{ inf.titulo }}</h2>
     <button type="button" class="btn-link" data-imprimir="{{ inf.id }}">Descargar / Imprimir</button>
   </div>
-  <p class="nota">
-    Precio de compra de cada mes ({% if inf.es_real %}precio real: MB51 + ajustes de valor de la FBL3N{% else %}MB51{% endif %}, mismo criterio que Precios de entrada) contra {{ inf.contra }}
-    ({{ inf.ejemplo }}). Si ese mes no tuvo compra, se compara contra el último precio registrado antes
-    ({{ inf.sustituto }}), marcado con <span class="marca-sustituida">*</span>. Solo se evalúan los meses con compra.
-    <strong>Bolsa</strong> = (precio del mes − precio base) × toneladas compradas en el mes evaluado: el impacto en soles
-    de la variación, ponderado con la cantidad del período más reciente de cada comparación{% if inf.desfase == 12 %}
-    (2025 vs 2024 con las toneladas de 2025; 2026 vs 2025 con las de 2026){% endif %}. La fila Selección pondera
-    todos los materiales así: lo pagado ÷ lo que habrían costado esas mismas toneladas al precio base.
-    <strong>IPU (Índice de Precios Unacem)</strong> acumulado del año: {% if inf.desfase == 12 %}de enero al mes T contra el
-    mismo tramo del año anterior (Ene–Feb 2026 vs Ene–Feb 2025), ponderado con las toneladas del año más reciente{% else %}las
-    variaciones de cada mes encadenadas desde enero, (1 + v₁) × (1 + v₂) × … − 1{% endif %}; se reinicia cada enero.
-    Una comparación donde el precio más que se duplica o cae a menos de la mitad se marca con
-    <span class="marca-atipica">!</span> (dato atípico{% if not inf.es_real %} de MB51, p.ej. Ene-24 de Sílices y Puzolana de Terceros{% endif %}): se
-    muestra, pero no suma en la bolsa ni en la selección.
-  </p>
+  <p class="nota">Cuánto subió o bajó el precio de compra de cada mes frente a {{ inf.contra }} ({{ inf.ejemplo }}), y su impacto en soles (bolsa).</p>
+  <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+    <p>Precio de cada mes: {% if inf.es_real %}precio real (MB51 + ajustes de la FBL3N){% else %}MB51{% endif %}, el mismo de Precios de entrada.
+    Solo se evalúan los meses con compra. Si el mes de comparación no tuvo compra, se usa el último precio anterior
+    ({{ inf.sustituto }}), marcado con <span class="marca-sustituida">*</span>.</p>
+    <p><strong>Bolsa</strong> = (precio del mes − precio base) × toneladas del mes evaluado{% if inf.desfase == 12 %}: 2025 vs 2024 con
+    las toneladas de 2025, 2026 vs 2025 con las de 2026{% endif %}. La fila Selección pondera todos los materiales: lo pagado ÷ lo que
+    habrían costado esas toneladas al precio base.</p>
+    <p><strong>IPU (Índice de Precios Unacem)</strong> acumulado del año: {% if inf.desfase == 12 %}de enero al mes T contra el mismo
+    tramo del año anterior, ponderado con las toneladas del año más reciente{% else %}variaciones mensuales encadenadas desde enero,
+    (1 + v₁) × (1 + v₂) × … − 1{% endif %}. Se reinicia cada enero.</p>
+    <p>Si el precio se duplica o cae a menos de la mitad, la comparación se marca con <span class="marca-atipica">!</span> (dato
+    atípico): se muestra, pero no suma en la bolsa ni en la selección.</p>
+  </div></details>
   <form class="filtros" method="get" data-target="{{ inf.id }}">
     {% if inf.tipos %}
     <div class="campo">

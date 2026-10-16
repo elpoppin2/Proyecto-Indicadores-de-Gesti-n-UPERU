@@ -1,8 +1,9 @@
+{% load dashboard_extras %}
 {# Barra de navegación entre páginas (views._construir_nav): Portada, Overview, Planificación y cada categoría. #}
 {% if categorias_nav %}
-  <nav class="nav-categorias">
+  <nav class="nav-categorias" aria-label="Páginas">
     {% for c in categorias_nav %}
-      <a href="{{ c.url }}" class="nav-link {% if c.activo %}activo{% endif %}">{{ c.nombre }}</a>
+      <a href="{{ c.url }}" class="nav-link {% if c.activo %}activo{% endif %}"{% if c.activo %} aria-current="page"{% endif %}>{{ c.nombre|nombre_visible }}</a>
     {% endfor %}
   </nav>
 {% endif %}

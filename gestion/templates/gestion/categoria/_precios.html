@@ -5,15 +5,14 @@
     <h2>IPU de {{ categoria|title }}</h2>
     <button type="button" class="btn-link" data-imprimir="sec-ipu-categoria">Descargar / Imprimir</button>
   </div>
-  <p class="nota">
-    Precio real de compra de cada material: (importe de las entradas 101/102 con proveedor de MB51 + ajustes de valor
-    de la FBL3N: diferencias de precio de la factura, fletes, cargos de importación, MR22) ÷ cantidad del mes, contra
-    {{ pr.contra }}. Si ese mes no tuvo compra, se compara contra el último precio registrado antes.
-    <strong>IPU (Índice de Precios Unacem)</strong>: lo pagado ÷ lo que habrían costado esas mismas cantidades al
-    precio base − 1, acumulado desde enero (se reinicia cada año). <strong>Bolsa</strong> = (precio del mes − precio
-    base) × cantidad comprada: el impacto en soles de la variación. Las comparaciones donde el precio más que se
-    duplica o cae a menos de la mitad se consideran atípicas y no suman.
-  </p>
+  <p class="nota">Cuánto subieron o bajaron los precios de compra de {{ categoria|title }} frente a {{ pr.contra }}, y su impacto en soles.</p>
+  <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+    <p><strong>Precio real</strong> = (importe de las entradas 101/102 con proveedor de MB51 + ajustes de la FBL3N: diferencias de
+    factura, fletes, cargos de importación, MR22) ÷ cantidad del mes. Si el mes de comparación no tuvo compra, se usa el último precio anterior.</p>
+    <p><strong>IPU (Índice de Precios Unacem)</strong> = lo pagado ÷ lo que habrían costado esas cantidades al precio base − 1, acumulado
+    desde enero. <strong>Bolsa</strong> = (precio del mes − precio base) × cantidad comprada.</p>
+    <p>Si el precio se duplica o cae a menos de la mitad, la comparación es atípica y no suma.</p>
+  </div></details>
   <form class="filtros" method="get" data-target="sec-ipu-categoria">
     <div class="campo">
       <label for="periodo_ipu">Período</label>

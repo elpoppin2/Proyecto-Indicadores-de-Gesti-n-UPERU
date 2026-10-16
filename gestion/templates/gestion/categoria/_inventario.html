@@ -4,8 +4,8 @@
   {% include "gestion/_segmentadores_inventario.html" with si=si objetivo="bloque-inventario" %}
 
   <section class="bloque" id="sec-evolucion">
-    <h2>Evolución de Inventario (S/. MM)</h2>
-    <p class="nota">Valor al último corte de cada mes, en millones de soles{% if si.texto_filtros %} · {{ si.texto_filtros }}{% endif %}. Por defecto, los 12 meses que terminan en el corte elegido arriba.</p>
+    <h2>Evolución del inventario (S/ MM)</h2>
+    <p class="nota">Valor del inventario al cierre de cada mes, en millones de soles{% if si.texto_filtros %} ({{ si.texto_filtros }}){% endif %}.</p>
     <form class="filtros" method="get" data-target="sec-evolucion">
       <div class="campo">
         <label for="mes_inicio_evo">Desde</label>
@@ -49,7 +49,7 @@
   </section>
 
   <section class="bloque" id="sec-inventario">
-    <h2>Inventario — {{ si.mes|corte }}</h2>
+    <h2>Inventario al corte de {{ si.mes|corte }}</h2>
     <div class="metricas">
       <div class="metrica"><span class="valor">{{ inventario.materiales_con_stock|numero }}</span><span class="etiqueta">Materiales con stock</span></div>
       <div class="metrica"><span class="valor">{{ inventario.stock_total|numero }}</span><span class="etiqueta">Stock total (unidades)</span></div>
@@ -106,8 +106,8 @@
   </section>
 
   <section class="bloque" id="sec-abc">
-    <h2>Clasificación ABC de Inventario</h2>
-    <p class="nota">Materiales ordenados por valor: A = acumulan hasta 80% del valor, B = hasta 95%, C = el resto.</p>
+    <h2>Clasificación ABC del inventario</h2>
+    <p class="nota">Qué materiales concentran el valor: A = hasta el 80%, B = hasta el 95%, C = el resto.</p>
     {% if abc %}
       <div class="metricas">
         {% for c in abc.clases %}
@@ -121,8 +121,8 @@
   </section>
 
   <section class="bloque" id="sec-obsoletos">
-    <h2>Materiales sin Movimiento</h2>
-    <p class="nota">Materiales con stock pero sin ningún consumo (MB51) en los 3 años que terminan en el corte elegido: capital inmovilizado. Umbral mucho más exigente que el resto de indicadores de consumo (6 meses) — pensado para detectar material realmente parado, no solo de baja rotación reciente.</p>
+    <h2>Materiales sin movimiento</h2>
+    <p class="nota">Materiales con stock y sin ningún consumo en los 3 años que terminan en el corte: capital inmovilizado.</p>
     {% if obsoletos %}
       <div class="metricas">
         <div class="metrica"><span class="valor">{{ obsoletos.materiales_obsoletos|numero }}</span><span class="etiqueta">Materiales sin movimiento</span></div>
@@ -135,7 +135,7 @@
   </section>
 
   <section class="bloque" id="sec-rotacion">
-    <h2>Índice de Rotación de Inventario</h2>
+    <h2>Rotación del inventario</h2>
     {% if rotacion.rotacion_anual is not None %}
       <div class="metricas">
         <div class="metrica"><span class="valor">{{ rotacion.rotacion_anual|numero:2 }}</span><span class="etiqueta">Rotación anual (veces/año)</span></div>
@@ -144,11 +144,11 @@
         <div class="metrica"><span class="valor">{{ rotacion.valor_stock|soles }}</span><span class="etiqueta">Valor de stock</span></div>
         <div class="metrica"><span class="valor">{{ rotacion.consumo_valor_6meses|soles }}</span><span class="etiqueta">Consumo valorizado (6m)</span></div>
       </div>
-      <p class="nota">Rotación en valor (S/.): consumo valorizado promedio mensual (MB51, 6 meses que terminan en el corte elegido) ÷ valor de stock (MB5B), × 12. Se usa valor y no cantidad porque los materiales pueden tener distinta unidad de medida.</p>
+      <p class="nota">Rotación en soles: consumo valorizado mensual de 6 meses ÷ valor del stock × 12.</p>
     {% endif %}
 
     <h2 class="subtitulo">Detalle por material (en cantidad)</h2>
-    <p class="nota">Consumo promedio (MB51, 6 meses) ÷ Stock del corte (MB5B), en cantidad. Ordena por cualquier columna con clic en su título.</p>
+    <p class="nota">Consumo promedio de 6 meses ÷ stock del corte, en cantidad.</p>
     {% if rotacion.filas %}
       <div class="tabla-buscable">
         <div class="buscador">
@@ -163,7 +163,7 @@
         </div>
         <p class="nota">
           <span id="rotacion-contador">{{ rotacion.total|numero }}</span> material{{ rotacion.total|pluralize:"es" }}
-          — usa el buscador, o el scroll de la tabla para que se vayan cargando más (como una tabla de Power BI).
+          — busca o baja por la tabla para cargar más.
         </p>
         <div class="tabla-scroll tabla-alto-fijo"
              id="rotacion-scroll"
@@ -196,8 +196,8 @@
   </section>
 
   <section class="bloque" id="sec-criticos">
-    <h2>Cobertura de Materiales Críticos</h2>
-    <p class="nota">Materiales marcados como críticos en el maestro (ZMM060). "En riesgo" = cobertura menor a 1 mes al ritmo de consumo actual.</p>
+    <h2>Cobertura de materiales críticos</h2>
+    <p class="nota">Materiales críticos del maestro (ZMM060). En riesgo = alcanza para menos de 1 mes al ritmo de consumo actual.</p>
     {% if criticos %}
       <div class="metricas">
         <div class="metrica"><span class="valor">{{ criticos.materiales_criticos|numero }}</span><span class="etiqueta">Materiales críticos</span></div>
@@ -211,8 +211,8 @@
   </section>
 
   <section class="bloque" id="sec-variacion">
-    <h2>% Variación de Inventario</h2>
-    <p class="nota">Stock y valor al corte elegido arriba ({{ variacion.mes_final|corte }}) contra el mes comparativo: los 20 materiales que más subieron de valor.</p>
+    <h2>Variación del inventario</h2>
+    <p class="nota">Los 20 materiales que más subieron de valor entre el mes comparativo y el corte ({{ variacion.mes_final|corte }}).</p>
     {% if variacion.mes_inicial %}
       <form class="filtros" method="get" data-target="sec-variacion">
         <div class="campo">

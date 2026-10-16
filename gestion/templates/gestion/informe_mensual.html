@@ -5,7 +5,7 @@
 <title>Informe Supply Chain — {{ e.mes|mesanio }}</title>
 {# Informe mensual de Supply Chain (views.informe_mensual / gestion/ejecutivo.py): la portada del mes en formato de documento A4 horizontal, autocontenido (estilos y logo dentro) para que Edge lo convierta en PDF igual en cualquier equipo. Pedido por el usuario: "informe mensual con un clic". #}
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
   @page { size: A4 landscape; margin: 11mm 12mm; }
   :root { --ink: #1a1a1a; --muted: #5f6368; --line: #d9d9d9; --suave: #f4f4f4; --rojo: #ff0000; --rojo-texto: #c40000; --verde: #2f7a4a; --ambar: #9a6400; }
@@ -19,15 +19,15 @@
   .marca { display: flex; align-items: center; gap: 5mm; }
   .marca img { height: 11mm; width: auto; }
   .marca .sep { width: 1px; height: 10mm; background: var(--line); }
-  .eyebrow { font: 600 8.5px "IBM Plex Mono", Consolas, monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--rojo-texto); }
-  h1 { font: 800 25px/1.05 "Big Shoulders Display", "Arial Narrow", sans-serif; margin: 1mm 0 0; letter-spacing: .01em; }
-  h2 { font: 700 16px/1.1 "Big Shoulders Display", "Arial Narrow", sans-serif; margin: 0; letter-spacing: .01em; }
-  .meta-doc { text-align: right; font: 500 8.5px "IBM Plex Mono", Consolas, monospace; color: var(--muted); line-height: 1.6; }
-  .compras-doc { font: 800 15px "Big Shoulders Display", "Arial Narrow", sans-serif; color: var(--rojo-texto); letter-spacing: .01em; }
-  .pagina-num { margin-top: auto; display: flex; justify-content: space-between; color: var(--muted); font: 500 8px "IBM Plex Mono", Consolas, monospace; border-top: 1px solid var(--line); padding-top: 2mm; }
+  .eyebrow { font: 500 9.3px "IBM Plex Sans", "Segoe UI", Arial, sans-serif; color: var(--muted); }
+  h1 { font: 600 22px/1.1 "IBM Plex Serif", Georgia, serif; margin: 1mm 0 0; }
+  h2 { font: 600 14px/1.25 "IBM Plex Serif", Georgia, serif; margin: 0; }
+  .meta-doc { text-align: right; font: 500 9.3px "IBM Plex Sans", "Segoe UI", Arial, sans-serif; color: var(--muted); line-height: 1.6; }
+  .compras-doc { font: 600 13px "IBM Plex Serif", Georgia, serif; color: var(--rojo-texto); }
+  .pagina-num { margin-top: auto; display: flex; justify-content: space-between; color: var(--muted); font: 500 8.8px "IBM Plex Sans", "Segoe UI", Arial, sans-serif; border-top: 1px solid var(--line); padding-top: 2mm; }
   .mensajes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
   .mensaje { border-left: 3px solid var(--ambar); background: var(--suave); padding: 3mm 4mm; font-size: 10.5px; line-height: 1.45; }
-  .mensaje b { display: block; font: 600 8px "IBM Plex Mono", Consolas, monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 1mm; }
+  .mensaje b { display: block; font: 600 8.8px "IBM Plex Sans", "Segoe UI", Arial, sans-serif; color: var(--muted); margin-bottom: 1mm; }
   .mensaje-oportunidad { border-left-color: var(--rojo); }
   .mensaje-alerta { border-left-color: var(--rojo); }
   .mensaje-ok { border-left-color: var(--verde); }
@@ -35,24 +35,24 @@
   .kpi { border: 1px solid var(--line); border-top: 3px solid #b4b4b4; padding: 2.6mm 3.5mm 2.4mm; display: flex; flex-direction: column; gap: 1mm; }
   .kpi-ok { border-top-color: var(--verde); } .kpi-aviso { border-top-color: #d99a1c; } .kpi-alerta { border-top-color: var(--rojo); }
   .kpi-fila { display: flex; justify-content: space-between; align-items: baseline; gap: 2mm; }
-  .kpi-titulo { font: 600 8.5px "IBM Plex Mono", Consolas, monospace; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-  .estado { font: 600 7.5px "IBM Plex Mono", Consolas, monospace; letter-spacing: .05em; text-transform: uppercase; padding: .3mm 1.8mm; border-radius: 99px; border: 1px solid currentColor; white-space: nowrap; }
+  .kpi-titulo { font: 600 9.3px "IBM Plex Sans", "Segoe UI", Arial, sans-serif; color: var(--muted); }
+  .estado { font: 600 8.3px "IBM Plex Sans", "Segoe UI", Arial, sans-serif; padding: .3mm 1.8mm; border-radius: 99px; border: 1px solid currentColor; white-space: nowrap; }
   .estado-ok { color: var(--verde); } .estado-aviso { color: var(--ambar); } .estado-alerta { color: var(--rojo-texto); }
-  .kpi-cifra { font: 800 22px/1 "Big Shoulders Display", "Arial Narrow", sans-serif; font-variant-numeric: tabular-nums; }
+  .kpi-cifra { font: 600 18px/1.1 "IBM Plex Serif", Georgia, serif; font-variant-numeric: tabular-nums; }
   .kpi-sub { color: var(--muted); font-size: 9px; }
   .kpi-impacto { font-weight: 600; font-size: 9.5px; }
-  .kpi-meta { font: 500 8px "IBM Plex Mono", Consolas, monospace; color: var(--muted); }
+  .kpi-meta { font: 500 8.8px "IBM Plex Sans", "Segoe UI", Arial, sans-serif; color: var(--muted); }
   svg.spark { width: 34mm; height: 8mm; overflow: visible; }
   svg.spark path { fill: none; stroke: var(--rojo); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
   svg.spark circle { fill: var(--rojo); }
   .totales { display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 4mm; align-items: stretch; }
   .total { border: 1px solid var(--line); border-left: 4px solid var(--rojo); padding: 3mm 4mm; }
   .total-ahorro { border-left-color: var(--verde); }
-  .total .cifra { font: 800 28px/1 "Big Shoulders Display", "Arial Narrow", sans-serif; display: block; }
+  .total .cifra { font: 600 22px/1.1 "IBM Plex Serif", Georgia, serif; display: block; }
   .total .etq { color: var(--muted); font-size: 9.5px; }
   .lectura { background: var(--suave); padding: 3mm 4mm; font-size: 10px; line-height: 1.5; }
   table { width: 100%; border-collapse: collapse; font-size: 9.2px; }
-  th { text-align: left; font: 600 7.8px "IBM Plex Mono", Consolas, monospace; letter-spacing: .05em; text-transform: uppercase; color: #fff; background: #4d4d4d; padding: 1.6mm 2mm; }
+  th { text-align: left; font: 600 8.6px "IBM Plex Sans", "Segoe UI", Arial, sans-serif; color: #1b1e21; background: #e8ebee; border-bottom: 1px solid #c2c7cd; padding: 1.6mm 2mm; }
   td { padding: 1.1mm 2mm; border-bottom: 1px solid var(--line); vertical-align: top; }
   .codigo { white-space: nowrap; }
   tr:nth-child(even) td { background: #fafafa; }
@@ -60,7 +60,7 @@
   th.num { text-align: right; }
   .barra { display: inline-block; height: 2.6mm; background: var(--rojo); vertical-align: middle; }
   .barra-ahorro { background: var(--verde); }
-  .chip { font: 600 7.5px "IBM Plex Mono", Consolas, monospace; text-transform: uppercase; letter-spacing: .05em; padding: .2mm 1.5mm; border-radius: 99px; color: #fff; background: var(--rojo); }
+  .chip { font: 600 8.3px "IBM Plex Sans", "Segoe UI", Arial, sans-serif; padding: .2mm 1.5mm; border-radius: 99px; color: #fff; background: var(--rojo); }
   .chip-ahorro { background: var(--verde); }
   .sube { color: var(--rojo-texto); } .baja { color: var(--verde); } .tenue { color: var(--muted); }
   .dos-col { display: grid; grid-template-columns: 1.15fr 1fr; gap: 5mm; }

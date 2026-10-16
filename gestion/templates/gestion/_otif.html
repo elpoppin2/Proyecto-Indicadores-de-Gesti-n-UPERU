@@ -1,13 +1,15 @@
 {% load dashboard_extras %}
 {# OTIF (ejecutivo.otif): pestaña Compras de Repuestos y Suministros Industriales (en lugar del Fill Rate) y bloque Compras del Overview (por_categoria=True). Definido por el usuario: 5 días de tolerancia, ±5% en cantidad, por valor, solo esas dos categorías. #}
 <section class="bloque" id="sec-otif">
-  <h2>OTIF · entregas a tiempo y completas · {{ sc.texto }}</h2>
-  <p class="nota">
-    Líneas de pedido de material/importación (ZNAC/ZIMP) de Repuestos y Suministros Industriales con fecha de entrega en el período, ponderadas por valor.
-    <strong>A tiempo</strong>: la primera entrada (MB51) llega hasta {{ o.dias }} días después de la fecha prometida (antes no penaliza).
-    <strong>Completo</strong>: lo recibido está entre −{{ o.tolerancia }}% y +{{ o.tolerancia }}% de lo pedido.
-    <strong>OTIF</strong>: lo recibido hasta esa fecha límite ya está completo. Una línea se evalúa recién cuando vence su plazo{% if o.pendientes %} ({{ o.pendientes|numero }} línea{{ o.pendientes|pluralize }} del período todavía en plazo){% endif %}.
-  </p>
+  <h2>OTIF: entregas a tiempo y completas · {{ sc.texto }}</h2>
+  <p class="nota">Parte del valor pedido que llegó a tiempo y completo, en pedidos de Repuestos y Suministros industriales con entrega en el período.</p>
+  <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+    <p>Líneas de pedido de material e importación (ZNAC/ZIMP), ponderadas por valor.
+    <strong>A tiempo:</strong> la primera entrada (MB51) llega hasta {{ o.dias }} días después de la fecha prometida (antes no penaliza).
+    <strong>Completo:</strong> lo recibido está entre −{{ o.tolerancia }}% y +{{ o.tolerancia }}% de lo pedido.
+    <strong>OTIF:</strong> lo recibido hasta esa fecha límite ya está completo.</p>
+    <p>Una línea se evalúa cuando vence su plazo{% if o.pendientes %} ({{ o.pendientes|numero }} línea{{ o.pendientes|pluralize }} del período todavía en plazo){% endif %}.</p>
+  </div></details>
   <div class="metricas">
     <div class="metrica"><span class="valor {% if o.otif < 80 %}dato-negativo{% endif %}">{{ o.otif|numero:1 }}%</span><span class="etiqueta">OTIF (por valor)</span></div>
     <div class="metrica"><span class="valor">{{ o.a_tiempo|numero:1 }}%</span><span class="etiqueta">A tiempo</span></div>

@@ -24,6 +24,22 @@ def version_estatico(ruta):
         return 0
 
 
+_SIGLAS = {"CAPEX", "S&OP", "IPU", "PMP", "ABC", "OTIF", "TCO", "SAP"}
+
+
+@register.filter
+def nombre_visible(texto):
+    """Nombre de página o categoría en mayúsculas y minúsculas, como en un
+    informe ('MATERIAS PRIMAS' -> 'Materias primas'); las siglas quedan en
+    mayúsculas (CAPEX, S&OP)."""
+    if not texto:
+        return texto
+    palabras = [p if p.upper() in _SIGLAS else p.lower() for p in str(texto).split()]
+    palabras = [p.upper() if p.upper() in _SIGLAS else p for p in palabras]
+    nombre = " ".join(palabras)
+    return nombre[:1].upper() + nombre[1:]
+
+
 @register.filter
 def soles(valor):
     return q.formato_soles(valor)

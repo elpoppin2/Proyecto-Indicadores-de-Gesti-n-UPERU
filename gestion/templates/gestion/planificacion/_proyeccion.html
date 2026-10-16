@@ -6,14 +6,14 @@
     <h2>Evolución de inventario (S&amp;OP)</h2>
     <button type="button" class="btn-link" data-imprimir="sec-proyeccion">Descargar / Imprimir</button>
   </div>
-  <p class="nota">
-    Stock final de cada mes = Stock inicial + Abastecimiento S&amp;OP − Consumo S&amp;OP − Traslados a otro centro
-    (el Carbón Importado llega a Atocongo y lo que se envía a Condorcocha sale de ese stock). El primer mes parte del
-    inventario real de cierre del mes anterior al S&amp;OP (MB5B{% if p.fecha_inicial %} al {{ p.fecha_inicial|date:"d/m/Y" }}{% endif %})
-    y cada mes siguiente arranca con el stock final del anterior. Un stock negativo es un quiebre proyectado:
-    el consumo planificado supera al stock más el abastecimiento. El mínimo y máximo vienen del archivo MinMax SOP
-    (un mes vacío repite el último valor definido).
-  </p>
+  <p class="nota">Stock proyectado de cada material mes a mes según el S&amp;OP, frente a su mínimo y máximo. Un stock negativo es un quiebre.</p>
+  <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+    <p><strong>Stock final</strong> = stock inicial + abastecimiento S&amp;OP − consumo S&amp;OP − traslados a otro centro (el Carbón
+    Importado llega a Atocongo y lo que se envía a Condorcocha sale de ese stock).</p>
+    <p>El primer mes parte del inventario real de cierre del mes anterior al S&amp;OP (MB5B{% if p.fecha_inicial %} al
+    {{ p.fecha_inicial|date:"d/m/Y" }}{% endif %}); cada mes siguiente arranca con el stock final del anterior. El mínimo y el máximo
+    vienen del archivo MinMax S&amp;OP (un mes vacío repite el último valor definido).</p>
+  </div></details>
   <form class="filtros" method="get" data-target="sec-proyeccion">
     <div class="campo">
       <label for="sop_proyeccion">S&amp;OP</label>
@@ -109,15 +109,15 @@
 
     {% if p.diagnostico %}
       <h3 class="subtitulo">Diagnóstico frente a mínimos y máximos</h3>
-      <p class="nota">
-        Considera el lead time de cada material (1 mes; Carbón Importado 3; Escoria japonesa 4): la cuota de los
-        meses dentro de ese plazo ya está comprometida. Faltante a tiempo: abastecimiento adicional que haría falta,
-        pidiéndolo a más tardar en el mes indicado, para no bajar del mínimo. Ya en lead time: lo que queda bajo el
-        mínimo en meses que ya no alcanza el plazo (requiere medidas extraordinarias). Recorte posible: abastecimiento
-        que se podría dejar de traer, fuera del lead time, sin bajar del mínimo. El máximo es un objetivo, no un
-        límite de almacén: estar sobre él es capital inmovilizado. Sobrecubierto: sobre el máximo en al menos la
-        mitad de los meses.
-      </p>
+      <p class="nota">Qué pedir o recortar en cada material para mantenerse entre el mínimo y el máximo, según su lead time.</p>
+      <details class="metodo"><summary>Qué significa cada columna</summary><div class="metodo-cuerpo">
+        <p>Lead time: 1 mes (Carbón Importado 3, Escoria japonesa 4); lo planificado dentro de ese plazo ya está comprometido.</p>
+        <p><strong>Faltante a tiempo:</strong> abastecimiento adicional para no bajar del mínimo, pidiéndolo a más tardar en el mes indicado.
+        <strong>Ya en lead time:</strong> lo que queda bajo el mínimo en meses que el plazo ya no alcanza (requiere medidas extraordinarias).
+        <strong>Recorte posible:</strong> abastecimiento que se podría dejar de traer, fuera del lead time, sin bajar del mínimo.</p>
+        <p>El máximo es un objetivo, no un límite de almacén: estar sobre él es capital inmovilizado. <strong>Sobrecubierto:</strong> sobre el
+        máximo en al menos la mitad de los meses.</p>
+      </div></details>
       <div class="tabla-scroll">
         <table>
           <thead>

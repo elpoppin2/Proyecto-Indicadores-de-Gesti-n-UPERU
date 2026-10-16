@@ -7,22 +7,23 @@
     {% csrf_token %}
     <img class="logo-empresa" src="{% static 'gestion/img/unacem-logo.svg' %}" alt="UNACEM" width="256" height="58">
     <div>
-      <span class="eyebrow">Indicadores de Gestión</span>
-      <h1>SUPPLY CHAIN</h1>
+      <span class="eyebrow">Indicadores de gestión</span>
+      <h1>Supply Chain</h1>
     </div>
     {% if form.errors %}
-      <p class="error">Usuario o contraseña incorrectos.</p>
+      <p class="error">El usuario o la contraseña no coinciden. Vuelve a intentarlo.</p>
     {% endif %}
     <div class="campo">
       <label for="id_username">Usuario</label>
-      <input type="text" name="username" id="id_username" autofocus required>
+      <input type="text" name="username" id="id_username" autocomplete="username" autofocus required>
     </div>
     <div class="campo">
       <label for="id_password">Contraseña</label>
-      <input type="password" name="password" id="id_password" required>
+      <input type="password" name="password" id="id_password" autocomplete="current-password" required>
     </div>
     <input type="hidden" name="next" value="{{ next }}">
     <button type="submit">Ingresar</button>
+    <p class="login-pie">Acceso para el equipo de Supply Chain de UNACEM Perú.</p>
   </form>
 </div>
 {% endblock %}

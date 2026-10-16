@@ -4,21 +4,7 @@
 {% block contenido %}
 <div class="wrap wrap-planificacion">
 
-  <header class="pagina">
-    <div class="marca">
-      <img class="logo-empresa" src="{% static 'gestion/img/unacem-logo.svg' %}" alt="UNACEM" width="256" height="58">
-      <span class="marca-separador" aria-hidden="true"></span>
-    <div class="encabezado-texto">
-      <span class="eyebrow">Indicadores de Gestión Supply Chain</span>
-      <h1>PLANIFICACIÓN</h1>
-    </div>
-    </div>
-    <div class="sesion">
-      <button type="button" id="theme-toggle" class="btn-link">Modo oscuro</button>
-      <span>{{ request.user.username }}</span>
-      <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" class="btn-link">Cerrar sesión</button></form>
-    </div>
-  </header>
+  {% include "gestion/_cabecera.html" with titulo="Planificación" %}
 
   {% include "gestion/_nav.html" %}
 

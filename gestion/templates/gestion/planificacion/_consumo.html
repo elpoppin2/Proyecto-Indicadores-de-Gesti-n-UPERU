@@ -6,12 +6,12 @@
     <h2>Evaluación de consumo</h2>
     <button type="button" class="btn-link" data-imprimir="sec-consumo">Descargar / Imprimir</button>
   </div>
-  <p class="nota">
-    Plan de Consumos del S&amp;OP contra el consumo real de MB51 (salidas al proceso: clases 2xx + Z01/Z04/353, mismo
-    criterio que Cobertura de stock). Cada mes se compara contra el plan del S&amp;OP más reciente emitido hasta ese mes
-    (hoy, {{ co.snapshot|mesanio }}). Solo entran los materiales y centros que trae el plan. Carbón Terceros en Condorcocha
-    se consume vía su chancado (14-00001112): se muestra como 06-00000005.
-  </p>
+  <p class="nota">Consumo real de cada mes frente al plan de consumos del S&amp;OP (plan vigente: {{ co.snapshot|mesanio }}).</p>
+  <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+    <p>Consumo real de MB51: salidas al proceso (clases 2xx más Z01/Z04/353), el mismo criterio de Cobertura de stock. Cada mes se
+    compara con el plan del S&amp;OP más reciente emitido hasta ese mes. Solo entran los materiales y centros que trae el plan.</p>
+    <p>El Carbón Terceros de Condorcocha se consume vía su chancado (14-00001112) y se muestra como 06-00000005.</p>
+  </div></details>
   <form class="filtros" method="get" data-target="sec-consumo">
     <div class="campo">
       <label for="mes_consumo">Mes</label>
@@ -137,11 +137,9 @@
     {% if co.futuro %}
       <h3 class="subtitulo">¿El plan de los próximos meses es realista?</h3>
       <p class="nota">
-        Promedio mensual del plan de consumos {{ co.ultimo_snapshot|mesanio }} para {{ co.futuro_desde|mesanio }} a {{ co.futuro_hasta|mesanio }},
-        contra el consumo real promedio de los últimos {{ co.meses_referencia }} meses cerrados ({{ co.cerrados_desde|mesanio }} a
-        {{ co.cerrados_hasta|mesanio }}) y del mismo período un año antes. Se marca con ⚠ cuando el plan se aleja más de
-        ±{{ co.tolerancia_plan }}% del consumo reciente: ese plan alimenta la Evolución de inventario, así que un plan alto
-        proyecta menos stock del que habrá (y uno bajo, más).
+        Plan de consumos {{ co.ultimo_snapshot|mesanio }} ({{ co.futuro_desde|mesanio }} a {{ co.futuro_hasta|mesanio }}) frente al consumo real
+        de los últimos {{ co.meses_referencia }} meses cerrados. ⚠ = el plan se aleja más de ±{{ co.tolerancia_plan }}%: un plan alto proyecta
+        menos stock del que habrá, y uno bajo, más.
       </p>
       <div class="tabla-scroll">
         <table>

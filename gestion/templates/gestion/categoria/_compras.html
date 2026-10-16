@@ -4,8 +4,8 @@
   {% if sc %}{% include "gestion/_segmentadores_compras.html" with sc=sc objetivo="bloque-compras" %}{% endif %}
 
   <section class="bloque" id="sec-compras">
-    <h2>Compras por año · mismos meses de cada año</h2>
-    <p class="nota">Cada año en los mismos meses del período elegido, así la variación contra el año anterior compara períodos equivalentes. La fila resaltada es el año elegido.</p>
+    <h2>Compras por año en los mismos meses</h2>
+    <p class="nota">Compras de cada año en los mismos meses del período, para comparar tramos equivalentes. Resaltado, el año elegido.</p>
     {% if compras %}
       <div class="tabla-scroll">
         <table>
@@ -31,15 +31,15 @@
 
     {% if compras_mensual %}
       <h3 class="subtitulo">Compras por mes (S/)</h3>
-      <p class="nota">Valor de las órdenes de compra por mes del documento: los {{ compras_mensual.meses }} meses que terminan en el período elegido. En rojo, los meses del período ({{ sc.texto }}); en gris, el resto. Pasa el mouse por una columna para ver el detalle.</p>
+      <p class="nota">Valor de las órdenes de compra de cada mes ({{ compras_mensual.meses }} meses). En rojo, los meses del período elegido ({{ sc.texto }}).</p>
       {% include "gestion/planificacion/_grafico_columnas.html" with g=compras_mensual.grafico titulo="Compras por mes" %}
     {% endif %}
     {% include "gestion/_desglose.html" with clave="compras" fuente="Líneas de pedido (ME2N)" pista="o haz clic en un año de la tabla o en un mes del gráfico" %}
   </section>
 
   <section class="bloque" id="sec-pareto">
-    <h2>Concentración de Proveedores (Pareto) · {{ sc.texto }}</h2>
-    <p class="nota">% del valor de compras de esta categoría concentrado en sus {{ sc.top }} proveedores más grandes. Un porcentaje alto indica riesgo de dependencia de pocos proveedores.</p>
+    <h2>Concentración de proveedores (Pareto) · {{ sc.texto }}</h2>
+    <p class="nota">Parte de las compras que se concentra en los {{ sc.top }} proveedores más grandes. Un porcentaje alto es dependencia de pocos proveedores.</p>
     {% if pareto %}
       <div class="metricas">
         <div class="metrica"><span class="valor">{{ pareto.pct_concentracion_top|numero:1 }}%</span><span class="etiqueta">Concentración en Top {{ sc.top }}</span></div>
@@ -68,7 +68,7 @@
   {% if con_fill_rate %}
     <section class="bloque" id="sec-fillrate">
       <h2>Fill Rate · {{ sc.texto }}</h2>
-      <p class="nota">% del valor de líneas de compra de material/importación (Cl. ZNAC/ZIMP, las únicas donde la cantidad pedida y recibida son comparables) entregado completo.</p>
+      <p class="nota">Parte del valor pedido que se entregó completo, en pedidos de material e importación (ZNAC/ZIMP).</p>
       {% if fill_rate %}
         <div class="metricas">
           <div class="metrica"><span class="valor">{{ fill_rate.fill_rate_pct|numero:1|default:"—" }}%</span><span class="etiqueta">Fill Rate</span></div>
@@ -84,8 +84,8 @@
   {% if otif %}{% include "gestion/_otif.html" with o=otif sc=sc por_categoria=False %}{% endif %}
 
   <section class="bloque" id="sec-leadtime">
-    <h2>Lead Time de Proveedores · {{ sc.texto }}</h2>
-    <p class="nota">Días entre la fecha del pedido y la primera Entrada de Mercancía real (MB51), para líneas de material/importación (Cl. ZNAC/ZIMP).</p>
+    <h2>Lead time de proveedores · {{ sc.texto }}</h2>
+    <p class="nota">Días entre el pedido y la primera entrada de mercancía (MB51), en pedidos de material e importación.</p>
     {% if lead_time %}
       <div class="metricas">
         <div class="metrica"><span class="valor">{{ lead_time.lead_time_promedio|numero:1 }}</span><span class="etiqueta">Lead Time promedio (días)</span></div>

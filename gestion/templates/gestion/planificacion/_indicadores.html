@@ -15,8 +15,8 @@
       <noscript><button type="submit">Aplicar</button></noscript>
     </form>
     <p class="nota indicadores-nota">
-      El resultado de cada indicador, con los filtros aplicados en su pestaña{% if mes_sel %}, en {{ mes_sel|mesanio }}{% else %}, en su último mes con datos{% endif %}.
-      Pasa el mouse por un gráfico para ver el detalle y entra a la pestaña para ver el análisis completo.
+      Resultado de cada indicador{% if mes_sel %} en {{ mes_sel|mesanio }}{% else %} en su último mes con datos{% endif %}, con los filtros de su pestaña.
+      Pasa el mouse por un gráfico para ver el detalle.
     </p>
   </div>
   <div class="paneles-indicador">

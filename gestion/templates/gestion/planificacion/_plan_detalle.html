@@ -1,10 +1,7 @@
 {% load static dashboard_extras %}
 <section class="bloque" id="sec-plan-detalle">
-  <h2>Detalle por material y Evaluación diaria</h2>
-  <p class="nota">
-    Filtros propios (Mes/Centro/Material, todos en lista desplegable) — no afectan la Evaluación mensual de arriba.
-    El Material se acota al Centro elegido, para no armar combinaciones sin datos.
-  </p>
+  <h2>Detalle por material y evaluación diaria</h2>
+  <p class="nota">Plan e ingresos de cada material y su avance día a día. Estos filtros no cambian la Evaluación mensual.</p>
   <form class="filtros" method="get" data-target="sec-plan-detalle">
     <div class="campo">
       <label for="mes_detalle">Mes</label>
@@ -32,8 +29,8 @@
   </div>
   {% if planificacion_detalle.filas %}
     <p class="nota">
-      Abre un material para ver sus ingresos por proveedor (tickets de báscula ZMM056); en los ingresos propios el proveedor es la
-      planta de origen. El plan por proveedor se completará cuando se cargue la tabla de distribución por proveedor.
+      Abre un material para ver sus ingresos por proveedor (en los propios, la planta de origen). El plan por proveedor
+      aparecerá cuando se cargue su tabla de distribución.
     </p>
     <div class="tabla-scroll">
       <table class="tabla-con-hijas">
@@ -92,9 +89,7 @@
     <button type="button" class="btn-link" data-imprimir="curva-s-diaria">Descargar / Imprimir</button>
   </div>
   <p class="nota">
-    Plan diario estimado = Plan mensual (con los filtros de arriba) ÷ días calendario del mes — no es un plan diario
-    real, es una referencia lineal para ver el ritmo necesario. Curva S: acumulado del Plan estimado vs. acumulado
-    de Ingresos Físicos reales, día a día.
+    Ingresos acumulados día a día frente al ritmo necesario. El plan diario es una referencia lineal: plan del mes ÷ días del mes.
   </p>
   <div id="curva-s-diaria">
   <h3 class="titulo-bloque">{{ planificacion_detalle.titulo_curva }}</h3>

@@ -6,31 +6,26 @@
     <h2>Evolución de precios de entrada</h2>
     <button type="button" class="btn-link" data-imprimir="sec-precios">Descargar / Imprimir</button>
   </div>
-  <p class="nota">
-    Precio de compra por tonelada (S/ por T) de los materiales del S&amp;OP, desde MB51: entradas de mercancía por
-    pedido a un proveedor (101, neto de anulaciones 102), promedio ponderado por toneladas de cada mes. No incluye
-    traslados entre centros ni lo que sale de cantera propia o de producción (calizas propias, Clinker), que no tienen
-    precio de compra. Los importados (Carbón Importado, Escoria japonesa) se compran en el centro {{ pr.centro_importacion }}
-    (importación), pero se miden <strong>puestos en destino</strong>: lo que recibe cada planta (U001/U002) por traslado
-    desde {{ pr.centro_importacion }}, al valor con que entra a la planta, más los ajustes de la FBL3N (desestiba,
-    descarga). Un mes sin punto es un mes sin compras ni llegadas a planta.
-  </p>
-  {% if pr.es_real %}
-  <p class="nota">
-    <strong>Precio real</strong> = (importe de MB51 + ajustes de valor de la FBL3N) ÷ toneladas. Los ajustes son lo que
-    llega a la cuenta de existencias sin pasar por MB51: diferencias de precio de la factura, fletes, desestiba y
-    cargos de importación (MIRO), anulaciones de factura (MR8M) y cambios de precio (MR22). Cada ajuste cuenta en su
-    mes de contabilización; si ese mes no hubo compra, pasa al último mes anterior con compra. Las liquidaciones de
-    órdenes (KO88, reparación de repuestos) se muestran aparte y no entran al precio.
-    {% if pr.fbl3n_desde %}FBL3N cargada de {{ pr.fbl3n_desde|mesanio }} a {{ pr.fbl3n_hasta|mesanio }}.{% endif %}
-  </p>
-  {% if pr.meses_sin_fbl3n %}
+  <p class="nota">Precio por tonelada de cada material del S&amp;OP, mes a mes, puesto en la planta que lo recibe.{% if pr.es_real %} Incluye los ajustes de valor de la FBL3N.{% endif %}</p>
+  <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+    <p>Precio de compra en S/ por T desde MB51: entradas por pedido a un proveedor (101, neto de anulaciones 102), promedio
+    ponderado por las toneladas de cada mes. No incluye traslados entre centros ni lo que sale de cantera propia o de
+    producción (calizas propias, Clinker), que no tienen precio de compra. Un mes sin punto es un mes sin compras ni llegadas a planta.</p>
+    <p><strong>Puesto en destino:</strong> los importados (Carbón Importado, Escoria japonesa) se compran en el centro
+    {{ pr.centro_importacion }} y se miden en lo que recibe cada planta (U001/U002) por traslado desde {{ pr.centro_importacion }},
+    al valor con que entra a la planta, más los ajustes de la FBL3N (desestiba, descarga).</p>
+    {% if pr.es_real %}
+    <p><strong>Precio real</strong> = (importe de MB51 + ajustes de la FBL3N) ÷ toneladas. Los ajustes llegan a la cuenta de
+    existencias sin pasar por MB51: diferencias de factura, fletes, desestiba y cargos de importación (MIRO), anulaciones (MR8M)
+    y cambios de precio (MR22). Cada ajuste cuenta en su mes de contabilización; si ese mes no hubo compra, pasa al último mes
+    con compra. Las liquidaciones de órdenes (KO88) se muestran aparte y no entran al precio.
+    {% if pr.fbl3n_desde %}FBL3N cargada de {{ pr.fbl3n_desde|mesanio }} a {{ pr.fbl3n_hasta|mesanio }}.{% endif %}</p>
+    {% endif %}
+  </div></details>
+  {% if pr.es_real and pr.meses_sin_fbl3n %}
   <p class="aviso">
-    {{ pr.meses_sin_fbl3n|length }} mes{{ pr.meses_sin_fbl3n|length|pluralize:"es" }} del período no tiene{{ pr.meses_sin_fbl3n|length|pluralize:"n" }}
-    la FBL3N cargada ({{ pr.tramos_sin_fbl3n }}):
-    en esos meses el precio real es igual al de MB51 y se marca con * en el detalle.
+    Sin FBL3N cargada en {{ pr.tramos_sin_fbl3n }}: en {{ pr.meses_sin_fbl3n|length|pluralize:"ese mes,esos meses" }} el precio real es igual al de MB51 (marcado con * en el detalle).
   </p>
-  {% endif %}
   {% endif %}
   <form class="filtros" method="get" data-target="sec-precios">
     <div class="campo">
@@ -119,7 +114,7 @@
           </tbody>
         </table>
       </div>
-      <p class="nota">* Mes sin la FBL3N cargada: el precio real es igual al de MB51. † El ajuste incluye importes de meses sin compra o registrados en otro centro (ver arriba). ! El ajuste más que duplica el precio de MB51 o lo baja a menos de la mitad: revisar sus partidas abajo. La variación es la del precio elegido en el filtro.</p>
+      <p class="nota">* Sin FBL3N cargada: precio real = precio MB51. † Incluye ajustes de meses sin compra o de otro centro. ! El ajuste duplica o reduce a menos de la mitad el precio de MB51: revisar sus partidas abajo.</p>
 
       {% if pr.ajustes %}
         <h3 class="subtitulo">Ajustes de la FBL3N del período ({{ pr.ajustes_total }} partida{{ pr.ajustes_total|pluralize }})</h3>
@@ -174,7 +169,7 @@
       {% endif %}
     {% endwith %}
   {% else %}
-    <p class="nota">Ordenado por la variación en 12 meses, de mayor alza a mayor baja. Elige una tarjeta para ver el gráfico completo.</p>
+    <p class="nota">De mayor alza a mayor baja en 12 meses. Elige un material para ver su gráfico y su detalle.</p>
     <div class="grilla-precios">
       {% for t in pr.tarjetas %}
         <button type="button" class="tarjeta-precio" data-material-precios="{{ t.material_codigo }}" data-centro-precios="{{ t.centro }}">
@@ -204,17 +199,15 @@
   {% if mt and mt.filas %}
     <details class="detalle-calculo" id="detalle-precios-tco">
       <summary class="boton-detalle">Ver detalle de precios TCO ({{ mt.filas|length }} material{{ mt.filas|length|pluralize:"es" }})</summary>
-      <p class="nota">
-        Precio TCO por tonelada (S/ por T) = (importe de MB51 + ajustes de valor de la FBL3N) ÷ toneladas de cada mes,
-        con los importados puestos en planta (AT = Atocongo U001, CC = Condorcocha U002). Los materiales son los de los
-        filtros de arriba; los meses van de enero {{ mt.anios|first }} al último mes de {{ mt.anios|last }}
-        (el código, el material y el centro quedan fijos al desplazar la tabla). <strong>IPU</strong> = acumulado del año
-        contra el mismo tramo del año anterior (lo pagado ÷ lo que habrían costado esas toneladas al precio de un año antes
-        − 1); la última fila es el IPU de todos los materiales de la tabla. Mes sin compra = se repite el último precio
-        (en gris y cursiva; no cambia el IPU, que solo pondera los meses con compra). En amarillo,
-        meses donde los ajustes de la FBL3N más que duplican el precio de MB51 o lo bajan a menos de la mitad. Pasa el
-        mouse sobre un precio para ver cómo se calcula.
-      </p>
+      <p class="nota">Precio TCO por tonelada de cada material, de enero {{ mt.anios|first }} a hoy, con el IPU de cada año. Pasa el mouse sobre un precio para ver su cálculo.</p>
+      <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+        <p><strong>Precio TCO</strong> = (importe de MB51 + ajustes de la FBL3N) ÷ toneladas del mes, con los importados puestos
+        en planta (AT = Atocongo U001, CC = Condorcocha U002). Los materiales son los de los filtros de arriba.</p>
+        <p><strong>IPU</strong> = lo pagado en el año ÷ lo que habrían costado esas toneladas al precio de un año antes − 1. La última
+        fila es el IPU de todos los materiales de la tabla.</p>
+        <p>Mes sin compra: se repite el último precio, en gris y cursiva (no cambia el IPU, que solo pondera los meses con compra).
+        En amarillo, meses en que la FBL3N duplica o reduce a menos de la mitad el precio de MB51.</p>
+      </div></details>
       <div class="tabla-scroll">
         <table class="matriz-tco">
           <thead>

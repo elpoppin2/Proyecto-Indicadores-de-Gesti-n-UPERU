@@ -38,8 +38,8 @@
   {% endif %}
 
   <section class="bloque" id="sec-pmp">
-    <h2>Plazo Medio de Pago (PMP)</h2>
-    <p class="nota">Días de pago pactados en las órdenes de compra de esta categoría: los días de cada condición de pago (CPag), ponderados por el valor comprado con ella (Tp.cambio × Valor neto). Cada año en los mismos meses del período elegido.</p>
+    <h2>Plazo medio de pago (PMP)</h2>
+    <p class="nota">Días de pago pactados en las órdenes de compra, ponderados por el valor comprado. Cada año en los mismos meses del período.</p>
     {% if cx.pmp_anios %}
       <div class="metricas">
         {% for a in cx.pmp_anios %}
@@ -77,7 +77,7 @@
 
   <section class="bloque" id="sec-plazos">
     <h2>Compras por plazo de pago · {{ cx.texto }}</h2>
-    <p class="nota">Cuánto del valor comprado en el período se paga al contado y cuánto a 30, 60, 90 o más días, según la condición de pago de cada orden de compra.</p>
+    <p class="nota">Cuánto de lo comprado en el período se paga al contado y cuánto a 30, 60, 90 o más días.</p>
     {% if cx.tramos %}
       <div class="metricas">
         <div class="metrica"><span class="valor">{{ cx.valor_total|soles }}</span><span class="etiqueta">Compras del período</span></div>
@@ -121,7 +121,7 @@
       <h2>Monto vs días de pago · {{ cx.texto }}</h2>
       <button type="button" class="btn-link" data-imprimir="sec-dispersion-cxp">Descargar / Imprimir</button>
     </div>
-    <p class="nota">Un punto por proveedor: cuánto se le compró en el período (eje x, en escala logarítmica, cada marca es 10 veces la anterior) y en cuántos días se le paga (eje y). La línea punteada es el PMP de la categoría: los puntos rojos, debajo, se pagan antes que el promedio. Los de más monto llevan su nombre; pasa el mouse por cualquier punto para ver su detalle.</p>
+    <p class="nota">Cada punto es un proveedor: cuánto se le compró (eje horizontal, escala ×10) y en cuántos días se le paga. En rojo, los que se pagan antes que el PMP de la categoría (línea punteada).</p>
     {% with g=cx.dispersion %}
     {% if g %}
       <div class="metricas">
@@ -167,7 +167,7 @@
 
   <section class="bloque" id="sec-proveedores-cxp">
     <h2>Por proveedor · {{ cx.texto }}</h2>
-    <p class="nota">Valor comprado a cada proveedor en el período, su plazo medio de pago (días ponderados por valor) y la condición de pago con la que más se le compró. Ordena con clic en el título de cada columna.</p>
+    <p class="nota">Lo comprado a cada proveedor, su plazo medio de pago y su condición de pago principal.</p>
     {% if cx.proveedores %}
       <div class="tabla-buscable">
         <div class="buscador">

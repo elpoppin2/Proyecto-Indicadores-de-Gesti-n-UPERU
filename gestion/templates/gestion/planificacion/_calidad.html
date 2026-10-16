@@ -6,13 +6,13 @@
     <h2>Calidad</h2>
     <button type="button" class="btn-link" data-imprimir="sec-calidad">Descargar / Imprimir</button>
   </div>
-  <p class="nota">
-    Análisis químico de lo que ingresa a planta, desde los tickets de báscula (ZMM056, recepciones de terceros y
-    propias). Cada material muestra solo los parámetros que el laboratorio le mide. Promedios ponderados por las
-    toneladas de los tickets analizados; mínimo, máximo y desviación, por muestra (un número de muestra cubre
-    varios tickets). No tienen análisis en ZMM056 el Carbón Importado, las calizas de cantera propia ni el Clinker.
-    {% if ca.desde %}Datos del {{ ca.desde|date:"d/m/Y" }} al {{ ca.hasta|date:"d/m/Y" }}.{% endif %}
-  </p>
+  <p class="nota">Análisis químico de lo que ingresa a cada planta, por material y proveedor.{% if ca.desde %} Datos del {{ ca.desde|date:"d/m/Y" }} al {{ ca.hasta|date:"d/m/Y" }}.{% endif %}</p>
+  <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+    <p>Fuente: tickets de báscula de la ZMM056 (recepciones de terceros y propias). Cada material muestra solo los parámetros
+    que el laboratorio le mide. Promedios ponderados por las toneladas de los tickets analizados; mínimo, máximo y desviación,
+    por muestra (un número de muestra cubre varios tickets).</p>
+    <p>No tienen análisis en la ZMM056 el Carbón Importado, las calizas de cantera propia ni el Clinker.</p>
+  </div></details>
   <form class="filtros" method="get" data-target="sec-calidad">
     <div class="campo">
       <label for="periodo_calidad">Período</label>
@@ -153,7 +153,7 @@
       </table>
     </div>
   {% else %}
-    <p class="nota">{% if ca.con_proveedor %}Solo los ingresos de <strong>{{ ca.proveedor_sel }}</strong>. {% endif %}Promedio del período y del último mes con análisis (▲ / ▼: el último mes está más de 1% sobre o bajo el promedio). Elige una tarjeta para ver la evolución de cada parámetro.</p>
+    <p class="nota">{% if ca.con_proveedor %}Solo los ingresos de <strong>{{ ca.proveedor_sel }}</strong>. {% endif %}Promedio del período y del último mes con análisis (▲ / ▼: más de 1% sobre o bajo el promedio). Elige un material para ver cada parámetro mes a mes.</p>
     <div class="grilla-precios">
       {% for t in ca.tarjetas %}
         <button type="button" class="tarjeta-precio tarjeta-calidad" data-material-calidad="{{ t.material_codigo }}" data-centro-calidad="{{ t.centro }}">

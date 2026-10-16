@@ -4,21 +4,7 @@
 {% block contenido %}
 <div class="wrap wrap-portada">
 
-  <header class="pagina">
-    <div class="marca">
-      <img class="logo-empresa" src="{% static 'gestion/img/unacem-logo.svg' %}" alt="UNACEM" width="256" height="58">
-      <span class="marca-separador" aria-hidden="true"></span>
-    <div class="encabezado-texto">
-      <span class="eyebrow">Indicadores de Gestión Supply Chain</span>
-      <h1>PORTADA</h1>
-    </div>
-    </div>
-    <div class="sesion">
-      <button type="button" id="theme-toggle" class="btn-link">Modo oscuro</button>
-      <span>{{ request.user.username }}</span>
-      <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" class="btn-link">Cerrar sesión</button></form>
-    </div>
-  </header>
+  {% include "gestion/_cabecera.html" with titulo="Portada" %}
 
   {% include "gestion/_nav.html" %}
 
@@ -33,9 +19,9 @@
         <span class="portada-eyebrow">Resumen ejecutivo{% if en_curso %} · mes en curso{% endif %}</span>
         <h2>{{ e.mes|mesanio }}</h2>
         {% with c=e.compras %}
-          <p class="portada-compras"><a href="{% url 'overview' %}#bloque-compras"><strong>{{ c.total|soles_mm }}</strong></a> en compras de {{ e.tramo }}{% if c.variacion is not None %} · {% if c.variacion > 0 %}+{% endif %}{{ c.variacion|numero:1 }}% vs el mismo tramo de {{ c.anio_anterior }}{% endif %} · {{ c.diario|soles_mm }} por día</p>
+          <p class="portada-compras"><a href="{% url 'overview' %}#bloque-compras"><strong>{{ c.total|soles_mm }}</strong></a> comprados en {{ e.tramo }}{% if c.variacion is not None %}, {% if c.variacion > 0 %}+{% endif %}{{ c.variacion|numero:1 }}% frente al mismo tramo de {{ c.anio_anterior }}{% endif %} ({{ c.diario|soles_mm }} por día)</p>
         {% endwith %}
-        <p class="portada-nota">Compras y plazo de pago de {{ e.tramo }} · inventario al {{ e.corte|date:"d/m/Y" }} · riesgos y oportunidades de los últimos 12 meses.{% if e.metas_propuestas %} Las metas marcadas "propuesta" están pendientes de confirmar.{% endif %}</p>
+        <p class="portada-nota">Compras y plazo de pago de {{ e.tramo }}; inventario al {{ e.corte|date:"d/m/Y" }}; riesgos y oportunidades de los últimos 12 meses.{% if e.metas_propuestas %} Las metas marcadas como propuesta están por confirmar.{% endif %}</p>
       </div>
       <div class="portada-acciones">
         <form class="filtros" method="get" data-target="portada-cuerpo" data-sin-reinicio>
@@ -80,7 +66,7 @@
           {% if k.impacto %}<p class="kpi-impacto">{{ k.impacto }}</p>{% endif %}
           <footer class="kpi-pie">
             <span class="kpi-meta">{{ k.meta }}</span>
-            {% if k.enlace %}<a class="btn-link" href="{{ k.enlace }}">Ver detalle <span aria-hidden="true">→</span></a>{% endif %}
+            {% if k.enlace %}<a class="btn-link" href="{{ k.enlace }}">Ver detalle<span class="chevron" aria-hidden="true"></span></a>{% endif %}
           </footer>
         </article>
       {% endfor %}
@@ -89,10 +75,10 @@
     {% with c=e.cartera %}
     <section class="bloque" id="sec-cartera">
       <div class="bloque-cabecera">
-        <h2>Cartera de oportunidades · {{ c.periodo }}</h2>
+        <h2>Cartera de oportunidades</h2>
         <button type="button" class="btn-link" data-imprimir="sec-cartera">Descargar / Imprimir</button>
       </div>
-      <p class="nota"><strong>Caja</strong> = capital de trabajo que se libera una vez (plazo de pago, stock). <strong>Ahorro</strong> = menor costo anual (contratos, precio). Cada palanca muestra su supuesto; los supuestos se editan en metas.json.</p>
+      <p class="nota">Dónde está el valor en {{ c.periodo }}. <strong>Caja:</strong> capital de trabajo que se libera una vez (plazo de pago, stock). <strong>Ahorro:</strong> menor costo cada año (contratos, precio).</p>
       <div class="cartera-totales">
         <div class="cartera-total cartera-caja"><span class="cartera-cifra">{{ c.total_caja|soles_mm }}</span><span class="cartera-etiqueta">Caja que se puede liberar</span></div>
         <div class="cartera-total cartera-ahorro"><span class="cartera-cifra">{{ c.total_ahorro|soles_mm }}</span><span class="cartera-etiqueta">Ahorro potencial al año</span></div>
@@ -116,7 +102,7 @@
         <div class="buscador">
           <div class="campo">
             <label for="buscar-cartera">Buscar</label>
-            <input type="text" id="buscar-cartera" data-buscar="descripcion" placeholder="proveedor, material o categoría">
+            <input type="text" id="buscar-cartera" data-buscar="descripcion" placeholder="Proveedor, material o categoría">
           </div>
         </div>
         <div class="tabla-scroll">
@@ -140,8 +126,8 @@
     {% endwith %}
 
     <section class="bloque" id="sec-resumen-categorias">
-      <h2>Resumen por categoría · {{ e.tramo }}</h2>
-      <p class="nota">Haz clic en una categoría para ver su detalle. "% bajo contrato" no aplica a CAPEX ni Empaques (la fórmula de contrato no los alcanza y se ajustan a mano). Días de inventario = valor del inventario ÷ consumo valorizado promedio de los últimos 6 meses.</p>
+      <h2>Resumen por categoría</h2>
+      <p class="nota">{{ e.tramo }}. Elige una categoría para ver su detalle. Bajo contrato no aplica a CAPEX ni Empaques. Días de inventario = valor del inventario ÷ consumo valorizado promedio de 6 meses.</p>
       <div class="tabla-scroll">
         <table>
           <thead>

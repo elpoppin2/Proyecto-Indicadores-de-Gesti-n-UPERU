@@ -5,13 +5,13 @@
     <h2>Consumo por tonelada producida</h2>
     <button type="button" class="btn-link" data-imprimir="sec-consumo-especifico">Descargar / Imprimir</button>
   </div>
-  <p class="nota">
-    Cuántos kg de cada material se gastan por tonelada de clinker o de cemento producida en la misma planta. MB51 registra
-    la producción (101/102 de órdenes de producción) y lo que consume cada orden (261/262): siguiendo esa cadena, cada
-    material queda asignado al producto final al que llega su consumo. Las calizas, arcillas, correctivos y carbones
-    terminan en clinker (vía crudo o combustible sólido); el yeso, las puzolanas, la escoria y el clinker, en cemento. El consumo
-    del mes es el mismo de la Evaluación de consumo. Un mes con MB51 incompleto (p.ej. Feb-2026) queda fuera y se ve como un hueco.
-  </p>
+  <p class="nota">Kilos de cada material por tonelada de clinker o cemento producida en la misma planta.</p>
+  <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+    <p>MB51 registra la producción (101/102 de órdenes de producción) y lo que consume cada orden (261/262); siguiendo esa cadena,
+    cada material queda asignado al producto final al que llega. Calizas, arcillas, correctivos y carbones terminan en clinker;
+    yeso, puzolanas, escoria y clinker, en cemento.</p>
+    <p>El consumo del mes es el de la Evaluación de consumo. Un mes con MB51 incompleto (p.ej. Feb-2026) queda fuera y se ve como un hueco.</p>
+  </div></details>
   <form class="filtros" method="get" data-target="sec-consumo-especifico">
     <div class="campo">
       <label for="mes_factor">Mes</label>
@@ -92,10 +92,9 @@
 
     <h3 class="subtitulo">Consumo por T por material · {{ fa.mes_sel|mesanio }}</h3>
     <p class="nota">
-      La diferencia del consumo del mes contra el promedio de los {{ fa.meses_referencia }} meses anteriores se separa en dos
-      partes que suman exacto. <strong>Por producción</strong>: se produjo más o menos clinker o cemento, con el mismo consumo por T.
-      <strong>Por consumo por T</strong>: se gastó más o menos material por cada tonelada producida, por ejemplo por un cambio en
-      la mezcla del crudo o en la receta del cemento.
+      La diferencia frente al promedio de {{ fa.meses_referencia }} meses se separa en dos partes que suman exacto:
+      <strong>por producción</strong> (se produjo más o menos) y <strong>por consumo por T</strong> (se gastó más o menos material
+      por tonelada, p.ej. por un cambio de mezcla o receta).
     </p>
     <div class="tabla-scroll">
       <table>
@@ -137,11 +136,9 @@
     {% if fa.implicita %}
       <h3 class="subtitulo">¿Qué producción supone el plan de consumos?</h3>
       <p class="nota">
-        Plan de consumos {{ fa.ultimo_snapshot|mesanio }}, promedio mensual de {{ fa.futuro_desde|mesanio }} a {{ fa.futuro_hasta|mesanio }},
-        dividido entre el consumo por T de los últimos {{ fa.meses_factor }} meses: es la producción de clinker o cemento que ese plan da
-        por hecha. Todos los materiales de una misma planta y producto deberían suponer una producción parecida. Se marca con ⚠ cuando se
-        aleja más de ±{{ fa.tolerancia_plan }}% de la producción real de los últimos {{ fa.meses_referencia }} meses cerrados. Los materiales
-        de muy poco consumo (unos pocos kg por T) dan valores poco estables.
+        Producción de clinker o cemento que supone el plan de consumos {{ fa.ultimo_snapshot|mesanio }} ({{ fa.futuro_desde|mesanio }} a
+        {{ fa.futuro_hasta|mesanio }}): plan ÷ consumo por T de los últimos {{ fa.meses_factor }} meses. Los materiales de una misma planta
+        deberían suponer una producción parecida. ⚠ = se aleja más de ±{{ fa.tolerancia_plan }}% de la producción real reciente.
       </p>
       <div class="tabla-scroll">
         <table>
