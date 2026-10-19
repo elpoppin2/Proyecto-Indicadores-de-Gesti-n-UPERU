@@ -396,6 +396,7 @@ class Command(BaseCommand):
                     ])
         return {
             "precios": precios_rows,
+            "precios_referencia": [[m, d.isoformat(), h.isoformat(), p] for m, d, h, p in q.PRECIOS_REFERENCIA_IPU],
             "materiales": [m for _, m in sorted(materiales.values(), key=lambda x: x[0])],
             "proveedores": sorted(proveedores, key=proveedores.get),
             "calidad": calidad_rows, "premios": premios_rows, "premios_docs": premios_docs,

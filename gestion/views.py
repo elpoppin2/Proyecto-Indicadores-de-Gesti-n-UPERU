@@ -2803,7 +2803,9 @@ def _contexto_inflacion(request, sufijo="inflacion"):
 
     def detalle_celda(r):
         base_txt = _mes_corto(r["mes_base"])
-        if r["base_sustituida"]:
+        if r["base_referencia"]:
+            base_txt += " (precio de referencia, sin compra)"
+        elif r["base_sustituida"]:
             base_txt += f" (último registrado; {_mes_corto(r['mes_referencia'])} sin compra)"
         signo = "+" if r["bolsa"] >= 0 else "−"
         texto = (f"{r['texto_breve']} ({q.nombre_centro(r['centro'])}) · {_mes_corto(r['mes'])}: {r['variacion'] * 100:+.1f}%\n"
@@ -3892,7 +3894,8 @@ def _cat_precios(request, categoria, tiene_inventario):
         )
         pr["detalle"] = [
             {"mes": _mes_corto(r["mes"]), "cantidad": r["toneladas"], "precio": r["precio"],
-             "base": _mes_corto(r["mes_base"]) + (" (último registrado)" if r["base_sustituida"] else ""),
+             "base": _mes_corto(r["mes_base"]) + (" (precio de referencia)" if r["base_referencia"]
+                                                  else " (último registrado)" if r["base_sustituida"] else ""),
              "precio_base": r["precio_base"], "pct": r["variacion"] * 100, "bolsa": r["bolsa"], "atipica": bool(r["atipica"])}
             for r in reversed(inflacion.to_dict("records"))
         ]
@@ -4763,8 +4766,8 @@ def _desglose_precios(request, categoria):
     df = inflacion.assign(
         umb=inflacion["material_codigo"].map(umb).fillna(""),
         mes_texto=[_mes_corto(m) for m in inflacion["mes"]],
-        base_texto=[_mes_corto(m) + (" (último registrado)" if sust else "")
-                    for m, sust in zip(inflacion["mes_base"], inflacion["base_sustituida"])],
+        base_texto=[_mes_corto(m) + (" (precio de referencia)" if ref else " (último registrado)" if sust else "")
+                    for m, sust, ref in zip(inflacion["mes_base"], inflacion["base_sustituida"], inflacion["base_referencia"])],
         variacion_pct=inflacion["variacion"] * 100,
         atipica_texto=inflacion["atipica"].map({True: "Sí", False: ""}),
     )

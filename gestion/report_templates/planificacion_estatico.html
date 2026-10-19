@@ -2205,17 +2205,27 @@ if(PRECIOS.length){
    queries.inflacion_precios, inflacion_canasta, ipu_por_mes,
    views._contexto_inflacion y charts.evolucion_ipu) ---------- */
 const RAZON_ATIPICA = 2.0, ANIO_INICIO_INFLACION = 2025;
+// Precios de referencia de meses sin compra (queries.PRECIOS_REFERENCIA_IPU):
+// solo base de comparación, no compras.
+const PRECIOS_REFERENCIA_IPU = PCQ.precios_referencia || [];
 function inflacionPrecios(df, desfase){
   const salida = [];
   for(const [, g] of agrupar(df, r => r.material_codigo+"|"+r.centro)){
     const orden = g.slice().sort((a,b)=>ordenPy(a.mes,b.mes));
+    const conCompra = new Set(orden.map(r => r.mes));
+    const bases = orden.map(r => ({mes:r.mes, precio:r.precio, referencia:false}));
+    for(const [codigo, desde, hasta, precio] of PRECIOS_REFERENCIA_IPU){
+      if(codigo !== orden[0].material_codigo) continue;
+      for(let m = desde; m <= hasta; m = sumarMesesIso(m, 1)) if(!conCompra.has(m)) bases.push({mes:m, precio, referencia:true});
+    }
+    bases.sort((a,b)=>ordenPy(a.mes,b.mes));
     for(const r of orden){
       const ref = sumarMesesIso(r.mes, -desfase);
       let base = null;
-      for(const b of orden){ if(b.mes <= ref) base = b; else break; }
+      for(const b of bases){ if(b.mes <= ref) base = b; else break; }
       if(!base) continue;
       const razon = r.precio/base.precio;
-      salida.push({...r, mes_referencia:ref, mes_base:base.mes, precio_base:base.precio, base_sustituida: base.mes !== ref,
+      salida.push({...r, mes_referencia:ref, mes_base:base.mes, precio_base:base.precio, base_sustituida: base.mes !== ref, base_referencia: base.referencia,
                    variacion: razon - 1, bolsa:(r.precio - base.precio)*r.toneladas, atipica: razon > RAZON_ATIPICA || razon < 1/RAZON_ATIPICA});
     }
   }
@@ -2342,7 +2352,8 @@ function calcularInflacion(suf, sel){
   };
   const detalleCelda = r => {
     let baseTxt = mesCorto(r.mes_base);
-    if(r.base_sustituida) baseTxt += ` (último registrado; ${mesCorto(r.mes_referencia)} sin compra)`;
+    if(r.base_referencia) baseTxt += " (precio de referencia, sin compra)";
+    else if(r.base_sustituida) baseTxt += ` (último registrado; ${mesCorto(r.mes_referencia)} sin compra)`;
     let texto = `${r.texto_breve} (${nombreCentro(r.centro)}) · ${mesCorto(r.mes)}: ${fmtSigno1(r.variacion*100)}%\n` +
       `${mesCorto(r.mes)}: S/ ${numero(r.precio,2)} por T\nvs ${baseTxt}: S/ ${numero(r.precio_base,2)} por T\n` +
       `Bolsa: (S/ ${numero(r.precio,2)} − S/ ${numero(r.precio_base,2)}) × ${numero(r.toneladas)} T = ${r.bolsa >= 0 ? "+" : "−"}S/ ${numero(Math.abs(r.bolsa))}`;
@@ -2463,7 +2474,7 @@ function renderInflacion(suf){
         <thead><tr><th>Mes</th><th class="num">Toneladas</th><th class="num">Precio (S/ por T)</th><th>Comparado contra</th>
           <th class="num">Precio base (S/ por T)</th><th class="num">Variación</th><th class="num">Bolsa (S/)</th></tr></thead>
         <tbody>${c.detalle.map(d => { const pct = d.variacion*100; return `<tr><td>${mesCorto(d.mes)}</td><td class="num">${numero(d.toneladas)}</td>
-          <td class="num">${numero(d.precio,2)}</td><td>${mesCorto(d.mes_base)}${d.base_sustituida ? ` <span class="texto-tenue">(último registrado; ${mesCorto(d.mes_referencia)} sin compra)</span>` : ""}</td>
+          <td class="num">${numero(d.precio,2)}</td><td>${mesCorto(d.mes_base)}${d.base_referencia ? ` <span class="texto-tenue">(precio de referencia, sin compra)</span>` : d.base_sustituida ? ` <span class="texto-tenue">(último registrado; ${mesCorto(d.mes_referencia)} sin compra)</span>` : ""}</td>
           <td class="num">${numero(d.precio_base,2)}</td><td class="num ${claseVar(pct)}">${pct > 0 ? "+" : ""}${numero(pct,1)}%</td>
           <td class="num ${d.atipica ? "texto-tenue" : claseVar(d.bolsa)}">${numero(d.bolsa)}${d.atipica ? ` <span class="marca-atipica" title="Atípica: no suma en la bolsa">!</span>` : ""}</td></tr>`; }).join("")}</tbody>
       </table></div>` : ""}`;

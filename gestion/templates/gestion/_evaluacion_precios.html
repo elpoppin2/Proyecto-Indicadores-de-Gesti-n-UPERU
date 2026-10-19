@@ -197,7 +197,7 @@
                 <td>{{ d.mes_corto }}</td>
                 <td class="num">{{ d.toneladas|numero:0 }}</td>
                 <td class="num">{{ d.precio|numero:2 }}</td>
-                <td>{{ d.mes_base_corto }}{% if d.base_sustituida %} <span class="texto-tenue">(último registrado; {{ d.mes_referencia_corto }} sin compra)</span>{% endif %}</td>
+                <td>{{ d.mes_base_corto }}{% if d.base_referencia %} <span class="texto-tenue">(precio de referencia, sin compra)</span>{% elif d.base_sustituida %} <span class="texto-tenue">(último registrado; {{ d.mes_referencia_corto }} sin compra)</span>{% endif %}</td>
                 <td class="num">{{ d.precio_base|numero:2 }}</td>
                 <td class="num {% if d.pct > 0 %}dato-negativo{% elif d.pct < 0 %}dato-positivo{% endif %}">{% if d.pct > 0 %}+{% endif %}{{ d.pct|numero:1 }}%</td>
                 <td class="num {% if d.atipica %}texto-tenue{% elif d.bolsa > 0 %}dato-negativo{% elif d.bolsa < 0 %}dato-positivo{% endif %}">{{ d.bolsa|numero:0 }}{% if d.atipica %} <span class="marca-atipica" title="Atípica: no suma en la bolsa">!</span>{% endif %}</td>

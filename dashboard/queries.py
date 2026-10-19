@@ -3055,6 +3055,88 @@ def _puesto_en_destino(df):
         entradas=("entradas", "sum"), proveedores=("proveedores", "max"))
 
 
+# Cambios de código (definidos por el usuario, 2026-10-19): para los precios y
+# el IPU, las compras del código antiguo cuentan como del código nuevo, así la
+# serie de precios arranca en 2024 y no en el cambio de código.
+# - 07-00000005 (Caliza Terceros, Atocongo) se separó en jul-2025 por
+#   proveedor: Roca Fuerte (1000717) -> 07-00003137 y Andina (10006751) ->
+#   07-00003138. Sus ajustes de la FBL3N (casi todos cambios de precio MR22,
+#   sin proveedor) se reparten según las toneladas de cada proveedor en el mes.
+# - 07-00000008 Pelets Chips Recuperados (Atocongo) -> 07-00003147.
+CODIGOS_ANTERIORES_POR_PROVEEDOR = {"07-00000005": {"1000717": "07-00003137", "10006751": "07-00003138"}}
+CODIGOS_ANTERIORES = {"07-00000008": "07-00003147"}
+
+
+def _sql_material_vigente(material="material_codigo", proveedor="proveedor"):
+    """Expresión SQL con el código vigente de cada línea (ver CODIGOS_ANTERIORES)."""
+    casos = [f"WHEN {material} = '{a}' AND {proveedor} = '{p}' THEN '{n}'"
+             for a, por in CODIGOS_ANTERIORES_POR_PROVEEDOR.items() for p, n in por.items()]
+    casos += [f"WHEN {material} = '{a}' THEN '{n}'" for a, n in CODIGOS_ANTERIORES.items()]
+    return f"(CASE {' '.join(casos)} ELSE {material} END)" if casos else material
+
+
+def _con_codigos_anteriores(materiales):
+    """`materiales` más los códigos antiguos que pasan a alguno de ellos."""
+    nuevos = set(materiales)
+    anteriores = {a for a, n in CODIGOS_ANTERIORES.items() if n in nuevos}
+    anteriores |= {a for a, por in CODIGOS_ANTERIORES_POR_PROVEEDOR.items() if nuevos & set(por.values())}
+    return sorted(nuevos | anteriores)
+
+
+@_cacheado
+def participacion_codigos_partidos():
+    """Parte de cada código nuevo en lo comprado con un código antiguo
+    separado por proveedor (CODIGOS_ANTERIORES_POR_PROVEEDOR), por centro y
+    mes (según toneladas): material_anterior, centro, mes, material_codigo,
+    participacion. Con mes = None, la del período completo (para un ajuste
+    de un mes sin compra)."""
+    columnas = ["material_anterior", "centro", "mes", "material_codigo", "participacion"]
+    if not CODIGOS_ANTERIORES_POR_PROVEEDOR:
+        return pd.DataFrame(columns=columnas)
+    t = _query(f"""
+        SELECT material_codigo AS material_anterior, centro AS centro, proveedor AS proveedor,
+               substr(fecha_contabilizacion, 1, 7) || '-01' AS mes, SUM(cantidad) AS toneladas
+        FROM gestion_movimientomaterial
+        WHERE material_codigo IN ({",".join(_texto_sql(m) for m in CODIGOS_ANTERIORES_POR_PROVEEDOR)})
+              AND +clase_movimiento IN {_CLASES_ENTRADA_COMPRA} AND proveedor <> '' AND fecha_contabilizacion IS NOT NULL
+        GROUP BY material_codigo, centro, proveedor, mes
+    """)
+    t["material_codigo"] = [CODIGOS_ANTERIORES_POR_PROVEEDOR[a].get(p) for a, p in zip(t["material_anterior"], t["proveedor"])]
+    t = t[t["material_codigo"].notna() & (t["toneladas"] > 0)]
+    if t.empty:
+        return pd.DataFrame(columns=columnas)
+    t = t.assign(mes=pd.to_datetime(t["mes"]).dt.date, toneladas=t["toneladas"].astype(float))
+    mensual = t.groupby(["material_anterior", "centro", "mes", "material_codigo"], as_index=False)["toneladas"].sum()
+    mensual["participacion"] = mensual["toneladas"] / mensual.groupby(["material_anterior", "centro", "mes"])["toneladas"].transform("sum")
+    total = t.groupby(["material_anterior", "centro", "material_codigo"], as_index=False)["toneladas"].sum()
+    total["participacion"] = total["toneladas"] / total.groupby(["material_anterior", "centro"])["toneladas"].transform("sum")
+    total["mes"] = None
+    return pd.concat([mensual[columnas], total[columnas]], ignore_index=True)
+
+
+def _repartir_codigos_partidos(df, columnas):
+    """Filas de `df` (material_codigo, centro, mes) con un código antiguo
+    separado por proveedor -> una fila por código nuevo, con `columnas`
+    multiplicadas por su participación (participacion_codigos_partidos). Las
+    demás filas quedan igual."""
+    partidos = df["material_codigo"].isin(CODIGOS_ANTERIORES_POR_PROVEEDOR)
+    if not partidos.any():
+        return df
+    part = participacion_codigos_partidos()
+    viejos = df[partidos].rename(columns={"material_codigo": "material_anterior"})
+    mensual = part[part["mes"].notna()]
+    repartido = viejos.merge(mensual, on=["material_anterior", "centro", "mes"])
+    sin_mes = viejos.merge(mensual[["material_anterior", "centro", "mes"]].drop_duplicates(),
+                           on=["material_anterior", "centro", "mes"], how="left", indicator=True)
+    sin_mes = viejos[(sin_mes["_merge"] == "left_only").values]
+    if not sin_mes.empty:
+        repartido = pd.concat([repartido, sin_mes.merge(part[part["mes"].isna()].drop(columns="mes"),
+                                                        on=["material_anterior", "centro"])], ignore_index=True)
+    for c in columnas:
+        repartido[c] = repartido[c] * repartido["participacion"]
+    return pd.concat([df[~partidos], repartido[df.columns]], ignore_index=True)
+
+
 @_cacheado
 def precios_entrada_sop():
     """Una fila por material/centro/mes con compras: toneladas, importe (S/),
@@ -3067,18 +3149,20 @@ def precios_entrada_sop():
         return pd.DataFrame(columns=columnas)
     # "+clase_movimiento": que SQLite use el índice por material (muy
     # selectivo, ~25 materiales) y no el de clase de movimiento (millones de
-    # 101 de todos los materiales). Mismo resultado.
+    # 101 de todos los materiales). Mismo resultado. Los códigos antiguos
+    # (CODIGOS_ANTERIORES) entran con su código nuevo.
+    vigente = _sql_material_vigente()
     df = _query(f"""
-        SELECT material_codigo AS material_codigo, centro AS centro,
+        SELECT {vigente} AS material_codigo, centro AS centro,
                substr(fecha_contabilizacion, 1, 7) || '-01' AS mes,
                SUM(cantidad) AS toneladas, SUM(importe_moneda_local) AS importe,
                SUM(CASE WHEN clase_movimiento = '101' THEN 1 ELSE 0 END) AS entradas,
                COUNT(DISTINCT proveedor) AS proveedores
         FROM gestion_movimientomaterial
-        WHERE material_codigo IN ({",".join(f"'{m}'" for m in materiales)})
+        WHERE material_codigo IN ({",".join(f"'{m}'" for m in _con_codigos_anteriores(materiales))})
               AND +clase_movimiento IN {_CLASES_ENTRADA_COMPRA} AND proveedor <> ''
               AND fecha_contabilizacion IS NOT NULL
-        GROUP BY material_codigo, centro, mes
+        GROUP BY {vigente}, centro, mes
     """)
     df = _produccion_propia(_puesto_en_destino(df), set(materiales))
     if df.empty:
@@ -3107,8 +3191,9 @@ def precios_entrada_materiales():
     consulta recorre todos los 101/102 (~11 s en frío), por eso va en caché."""
     columnas = ["material_codigo", "texto_breve", "unidad_medida_base", "centro", "categoria", "familia", "mes",
                 "toneladas", "importe", "precio", "entradas", "proveedores"]
+    vigente = _sql_material_vigente()  # códigos antiguos con su código nuevo
     df = _query(f"""
-        SELECT material_codigo AS material_codigo, centro AS centro,
+        SELECT {vigente} AS material_codigo, centro AS centro,
                substr(fecha_contabilizacion, 1, 7) || '-01' AS mes,
                SUM(cantidad) AS toneladas, SUM(importe_moneda_local) AS importe,
                SUM(CASE WHEN clase_movimiento = '101' THEN 1 ELSE 0 END) AS entradas,
@@ -3116,7 +3201,7 @@ def precios_entrada_materiales():
         FROM gestion_movimientomaterial
         WHERE clase_movimiento IN {_CLASES_ENTRADA_COMPRA} AND proveedor <> '' AND material_codigo <> ''
               AND fecha_contabilizacion IS NOT NULL
-        GROUP BY material_codigo, centro, mes
+        GROUP BY {vigente}, centro, mes
     """)
     df = _produccion_propia(_puesto_en_destino(df))
     if df.empty:
@@ -3184,7 +3269,9 @@ def concepto_ajuste(clase, transaccion, texto):
 def ajustes_precio_fbl3n():
     """Ajustes de la FBL3N sumados por material/centro/mes: ajuste (S/, entra
     al precio real), ajuste_ordenes (S/, liquidaciones de órdenes, aparte) y
-    lineas. Vacío si todavía no se cargó la FBL3N."""
+    lineas. Vacío si todavía no se cargó la FBL3N. Los códigos antiguos
+    (CODIGOS_ANTERIORES) pasan a su código nuevo; los separados por
+    proveedor, repartidos según las toneladas de cada uno en el mes."""
     df = _query(f"""
         SELECT material_codigo, centro, substr(fecha_contabilizacion, 1, 7) || '-01' AS mes,
                SUM(CASE WHEN clase_documento IN {CLASES_LIQUIDACION_ORDENES} THEN 0 ELSE importe END) AS ajuste,
@@ -3195,6 +3282,10 @@ def ajustes_precio_fbl3n():
     """)
     if not df.empty:
         df["mes"] = pd.to_datetime(df["mes"]).dt.date
+        df["material_codigo"] = df["material_codigo"].replace(CODIGOS_ANTERIORES)
+        df = _repartir_codigos_partidos(df, ["ajuste", "ajuste_ordenes"])
+        df = df.groupby(["material_codigo", "centro", "mes"], as_index=False).agg(
+            ajuste=("ajuste", "sum"), ajuste_ordenes=("ajuste_ordenes", "sum"), lineas=("lineas", "sum"))
     return df
 
 
@@ -3337,10 +3428,13 @@ def precios_entrada_materiales_real():
 
 def ajustes_fbl3n_detalle(materiales, desde=None, hasta=None):
     """Las partidas de la FBL3N de `materiales` (todas sus plantas) entre dos
-    meses, con su concepto, para ver de qué trata cada importe."""
+    meses, con su concepto, para ver de qué trata cada importe. Incluye las
+    del código antiguo (CODIGOS_ANTERIORES), con el código al inicio del
+    texto; las de un código separado por proveedor, con el importe en la
+    parte que le toca (participacion_codigos_partidos), como en el precio."""
     if not materiales:
         return pd.DataFrame()
-    filtros = [f"material_codigo IN ({','.join(_texto_sql(m) for m in materiales)})"]
+    filtros = [f"material_codigo IN ({','.join(_texto_sql(m) for m in _con_codigos_anteriores(materiales))})"]
     if desde:
         filtros.append(f"fecha_contabilizacion >= '{desde.isoformat()}'")
     if hasta:
@@ -3356,6 +3450,23 @@ def ajustes_fbl3n_detalle(materiales, desde=None, hasta=None):
         df["concepto"] = [concepto_ajuste(c, t, x) for c, t, x in
                           zip(df["clase_documento"], df["codigo_transaccion"], df["texto"])]
         df["fecha_contabilizacion"] = pd.to_datetime(df["fecha_contabilizacion"]).dt.date
+        anteriores = ~df["material_codigo"].isin(set(materiales))
+        if anteriores.any():
+            pedidos = set(materiales)
+            part = participacion_codigos_partidos()
+            part = part[part["material_codigo"].isin(pedidos)]
+            mensual = part[part["mes"].notna()].groupby(["material_anterior", "centro", "mes"])["participacion"].sum().to_dict()
+            total = part[part["mes"].isna()].groupby(["material_anterior", "centro"])["participacion"].sum().to_dict()
+            for i in df.index[anteriores]:
+                material, centro = df.at[i, "material_codigo"], df.at[i, "centro"]
+                nota = f"[{material}] "
+                if material in CODIGOS_ANTERIORES_POR_PROVEEDOR:
+                    mes = df.at[i, "fecha_contabilizacion"].replace(day=1)
+                    p = mensual.get((material, centro, mes), total.get((material, centro), 0.0))
+                    df.at[i, "importe"] = float(df.at[i, "importe"]) * p
+                    df.at[i, "importe_moneda_documento"] = float(df.at[i, "importe_moneda_documento"] or 0) * p
+                    nota = f"[{material}, {p:.0%} según toneladas] "
+                df.at[i, "texto"] = nota + (df.at[i, "texto"] or "")
         df["en_precio"] = ~df["clase_documento"].isin(CLASES_LIQUIDACION_ORDENES)
         # Importados por embarque: a qué barco se asignó cada partida.
         barcos, _ = embarques_importados()
@@ -3415,6 +3526,33 @@ def resumen_precios_entrada(df):
 # en la selección ponderada.
 _RAZON_ATIPICA = 2.0
 
+# Precio de referencia (S/ por T) de los meses SIN compra de un material,
+# definido por el usuario (2026-10-19): solo sirve de base de comparación del
+# IPU, no es una compra (no aparece en la evolución del precio ni suma
+# toneladas). (material, primer mes, último mes, precio).
+PRECIOS_REFERENCIA_IPU = [
+    ("07-00000002", datetime.date(2024, 1, 1), datetime.date(2025, 10, 1), 42.0),  # Arcilla Terceros, hasta su ingreso de nov-2025
+    ("07-00001677", datetime.date(2024, 1, 1), datetime.date(2024, 12, 1), 69.0),  # Arcilla Ferrosa, meses de 2024 sin compra
+]
+
+
+def bases_referencia_ipu(df):
+    """Precios de referencia (PRECIOS_REFERENCIA_IPU) de los material/centro
+    de `df` en los meses que `df` no tiene compra: material_codigo, centro,
+    mes, precio."""
+    filas = []
+    con_compra = set(zip(df["material_codigo"], df["centro"], df["mes"]))
+    for material, centro in df[["material_codigo", "centro"]].drop_duplicates().itertuples(index=False):
+        for codigo, desde, hasta, precio in PRECIOS_REFERENCIA_IPU:
+            if codigo != material:
+                continue
+            mes = desde
+            while mes <= hasta:
+                if (material, centro, mes) not in con_compra:
+                    filas.append({"material_codigo": material, "centro": centro, "mes": mes, "precio": precio})
+                mes = _sumar_meses(mes, 1)
+    return pd.DataFrame(filas, columns=["material_codigo", "centro", "mes", "precio"])
+
 
 def inflacion_precios(df, desfase=12):
     """Una fila por material/centro/mes con compra de `df` (salida de
@@ -3422,15 +3560,22 @@ def inflacion_precios(df, desfase=12):
     toneladas e importe del mes, mes_referencia (T − `desfase` meses),
     mes_base y precio_base usados, base_sustituida (True si el mes de
     referencia no tuvo compra y se tomó el último precio anterior),
-    variacion (precio ÷ precio_base − 1), bolsa (S/) y atipica (ver
-    _RAZON_ATIPICA)."""
+    base_referencia (True si la base es un precio de referencia del usuario,
+    PRECIOS_REFERENCIA_IPU), variacion (precio ÷ precio_base − 1), bolsa (S/)
+    y atipica (ver _RAZON_ATIPICA)."""
     columnas = ["material_codigo", "texto_breve", "centro", "categoria", "mes", "precio", "toneladas", "importe",
-                "mes_referencia", "mes_base", "precio_base", "base_sustituida", "variacion", "bolsa", "atipica"]
+                "mes_referencia", "mes_base", "precio_base", "base_sustituida", "base_referencia",
+                "variacion", "bolsa", "atipica"]
     if df.empty:
         return pd.DataFrame(columns=columnas)
     actual = df.assign(mes_referencia=[_sumar_meses(m, -desfase) for m in df["mes"]])
     actual["_clave"] = pd.to_datetime(actual["mes_referencia"])
-    bases = df[["material_codigo", "centro", "mes", "precio"]].rename(columns={"mes": "mes_base", "precio": "precio_base"})
+    bases = df[["material_codigo", "centro", "mes", "precio"]].assign(base_referencia=False)
+    referencia = bases_referencia_ipu(df)
+    if not referencia.empty:
+        referencia = referencia.astype({"material_codigo": df["material_codigo"].dtype, "centro": df["centro"].dtype})
+        bases = pd.concat([bases, referencia.assign(base_referencia=True)], ignore_index=True)
+    bases = bases.rename(columns={"mes": "mes_base", "precio": "precio_base"})
     bases["_clave"] = pd.to_datetime(bases["mes_base"])
     # merge_asof "backward": el último mes_base <= mes_referencia del mismo
     # material y centro (exacto si T−12 tuvo compra).

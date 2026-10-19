@@ -390,7 +390,8 @@ def inflacion_ipu(tipo="interanual", material=None, centro=None, categoria=None,
         salida["detalle"] = [{
             "mes": f"{r['mes']:%Y-%m}", "precio_s_por_t": r["precio"], "toneladas": r["toneladas"],
             "mes_base": f"{r['mes_base']:%Y-%m}", "precio_base_s_por_t": r["precio_base"],
-            "base_sustituida": bool(r["base_sustituida"]), "atipica": bool(r["atipica"]),
+            "base_sustituida": bool(r["base_sustituida"]), "base_referencia": bool(r["base_referencia"]),
+            "atipica": bool(r["atipica"]),
             "variacion_pct": _pct(r["variacion"]), "bolsa_s": r["bolsa"],
         } for r in rango.to_dict("records")]
     if nota:
