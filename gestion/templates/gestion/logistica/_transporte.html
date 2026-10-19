@@ -1,0 +1,162 @@
+{% load dashboard_extras %}
+{# Transporte de Logística de Materias Primas (views._contexto_transporte): tiempo en planta, carga por viaje, transportistas, llegadas por día y hora, flota y agua transportada, con los tickets de báscula ZMM056. Pedido por el usuario el 2026-10-19. #}
+{% if tr %}
+<section class="bloque" id="sec-transporte">
+  <div class="bloque-cabecera">
+    <h2>Transporte de materias primas</h2>
+    <button type="button" class="btn-link" data-imprimir="sec-transporte">Imprimir</button>
+  </div>
+  <p class="nota">Viajes recibidos en planta según la báscula (ZMM056: recepciones de terceros y traslados propios) de los materiales de esta página.</p>
+  <form class="filtros" method="get" data-target="sec-transporte">
+    <div class="campo">
+      <label for="mes_transp">Mes</label>
+      <select name="mes_transp" id="mes_transp">
+        {% for m in tr.opciones_mes %}<option value="{{ m|fechaiso }}" {% if m == tr.mes %}selected{% endif %}>{{ m|mesanio }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="centro_transp">Centro</label>
+      <select name="centro_transp" id="centro_transp">
+        {% for c in tr.centros %}<option value="{{ c.codigo }}" {% if c.codigo == tr.centro_sel %}selected{% endif %}>{{ c.texto }}</option>{% endfor %}
+      </select>
+    </div>
+    {% include "gestion/planificacion/_filtro_material.html" with nombre="material_transp" opciones=tr.materiales seleccion=tr.material_sel %}
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+
+  {% if tr.vacio %}
+    <p class="aviso">Sin viajes recibidos en {{ tr.mes_texto }} con estos filtros.</p>
+  {% else %}
+    {% with r=tr.resumen %}
+    <div class="metricas">
+      <div class="metrica"><span class="valor">{{ r.viajes|numero }}</span><span class="etiqueta">Viajes{% if tr.en_curso %} (mes en curso){% endif %}</span></div>
+      <div class="metrica"><span class="valor">{{ r.toneladas|numero }} T</span><span class="etiqueta">Toneladas húmedas</span></div>
+      <div class="metrica"><span class="valor">{{ r.t_viaje|numero:1 }} T</span><span class="etiqueta">Por viaje</span></div>
+      <div class="metrica"><span class="valor">{{ r.transportistas }}</span><span class="etiqueta">Transportistas</span></div>
+      <div class="metrica"><span class="valor">{{ r.placas|numero }}</span><span class="etiqueta">Camiones (placas)</span></div>
+    </div>
+    {% endwith %}
+
+    {% with t=tr.tiempo %}
+    <h3 class="titulo-bloque">Tiempo en planta</h3>
+    <p class="nota">Del pesaje lleno (llegada) al pesaje vacío (salida) de cada camión: espera, descarga y trámites.
+      Mediana del mes: <strong>{{ t.mediana|default_if_none:"—"|floatformat:0 }} min</strong>; el 10% más lento tarda más de {{ t.p90|default_if_none:"—"|floatformat:0 }} min.
+      {% if t.sin_medir %}Sin medir: {{ t.sin_medir|join:", " }}, que en el mes se pesaron casi siempre una sola vez, con su tara registrada.{% endif %}</p>
+    <div class="grilla-dos">
+      <div>{% include "gestion/planificacion/_grafico_panel.html" with p=t.grafico %}
+        <div class="leyenda-curva"><span class="leyenda-item"><span class="leyenda-marca marca-bien"></span>Hasta 1 h</span><span class="leyenda-item"><span class="leyenda-marca marca-regular"></span>1 a 2 h</span><span class="leyenda-item"><span class="leyenda-marca marca-mal"></span>Más de 2 h</span></div>
+      </div>
+      <div>{% include "gestion/planificacion/_grafico_panel.html" with p=t.tendencia %}
+        <div class="leyenda-curva">{% for clase, texto in t.leyenda_tendencia %}<span class="leyenda-item"><span class="leyenda-marca leyenda-linea {{ clase }}"></span>{{ texto }}</span>{% endfor %}</div>
+      </div>
+    </div>
+    <div class="tabla-scroll">
+      <table>
+        <thead><tr><th>Material</th><th>Centro</th><th class="num">Viajes</th><th class="num">Medidos</th><th class="num">Mediana</th><th class="num">10% más lento, más de</th></tr></thead>
+        <tbody>
+          {% for f in t.filas %}
+            <tr><td>{{ f.material }} — {{ f.nombre }}</td><td>{{ f.centro|centro }}</td><td class="num">{{ f.viajes|numero }}</td>
+              <td class="num">{{ f.medidos|numero }}</td>
+              <td class="num" data-valor="{{ f.mediana|default_if_none:'' }}">{% if f.mediana is None %}<span class="texto-tenue">tara registrada</span>{% else %}{{ f.mediana|floatformat:0 }} min{% endif %}</td>
+              <td class="num" data-valor="{{ f.p90|default_if_none:'' }}">{% if f.p90 is None %}—{% else %}{{ f.p90|floatformat:0 }} min{% endif %}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endwith %}
+
+    {% with c=tr.carga %}
+    <h3 class="titulo-bloque">Carga por viaje</h3>
+    <p class="nota">Viajes según las toneladas que trajo cada camión (pesaje neto húmedo). El {{ c.bajo_30|floatformat:0 }}% de los viajes del mes trajo menos de 30 T.</p>
+    {% include "gestion/planificacion/_grafico_panel.html" with p=c.grafico %}
+    <div class="leyenda-curva">{% for clase, texto in c.leyenda %}<span class="leyenda-item"><span class="leyenda-marca marca-{{ clase }}"></span>{{ texto }}</span>{% endfor %}</div>
+    <div class="tabla-scroll">
+      <table>
+        <thead><tr><th>Material</th><th>Centro</th><th class="num">Viajes</th><th class="num">Toneladas</th><th class="num">T por viaje</th><th class="num">10% más bajo, menos de</th><th class="num">10% más alto, más de</th><th class="num">Viajes con menos de 30 T</th></tr></thead>
+        <tbody>
+          {% for f in c.filas %}
+            <tr><td>{{ f.material }} — {{ f.nombre }}</td><td>{{ f.centro|centro }}</td><td class="num">{{ f.viajes|numero }}</td>
+              <td class="num">{{ f.toneladas|numero }}</td><td class="num">{{ f.t_viaje|numero:1 }}</td><td class="num">{{ f.p10|numero:1 }}</td>
+              <td class="num">{{ f.p90|numero:1 }}</td><td class="num">{{ f.bajo_30|floatformat:0 }}%</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endwith %}
+
+    {% with p=tr.transportistas %}
+    <h3 class="titulo-bloque">Desempeño por transportista</h3>
+    <p class="nota">Ordenados por toneladas. Los 3 principales llevan el {{ p.top3|floatformat:0 }}% de lo recibido en el mes.</p>
+    <div class="tabla-scroll">
+      <table>
+        <thead><tr><th>Transportista</th><th>Código</th><th class="num">Viajes</th><th class="num">Toneladas</th><th class="num">% de las T</th><th class="num">T por viaje</th><th class="num">Tiempo en planta (mediana)</th><th class="num">10% más lento, más de</th><th class="num">Camiones</th><th>Materiales</th></tr></thead>
+        <tbody>
+          {% for f in p.filas %}
+            <tr><td>{{ f.nombre }}</td><td class="codigo-suave">{{ f.codigo|default:"—" }}</td><td class="num">{{ f.viajes|numero }}</td>
+              <td class="num">{{ f.toneladas|numero }}</td><td class="num">{{ f.pct|numero:1 }}%</td><td class="num">{{ f.t_viaje|numero:1 }}</td>
+              <td class="num" data-valor="{{ f.mediana|default_if_none:'' }}">{% if f.mediana is None %}—{% else %}{{ f.mediana|floatformat:0 }} min{% endif %}</td>
+              <td class="num" data-valor="{{ f.p90|default_if_none:'' }}">{% if f.p90 is None %}—{% else %}{{ f.p90|floatformat:0 }} min{% endif %}</td>
+              <td class="num">{{ f.placas }}</td><td>{{ f.materiales }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endwith %}
+
+    {% with l=tr.llegadas %}
+    <h3 class="titulo-bloque">Llegadas por día y hora</h3>
+    <p class="nota">Camiones por día de la semana y hora del pesaje lleno, todo el mes. Hora con más llegadas: <strong>{{ l.hora_pico }}</strong>
+      ({{ l.pct_pico|floatformat:0 }}%); día con más llegadas: {{ l.dia_pico }}; el {{ l.pct_noche|floatformat:0 }}% llega entre las 20:00 y las 06:00.</p>
+    <div class="tabla-scroll">
+      <div class="mapa-calor" role="img" aria-label="Camiones por día de la semana y hora">
+        <span></span>{% for h in l.horas %}<span class="mc-hora">{{ h }}</span>{% endfor %}
+        {% for f in l.filas %}
+          <span class="mc-dia">{{ f.dia }}</span>
+          {% for c in f.celdas %}<span class="mc-celda con-detalle" style="--nivel: {{ c.nivel }};" data-detalle="{{ c.detalle }}">{% if c.n %}{{ c.n }}{% endif %}</span>{% endfor %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endwith %}
+
+    {% with f=tr.flota %}
+    <h3 class="titulo-bloque">Flota</h3>
+    <p class="nota">{{ f.placas|numero }} camiones distintos entregaron en el mes, con {{ f.viajes_por_placa|numero:1 }} viajes cada uno en promedio y
+      {{ f.viajes_placa_dia|numero:1 }} viajes por día trabajado. Los 10 con más viajes hicieron el {{ f.top10|floatformat:0 }}% de los viajes.</p>
+    <div class="tabla-scroll">
+      <table>
+        <thead><tr><th>Placa</th><th>Transportista</th><th class="num">Viajes</th><th class="num">Toneladas</th><th class="num">Días con viajes</th><th class="num">Viajes por día</th><th class="num">Tiempo en planta (mediana)</th></tr></thead>
+        <tbody>
+          {% for p in f.filas %}
+            <tr><td>{{ p.placa }}</td><td>{{ p.transportista }}</td><td class="num">{{ p.viajes|numero }}</td><td class="num">{{ p.toneladas|numero }}</td>
+              <td class="num">{{ p.dias }}</td><td class="num">{{ p.viajes_dia|numero:1 }}</td>
+              <td class="num" data-valor="{{ p.mediana|default_if_none:'' }}">{% if p.mediana is None %}—{% else %}{{ p.mediana|floatformat:0 }} min{% endif %}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endwith %}
+
+    {% with a=tr.agua %}
+    <h3 class="titulo-bloque">Agua transportada</h3>
+    {% if a.pct is None %}
+      <p class="aviso">Ningún viaje del mes trae peso seco.</p>
+    {% else %}
+      <p class="nota">Pesaje húmedo − seco de los viajes con descuento de humedad ({{ a.viajes|numero }} viajes, el {{ a.cobertura|floatformat:0 }}% del mes):
+        <strong>{{ a.agua|numero }} T de agua</strong> en {{ a.humedas|numero }} T húmedas ({{ a.pct|numero:1 }}%). El flete se paga por el peso húmedo.</p>
+      <div class="tabla-scroll">
+        <table>
+          <thead><tr><th>Material</th><th>Centro</th><th class="num">Viajes</th><th class="num">T húmedas</th><th class="num">T secas</th><th class="num">Agua (T)</th><th class="num">% de agua</th></tr></thead>
+          <tbody>
+            {% for f in a.filas %}
+              <tr><td>{{ f.material }} — {{ f.nombre }}</td><td>{{ f.centro|centro }}</td><td class="num">{{ f.viajes|numero }}</td>
+                <td class="num">{{ f.humedas|numero }}</td><td class="num">{{ f.secas|numero }}</td><td class="num">{{ f.agua|numero }}</td>
+                <td class="num">{{ f.pct|numero:1 }}%</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+    {% endwith %}
+  {% endif %}
+</section>
+{% endif %}

@@ -1915,6 +1915,59 @@ def entregas_por_proveedor_sop():
 CENTRO_ATOCONGO, CENTRO_CONDORCOCHA = "U001", "U002"
 MATERIALES_TRASLADO_ATOCONGO_CONDORCOCHA = ("14-00000037", "06-00000003")
 
+# Transporte (indicadores de Logística de Materias Primas, pedido del usuario
+# 2026-10-19). Menos de este tiempo entre el pesaje lleno y el vacío = el
+# camión se pesó una sola vez con su tara registrada (en Atocongo, la Caliza
+# Pucará, Andina y Roca Fuerte): no mide el tiempo en planta. Más de un día =
+# dato de báscula erróneo.
+MINUTOS_TARA_REGISTRADA = 2
+MINUTOS_MAXIMO_EN_PLANTA = 24 * 60
+
+
+@_cacheado
+def viajes_recepcion():
+    """Un ticket de recepción (tipo 1/5) por fila, de los (material, centro)
+    del alcance, con lo del transporte: centro, material_codigo,
+    descripcion, fecha (efectiva), mes, toneladas (húmedas), toneladas_secas
+    (None si el ticket no trae peso seco), proveedor, transportista_codigo,
+    transportista (nombre del ticket; si no trae, el del maestro de
+    proveedores de ME2N o de la ZMM056), placa, llegada (pesaje lleno, hora
+    local), minutos (entre el pesaje lleno y el vacío; None si no se puede
+    medir) y tara_registrada (se pesó una sola vez)."""
+    df = _query(f"""
+        SELECT centro AS centro, material_codigo AS material_codigo, descripcion_material AS descripcion,
+               {FECHA_INGRESO_EFECTIVA} AS fecha, cantidad AS toneladas, cantidad_seca AS toneladas_secas,
+               proveedor AS proveedor, transportista_codigo AS transportista_codigo, transportista AS transportista,
+               placa AS placa, fecha_pesaje_lleno AS f_lleno, hora_pesaje_lleno AS h_lleno,
+               fecha_pesaje_vacio AS f_vacio, hora_pesaje_vacio AS h_vacio
+        FROM gestion_ingresofisicosop
+        WHERE tipo_operacion IN ({_IN_TIPOS_OPERACION_RECEPCION}) AND fecha_ingreso IS NOT NULL
+    """)
+    df = _en_alcance(df)
+    if df.empty:
+        return df
+    nombres = _query("""
+        SELECT proveedor_codigo AS codigo, MAX(proveedor) AS nombre FROM gestion_ingresofisicosop
+        WHERE proveedor_codigo <> '' AND proveedor <> '' GROUP BY proveedor_codigo
+        UNION ALL
+        SELECT proveedor AS codigo, MAX(cuenta_proveedor) AS nombre FROM gestion_lineacompra
+        WHERE proveedor <> '' AND cuenta_proveedor <> '' GROUP BY proveedor
+    """).drop_duplicates("codigo").set_index("codigo")["nombre"]
+    sin_nombre = df["transportista"].fillna("") == ""
+    df.loc[sin_nombre, "transportista"] = [nombres.get(c) or (f"Transportista {c}" if c else "Sin transportista")
+                                          for c in df.loc[sin_nombre, "transportista_codigo"]]
+    df["fecha"] = pd.to_datetime(df["fecha"]).dt.date
+    df["mes"] = [f.replace(day=1) for f in df["fecha"]]
+    df["toneladas"] = df["toneladas"].astype(float)
+    df["toneladas_secas"] = pd.to_numeric(df["toneladas_secas"], errors="coerce").where(lambda s: s > 0)
+    llegada = pd.to_datetime(df["f_lleno"].astype(str) + " " + df["h_lleno"].astype(str), errors="coerce")
+    salida = pd.to_datetime(df["f_vacio"].astype(str) + " " + df["h_vacio"].astype(str), errors="coerce")
+    minutos = (salida - llegada).dt.total_seconds().abs() / 60
+    df["llegada"] = llegada
+    df["tara_registrada"] = minutos < MINUTOS_TARA_REGISTRADA
+    df["minutos"] = minutos.where((minutos >= MINUTOS_TARA_REGISTRADA) & (minutos <= MINUTOS_MAXIMO_EN_PLANTA))
+    return df.drop(columns=["f_lleno", "h_lleno", "f_vacio", "h_vacio"]).reset_index(drop=True)
+
 
 def traslados_recibidos(mes, centro):
     """Ingresos por traslado (ZMM056 Tipo 5) que recibió `centro` en el mes
@@ -3294,13 +3347,14 @@ def con_precio_real(base):
 
     local["centro_destino"] = [centro_destino(m, c) for m, c in zip(local["material_codigo"], local["centro"])]
     local = local[local["centro_destino"].notna()]
+    local = _prorratear_por_contrato(local)
     compras = df[["material_codigo", "centro", "mes"]].rename(columns={"centro": "centro_destino", "mes": "mes_destino"})
     compras["_clave"] = pd.to_datetime(compras["mes_destino"])
     local["_clave"] = pd.to_datetime(local["mes"])
     local = pd.merge_asof(local.sort_values("_clave"), compras.sort_values("_clave"), on="_clave",
                           by=["material_codigo", "centro_destino"], direction="backward")
     local = local[local["mes_destino"].notna()]
-    trasladado = (local["mes_destino"] != local["mes"]) | (local["centro_destino"] != local["centro"])
+    trasladado = (local["mes_destino"] != local["mes_origen"]) | (local["centro_destino"] != local["centro"])
     local["ajuste_trasladado"] = local["ajuste"].where(trasladado, 0.0)
     partes = [local.groupby(["material_codigo", "centro_destino", "mes_destino"])[columnas].sum().reset_index()
               .rename(columns={"centro_destino": "centro", "mes_destino": "mes"})]
@@ -3356,6 +3410,49 @@ def con_precio_real(base):
     df["importe"] = df["importe_mb51"] + df["ajuste"]
     df["precio"] = df["importe"] / df["toneladas"]
     return df
+
+
+# Ajustes de la FBL3N que se reparten entre lo recibido con un contrato marco
+# (definido por el usuario, 2026-10-19): (material, mes del ajuste) ->
+# contrato. El cambio de precio MR22 de mar-2026 de los Pelets ("Traslado de
+# valor", S/ 726 mil, sin pedido) es de lo recibido con el contrato
+# 4600000955 (nov-25 a ene-26): va a esos meses según sus toneladas, no todo
+# al último mes con compra.
+AJUSTES_POR_CONTRATO = {("07-00003147", datetime.date(2026, 3, 1)): "4600000955"}
+
+
+def _prorratear_por_contrato(local):
+    """`local` (ajustes por material/centro/mes, con centro_destino) con los
+    de AJUSTES_POR_CONTRATO repartidos entre los meses en que se recibió con
+    ese contrato (MB51, según toneladas). Agrega mes_origen: el mes del ajuste."""
+    local = local.assign(mes_origen=local["mes"])
+    regla = pd.Series([(m, mes) in AJUSTES_POR_CONTRATO for m, mes in zip(local["material_codigo"], local["mes"])],
+                      index=local.index, dtype=bool)
+    if not regla.any():
+        return local
+    vigente = _sql_material_vigente()
+    materiales = _con_codigos_anteriores({m for m, _ in AJUSTES_POR_CONTRATO})
+    recibido = _query(f"""
+        SELECT {vigente} AS material_codigo, centro AS centro_destino, contrato_marco AS contrato,
+               substr(fecha_contabilizacion, 1, 7) || '-01' AS mes_recibido, SUM(cantidad) AS toneladas
+        FROM gestion_movimientomaterial
+        WHERE material_codigo IN ({",".join(_texto_sql(m) for m in materiales)})
+              AND contrato_marco IN ({",".join(_texto_sql(c) for c in set(AJUSTES_POR_CONTRATO.values()))})
+              AND +clase_movimiento IN {_CLASES_ENTRADA_COMPRA} AND proveedor <> '' AND fecha_contabilizacion IS NOT NULL
+        GROUP BY {vigente}, centro, contrato_marco, mes_recibido
+    """)
+    recibido = recibido[recibido["toneladas"] > 0].assign(mes_recibido=lambda r: pd.to_datetime(r["mes_recibido"]).dt.date)
+    recibido["parte"] = recibido["toneladas"] / recibido.groupby(["material_codigo", "centro_destino", "contrato"])["toneladas"].transform("sum")
+    partes = local[regla].assign(contrato=[AJUSTES_POR_CONTRATO[(m, mes)] for m, mes in
+                                           zip(local.loc[regla, "material_codigo"], local.loc[regla, "mes"])])
+    partes = partes.merge(recibido[["material_codigo", "centro_destino", "contrato", "mes_recibido", "parte"]],
+                          on=["material_codigo", "centro_destino", "contrato"])
+    if partes.empty:  # sin recepciones de ese contrato: el ajuste queda como estaba
+        return local
+    for c in ("ajuste", "ajuste_ordenes"):
+        partes[c] = partes[c] * partes["parte"]
+    partes["mes"] = partes["mes_recibido"]
+    return pd.concat([local[~regla], partes[local.columns]], ignore_index=True)
 
 
 @_cacheado

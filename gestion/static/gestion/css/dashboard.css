@@ -1526,3 +1526,22 @@ details.detalle-calculo[open] > summary.boton-detalle { margin-bottom: 12px; }
 .matriz-tco td.tco-repetido { color: var(--muted); font-style: italic; }
 .codigo-suave { color: var(--muted); font-size: 12px; }
 @media print { details.detalle-calculo { display: none !important; } }
+/* Transporte (Logística de Materias Primas): tramos de carga por viaje (de
+   rojo = poca carga a verde = camión lleno), dos gráficos lado a lado y el
+   mapa de calor de llegadas por día y hora. */
+.col-carga-0, .marca-col-carga-0 { fill: color-mix(in srgb, var(--down) 70%, var(--surface)); background: color-mix(in srgb, var(--down) 70%, var(--surface)); }
+.col-carga-1, .marca-col-carga-1 { fill: color-mix(in srgb, var(--warn) 65%, var(--surface)); background: color-mix(in srgb, var(--warn) 65%, var(--surface)); }
+.col-carga-2, .marca-col-carga-2 { fill: color-mix(in srgb, var(--up) 45%, var(--surface)); background: color-mix(in srgb, var(--up) 45%, var(--surface)); }
+.col-carga-3, .marca-col-carga-3 { fill: color-mix(in srgb, var(--up) 80%, var(--surface)); background: color-mix(in srgb, var(--up) 80%, var(--surface)); }
+.grilla-dos { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 16px 24px; align-items: start; }
+.mapa-calor { display: grid; grid-template-columns: 34px repeat(24, minmax(24px, 1fr)); gap: 2px; min-width: 640px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.mapa-calor .mc-hora { text-align: center; color: var(--muted); }
+.mapa-calor .mc-dia { color: var(--muted); align-self: center; }
+.mapa-calor .mc-celda {
+  height: 24px; border-radius: 2px; display: flex; align-items: center; justify-content: center;
+  color: var(--ink); font-size: 10.5px;
+  background: color-mix(in srgb, var(--accent) calc(var(--nivel) * 85%), var(--surface-2));
+}
+.mapa-calor .mc-celda[style*="--nivel: 0.6"], .mapa-calor .mc-celda[style*="--nivel: 0.7"], .mapa-calor .mc-celda[style*="--nivel: 0.8"],
+.mapa-calor .mc-celda[style*="--nivel: 0.9"], .mapa-calor .mc-celda[style*="--nivel: 1"] { color: #fff; }
+.mapa-calor .mc-celda.con-detalle:hover { box-shadow: inset 0 0 0 1.5px var(--ink); }

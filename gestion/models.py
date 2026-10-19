@@ -499,6 +499,19 @@ class IngresoFisicoSOP(models.Model):
     premio = models.FloatField(null=True, blank=True, verbose_name="Premio o castigo (S/)")
     cantidad_seca = models.FloatField(null=True, blank=True, verbose_name="Pesaje neto seco (toneladas)")
 
+    # Transporte (indicadores de Logística de Materias Primas, pedido del
+    # usuario 2026-10-19): quién trajo el material, en qué camión y cuándo se
+    # pesó. En una recepción el camión se pesa lleno al llegar y vacío al
+    # salir; fecha y hora van por separado y en hora local (sin zona horaria),
+    # como vienen en el Excel. Hora 00:00:00 = sin pesaje registrado (None).
+    transportista_codigo = models.CharField(max_length=20, blank=True)
+    transportista = models.CharField(max_length=255, blank=True)
+    placa = models.CharField(max_length=20, blank=True, verbose_name="Placa del camión")
+    fecha_pesaje_lleno = models.DateField(null=True, blank=True)
+    hora_pesaje_lleno = models.TimeField(null=True, blank=True)
+    fecha_pesaje_vacio = models.DateField(null=True, blank=True)
+    hora_pesaje_vacio = models.TimeField(null=True, blank=True)
+
     class Meta:
         verbose_name = "Ingreso físico (S&OP)"
         verbose_name_plural = "Ingresos físicos (S&OP)"

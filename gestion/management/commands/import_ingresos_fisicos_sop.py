@@ -1,3 +1,4 @@
+import datetime
 import glob
 import os
 
@@ -59,13 +60,22 @@ _NOMBRES = {
     "umb": "Unidad medida base", "documento": "Documento material", "posicion": "Posición",
     "tipo": "Tipo de operacion", "muestra": "Número Muestra", "premio": "Premio o Castigo",
     "seco": "Pesaje Neto Seco",
+    # Transporte (indicadores de Logística, 2026-10-19).
+    "placa": "Placa Camion", "transportista_codigo": "Proveedor transportista",
+    "f_lleno": "Fecha pesaje lleno", "h_lleno": "Hora pesaje lleno",
+    "f_vacio": "Fecha pesaje vacio", "h_vacio": "Hora pesaje vacio",
 }
+# Nombres repetidos que se leen en su SEGUNDA aparición: el segundo "Nombre 1"
+# es el del transportista (el primero, el del proveedor del material).
+_NOMBRES_SEGUNDA = {"transportista": "Nombre 1"}
 _POSICIONES_ANTIGUAS = {
     "centro": _IDX_CENTRO_SALIDA, "ticket": _IDX_TICKET_REGISTRO, "estado": _IDX_ESTADO_TICKET,
     "fecha": _IDX_FECHA_INGRESO, "proveedor_codigo": _IDX_PROVEEDOR_CODIGO, "proveedor": _IDX_PROVEEDOR_NOMBRE,
     "material": _IDX_MATERIAL, "descripcion": _IDX_DESCRIPCION_MATERIAL, "humedo": _IDX_PESAJE_NETO_HUMEDO,
     "umb": _IDX_UNIDAD_MEDIDA_BASE, "documento": _IDX_DOCUMENTO_MATERIAL, "posicion": _IDX_POSICION,
     "tipo": _IDX_TIPO_OPERACION, "muestra": _IDX_NUMERO_MUESTRA, "premio": _IDX_PREMIO, "seco": _IDX_PESAJE_NETO_SECO,
+    "placa": 76, "transportista_codigo": 96, "transportista": 97,
+    "f_lleno": 37, "h_lleno": 93, "f_vacio": 39, "h_vacio": 94,
 }
 
 
@@ -75,13 +85,17 @@ def _indices(encabezado):
     encabezado = ["" if e is None else str(e).strip() for e in encabezado]
     if encabezado and encabezado[0] == "Centro Salida":
         return _POSICIONES_ANTIGUAS, _IDX_CALIDAD
-    primera = {}
+    primera, segunda = {}, {}
     for i, nombre in enumerate(encabezado):
+        if nombre in primera:
+            segunda.setdefault(nombre, i)
         primera.setdefault(nombre, i)
     faltan = [n for n in [*_NOMBRES.values(), *_NOMBRES_CALIDAD.values()] if n not in primera]
+    faltan += [f"{n} (segunda)" for n in _NOMBRES_SEGUNDA.values() if n not in segunda]
     if faltan:
         raise CommandError("La ZMM056 trae un formato desconocido; faltan las columnas: " + ", ".join(faltan))
-    return ({campo: primera[nombre] for campo, nombre in _NOMBRES.items()},
+    return ({**{campo: primera[nombre] for campo, nombre in _NOMBRES.items()},
+             **{campo: segunda[nombre] for campo, nombre in _NOMBRES_SEGUNDA.items()}},
             {primera[nombre]: campo for campo, nombre in _NOMBRES_CALIDAD.items()})
 
 
@@ -101,6 +115,8 @@ _CAMPOS_ACTUALIZABLES = [
     "planta_origen", "material_codigo", "descripcion_material", "fecha_ingreso", "cantidad",
     "unidad_medida_base", "proveedor_codigo", "proveedor", "documento_material", "posicion",
     "tipo_operacion", "numero_muestra", *_IDX_CALIDAD.values(), "premio", "cantidad_seca",
+    "transportista_codigo", "transportista", "placa",
+    "fecha_pesaje_lleno", "hora_pesaje_lleno", "fecha_pesaje_vacio", "hora_pesaje_vacio",
 ]
 
 # Se excluyen solo los tickets anulados: un ticket 'REG'/'NAC'/'REV'/'ATN' ya
@@ -108,6 +124,34 @@ _CAMPOS_ACTUALIZABLES = [
 # en SAP pueda estar pendiente — solo 'ANU' significa que el ticket no cuenta.
 # Definido por el usuario.
 _ESTADO_TICKET_ANULADO = "ANU"
+
+
+def _fecha(valor):
+    """Fecha de una celda: date/datetime o texto 'AAAA-MM-DD'."""
+    if isinstance(valor, str):
+        try:
+            return datetime.date.fromisoformat(valor.strip()[:10])
+        except ValueError:
+            return None
+    return fecha(valor)
+
+
+def _hora(valor):
+    """Hora de una celda: time/datetime, texto 'HH:MM:SS' o fracción de día
+    de Excel. 00:00:00 = sin pesaje registrado -> None."""
+    if isinstance(valor, datetime.datetime):
+        valor = valor.time()
+    elif isinstance(valor, str):
+        try:
+            valor = datetime.time.fromisoformat(valor.strip()[:8])
+        except ValueError:
+            return None
+    elif isinstance(valor, (int, float)) and 0 <= valor < 1:
+        segundos = round(valor * 86400)
+        valor = datetime.time(segundos // 3600 % 24, segundos // 60 % 60, segundos % 60)
+    if not isinstance(valor, datetime.time) or valor == datetime.time(0, 0):
+        return None
+    return valor.replace(microsecond=0)
 
 
 def _analisis(valor):
@@ -240,6 +284,13 @@ class Command(BaseCommand):
                 **{campo: _analisis(fila[indice]) for indice, campo in ix_calidad.items()},
                 premio=float(premio) if (premio := decimal(fila[ix["premio"]])) else None,
                 cantidad_seca=float(seco) / _KG_A_TONELADAS if (seco := decimal(fila[ix["seco"]])) else None,
+                transportista_codigo=texto(fila[ix["transportista_codigo"]]),
+                transportista=texto(fila[ix["transportista"]]),
+                placa=texto(fila[ix["placa"]]),
+                fecha_pesaje_lleno=_fecha(fila[ix["f_lleno"]]),
+                hora_pesaje_lleno=_hora(fila[ix["h_lleno"]]),
+                fecha_pesaje_vacio=_fecha(fila[ix["f_vacio"]]),
+                hora_pesaje_vacio=_hora(fila[ix["h_vacio"]]),
             ))
             total += 1
             if len(lote) >= batch_size:
