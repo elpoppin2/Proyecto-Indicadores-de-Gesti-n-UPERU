@@ -3460,10 +3460,16 @@ _RAZON_ATIPICA = 2.0
 # Precio de referencia (S/ por T) de los meses SIN compra de un material,
 # definido por el usuario (2026-10-19): solo sirve de base de comparación del
 # IPU, no es una compra (no aparece en la evolución del precio ni suma
-# toneladas). (material, primer mes, último mes, precio).
+# toneladas). Se muestra en la matriz de precios TCO. (material, centro o
+# None = todos, primer mes, último mes, precio).
 PRECIOS_REFERENCIA_IPU = [
-    ("07-00000002", datetime.date(2024, 1, 1), datetime.date(2025, 10, 1), 42.0),  # Arcilla Terceros, hasta su ingreso de nov-2025
-    ("07-00001677", datetime.date(2024, 1, 1), datetime.date(2024, 12, 1), 69.0),  # Arcilla Ferrosa, meses de 2024 sin compra
+    ("07-00000002", None, datetime.date(2024, 1, 1), datetime.date(2025, 10, 1), 42.0),  # Arcilla Terceros, hasta su ingreso de nov-2025
+    ("07-00001677", None, datetime.date(2024, 1, 1), datetime.date(2024, 12, 1), 69.0),  # Arcilla Ferrosa, meses de 2024 sin compra
+    ("07-00001181", None, datetime.date(2024, 1, 1), datetime.date(2024, 3, 1), 103.5),  # Yeso Terceros ATO-NAC
+    ("07-00000026", None, datetime.date(2024, 1, 1), datetime.date(2024, 1, 1), 55.5),  # Yeso Terceros CDC
+    ("07-00000028", None, datetime.date(2024, 1, 1), datetime.date(2024, 1, 1), 76.0),  # Óxido de Fierro Terceros
+    ("07-00000027", "U002", datetime.date(2024, 1, 1), datetime.date(2024, 6, 1), 93.0),  # Puzolana Ayacucho, Condorcocha
+    ("07-00000027", "U001", datetime.date(2024, 1, 1), datetime.date(2025, 8, 1), 103.6),  # Puzolana Ayacucho, Atocongo
 ]
 
 
@@ -3474,8 +3480,8 @@ def bases_referencia_ipu(df):
     filas = []
     con_compra = set(zip(df["material_codigo"], df["centro"], df["mes"]))
     for material, centro in df[["material_codigo", "centro"]].drop_duplicates().itertuples(index=False):
-        for codigo, desde, hasta, precio in PRECIOS_REFERENCIA_IPU:
-            if codigo != material:
+        for codigo, centro_regla, desde, hasta, precio in PRECIOS_REFERENCIA_IPU:
+            if codigo != material or (centro_regla and centro_regla != centro):
                 continue
             mes = desde
             while mes <= hasta:

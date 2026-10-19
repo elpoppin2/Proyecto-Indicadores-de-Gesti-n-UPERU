@@ -2214,8 +2214,8 @@ function inflacionPrecios(df, desfase){
     const orden = g.slice().sort((a,b)=>ordenPy(a.mes,b.mes));
     const conCompra = new Set(orden.map(r => r.mes));
     const bases = orden.map(r => ({mes:r.mes, precio:r.precio, referencia:false}));
-    for(const [codigo, desde, hasta, precio] of PRECIOS_REFERENCIA_IPU){
-      if(codigo !== orden[0].material_codigo) continue;
+    for(const [codigo, centroRegla, desde, hasta, precio] of PRECIOS_REFERENCIA_IPU){
+      if(codigo !== orden[0].material_codigo || (centroRegla && centroRegla !== orden[0].centro)) continue;
       for(let m = desde; m <= hasta; m = sumarMesesIso(m, 1)) if(!conCompra.has(m)) bases.push({mes:m, precio, referencia:true});
     }
     bases.sort((a,b)=>ordenPy(a.mes,b.mes));
