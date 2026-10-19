@@ -3061,10 +3061,12 @@ def _puesto_en_destino(df):
 # - 07-00000005 (Caliza Terceros, Atocongo) se separó en jul-2025 por
 #   proveedor: Roca Fuerte (1000717) -> 07-00003137 y Andina (10006751) ->
 #   07-00003138. Sus ajustes de la FBL3N (casi todos cambios de precio MR22,
-#   sin proveedor) se reparten según las toneladas de cada proveedor en el mes.
+#   sin proveedor) van todos a Roca Fuerte (AJUSTES_CODIGOS_ANTERIORES).
 # - 07-00000008 Pelets Chips Recuperados (Atocongo) -> 07-00003147.
 CODIGOS_ANTERIORES_POR_PROVEEDOR = {"07-00000005": {"1000717": "07-00003137", "10006751": "07-00003138"}}
 CODIGOS_ANTERIORES = {"07-00000008": "07-00003147"}
+# Código al que van los ajustes de la FBL3N de cada código antiguo.
+AJUSTES_CODIGOS_ANTERIORES = {**CODIGOS_ANTERIORES, "07-00000005": "07-00003137"}
 
 
 def _sql_material_vigente(material="material_codigo", proveedor="proveedor"):
@@ -3081,60 +3083,6 @@ def _con_codigos_anteriores(materiales):
     anteriores = {a for a, n in CODIGOS_ANTERIORES.items() if n in nuevos}
     anteriores |= {a for a, por in CODIGOS_ANTERIORES_POR_PROVEEDOR.items() if nuevos & set(por.values())}
     return sorted(nuevos | anteriores)
-
-
-@_cacheado
-def participacion_codigos_partidos():
-    """Parte de cada código nuevo en lo comprado con un código antiguo
-    separado por proveedor (CODIGOS_ANTERIORES_POR_PROVEEDOR), por centro y
-    mes (según toneladas): material_anterior, centro, mes, material_codigo,
-    participacion. Con mes = None, la del período completo (para un ajuste
-    de un mes sin compra)."""
-    columnas = ["material_anterior", "centro", "mes", "material_codigo", "participacion"]
-    if not CODIGOS_ANTERIORES_POR_PROVEEDOR:
-        return pd.DataFrame(columns=columnas)
-    t = _query(f"""
-        SELECT material_codigo AS material_anterior, centro AS centro, proveedor AS proveedor,
-               substr(fecha_contabilizacion, 1, 7) || '-01' AS mes, SUM(cantidad) AS toneladas
-        FROM gestion_movimientomaterial
-        WHERE material_codigo IN ({",".join(_texto_sql(m) for m in CODIGOS_ANTERIORES_POR_PROVEEDOR)})
-              AND +clase_movimiento IN {_CLASES_ENTRADA_COMPRA} AND proveedor <> '' AND fecha_contabilizacion IS NOT NULL
-        GROUP BY material_codigo, centro, proveedor, mes
-    """)
-    t["material_codigo"] = [CODIGOS_ANTERIORES_POR_PROVEEDOR[a].get(p) for a, p in zip(t["material_anterior"], t["proveedor"])]
-    t = t[t["material_codigo"].notna() & (t["toneladas"] > 0)]
-    if t.empty:
-        return pd.DataFrame(columns=columnas)
-    t = t.assign(mes=pd.to_datetime(t["mes"]).dt.date, toneladas=t["toneladas"].astype(float))
-    mensual = t.groupby(["material_anterior", "centro", "mes", "material_codigo"], as_index=False)["toneladas"].sum()
-    mensual["participacion"] = mensual["toneladas"] / mensual.groupby(["material_anterior", "centro", "mes"])["toneladas"].transform("sum")
-    total = t.groupby(["material_anterior", "centro", "material_codigo"], as_index=False)["toneladas"].sum()
-    total["participacion"] = total["toneladas"] / total.groupby(["material_anterior", "centro"])["toneladas"].transform("sum")
-    total["mes"] = None
-    return pd.concat([mensual[columnas], total[columnas]], ignore_index=True)
-
-
-def _repartir_codigos_partidos(df, columnas):
-    """Filas de `df` (material_codigo, centro, mes) con un código antiguo
-    separado por proveedor -> una fila por código nuevo, con `columnas`
-    multiplicadas por su participación (participacion_codigos_partidos). Las
-    demás filas quedan igual."""
-    partidos = df["material_codigo"].isin(CODIGOS_ANTERIORES_POR_PROVEEDOR)
-    if not partidos.any():
-        return df
-    part = participacion_codigos_partidos()
-    viejos = df[partidos].rename(columns={"material_codigo": "material_anterior"})
-    mensual = part[part["mes"].notna()]
-    repartido = viejos.merge(mensual, on=["material_anterior", "centro", "mes"])
-    sin_mes = viejos.merge(mensual[["material_anterior", "centro", "mes"]].drop_duplicates(),
-                           on=["material_anterior", "centro", "mes"], how="left", indicator=True)
-    sin_mes = viejos[(sin_mes["_merge"] == "left_only").values]
-    if not sin_mes.empty:
-        repartido = pd.concat([repartido, sin_mes.merge(part[part["mes"].isna()].drop(columns="mes"),
-                                                        on=["material_anterior", "centro"])], ignore_index=True)
-    for c in columnas:
-        repartido[c] = repartido[c] * repartido["participacion"]
-    return pd.concat([df[~partidos], repartido[df.columns]], ignore_index=True)
 
 
 @_cacheado
@@ -3270,8 +3218,7 @@ def ajustes_precio_fbl3n():
     """Ajustes de la FBL3N sumados por material/centro/mes: ajuste (S/, entra
     al precio real), ajuste_ordenes (S/, liquidaciones de órdenes, aparte) y
     lineas. Vacío si todavía no se cargó la FBL3N. Los códigos antiguos
-    (CODIGOS_ANTERIORES) pasan a su código nuevo; los separados por
-    proveedor, repartidos según las toneladas de cada uno en el mes."""
+    pasan al código nuevo de AJUSTES_CODIGOS_ANTERIORES."""
     df = _query(f"""
         SELECT material_codigo, centro, substr(fecha_contabilizacion, 1, 7) || '-01' AS mes,
                SUM(CASE WHEN clase_documento IN {CLASES_LIQUIDACION_ORDENES} THEN 0 ELSE importe END) AS ajuste,
@@ -3282,8 +3229,7 @@ def ajustes_precio_fbl3n():
     """)
     if not df.empty:
         df["mes"] = pd.to_datetime(df["mes"]).dt.date
-        df["material_codigo"] = df["material_codigo"].replace(CODIGOS_ANTERIORES)
-        df = _repartir_codigos_partidos(df, ["ajuste", "ajuste_ordenes"])
+        df["material_codigo"] = df["material_codigo"].replace(AJUSTES_CODIGOS_ANTERIORES)
         df = df.groupby(["material_codigo", "centro", "mes"], as_index=False).agg(
             ajuste=("ajuste", "sum"), ajuste_ordenes=("ajuste_ordenes", "sum"), lineas=("lineas", "sum"))
     return df
@@ -3429,12 +3375,12 @@ def precios_entrada_materiales_real():
 def ajustes_fbl3n_detalle(materiales, desde=None, hasta=None):
     """Las partidas de la FBL3N de `materiales` (todas sus plantas) entre dos
     meses, con su concepto, para ver de qué trata cada importe. Incluye las
-    del código antiguo (CODIGOS_ANTERIORES), con el código al inicio del
-    texto; las de un código separado por proveedor, con el importe en la
-    parte que le toca (participacion_codigos_partidos), como en el precio."""
+    del código antiguo que van a alguno de ellos (AJUSTES_CODIGOS_ANTERIORES),
+    con ese código al inicio del texto, como en el precio."""
     if not materiales:
         return pd.DataFrame()
-    filtros = [f"material_codigo IN ({','.join(_texto_sql(m) for m in _con_codigos_anteriores(materiales))})"]
+    anteriores = [a for a, n in AJUSTES_CODIGOS_ANTERIORES.items() if n in set(materiales)]
+    filtros = [f"material_codigo IN ({','.join(_texto_sql(m) for m in sorted(set(materiales) | set(anteriores)))})"]
     if desde:
         filtros.append(f"fecha_contabilizacion >= '{desde.isoformat()}'")
     if hasta:
@@ -3450,23 +3396,8 @@ def ajustes_fbl3n_detalle(materiales, desde=None, hasta=None):
         df["concepto"] = [concepto_ajuste(c, t, x) for c, t, x in
                           zip(df["clase_documento"], df["codigo_transaccion"], df["texto"])]
         df["fecha_contabilizacion"] = pd.to_datetime(df["fecha_contabilizacion"]).dt.date
-        anteriores = ~df["material_codigo"].isin(set(materiales))
-        if anteriores.any():
-            pedidos = set(materiales)
-            part = participacion_codigos_partidos()
-            part = part[part["material_codigo"].isin(pedidos)]
-            mensual = part[part["mes"].notna()].groupby(["material_anterior", "centro", "mes"])["participacion"].sum().to_dict()
-            total = part[part["mes"].isna()].groupby(["material_anterior", "centro"])["participacion"].sum().to_dict()
-            for i in df.index[anteriores]:
-                material, centro = df.at[i, "material_codigo"], df.at[i, "centro"]
-                nota = f"[{material}] "
-                if material in CODIGOS_ANTERIORES_POR_PROVEEDOR:
-                    mes = df.at[i, "fecha_contabilizacion"].replace(day=1)
-                    p = mensual.get((material, centro, mes), total.get((material, centro), 0.0))
-                    df.at[i, "importe"] = float(df.at[i, "importe"]) * p
-                    df.at[i, "importe_moneda_documento"] = float(df.at[i, "importe_moneda_documento"] or 0) * p
-                    nota = f"[{material}, {p:.0%} según toneladas] "
-                df.at[i, "texto"] = nota + (df.at[i, "texto"] or "")
+        antiguo = df["material_codigo"].isin(anteriores)
+        df.loc[antiguo, "texto"] = ["[" + m + "] " + (t or "") for m, t in zip(df.loc[antiguo, "material_codigo"], df.loc[antiguo, "texto"])]
         df["en_precio"] = ~df["clase_documento"].isin(CLASES_LIQUIDACION_ORDENES)
         # Importados por embarque: a qué barco se asignó cada partida.
         barcos, _ = embarques_importados()

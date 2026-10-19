@@ -2620,12 +2620,21 @@ def _matriz_tco(historia, df):
         # ese mes no tiene toneladas y la base ya es el último precio.
         previos = [m for m in por_mes if m < primer_mes]
         vigente = (max(previos), por_mes[max(previos)].importe_tco / por_mes[max(previos)].toneladas) if previos else None
+        # Meses sin compra con precio de referencia del usuario (base del IPU,
+        # queries.PRECIOS_REFERENCIA_IPU): se muestra ese precio.
+        referencia = q.bases_referencia_ipu(g)
+        referencia = dict(zip(referencia["mes"], referencia["precio"]))
         celdas = []
         for c in columnas:
             if c["tipo"] == "ipu":
                 celdas.append({"ipu": ipu.get(c["anio"])})
                 continue
             r = por_mes.get(c["mes"])
+            if r is None and c["mes"] in referencia:
+                vigente = (c["mes"], referencia[c["mes"]])
+                celdas.append({"precio": vigente[1], "repetido": True,
+                               "titulo": f"{c['texto']}: sin compra, precio de referencia S/ {vigente[1]:,.2f} por T (base del IPU)"})
+                continue
             if r is None:
                 celdas.append({"precio": vigente[1], "repetido": True,
                                "titulo": f"{c['texto']}: sin compra, se repite el precio de {_mes_corto(vigente[0])}"}
