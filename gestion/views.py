@@ -2926,7 +2926,7 @@ def _matriz_tco(historia, df):
                            "atipico": not propio and not (
                                1 / q._RAZON_ATIPICA <= r.importe_tco / r.importe_mb51 <= q._RAZON_ATIPICA),
                            "titulo": f"{c['texto']}: {r.toneladas:,.0f} T · "
-                                     + (f"traslado S/ {r.importe_mb51:,.0f} + liquidación de la orden S/ {r.ajuste:,.0f}"
+                                     + (f"traslado S/ {r.importe_mb51:,.0f} + liquidación de la orden y diferencias del centro de origen S/ {r.ajuste:,.0f}"
                                         if propio else f"MB51 S/ {r.importe_mb51:,.0f} + ajustes S/ {r.ajuste:,.0f}")
                                      + f" = S/ {r.importe_tco:,.0f}"
                                      + (f" · embarque {de_barco[(material, centro, c['mes'])]}"

@@ -2790,10 +2790,16 @@ _MINIMO_TRASLADO = 0.02
 # (material, centro que la recibe) -> centro que la envía. La caliza extraída
 # entra a Atocongo por traslado desde Condorcocha (al valor estándar de U002) y
 # su costo real llega con la liquidación mensual de la orden CAL_ROCA_AT (KO88/
-# CO88, clase PP; X2 = anulación) a la cuenta 2310002000 (FBL3N). Precio =
-# (valor del traslado + liquidación) ÷ toneladas de entrada (traslado neto +
-# ajustes de humedad/traslado Z15/Z16/Z31/Z32): las mismas toneladas que la
-# fila Entradas de la CKM3N (verificado: 39,624.01 T en set-26).
+# CO88, clase PP; X2 = anulación) a la cuenta 2310002000 (FBL3N). Además, en
+# cada cierre del Material Ledger el centro que envía le pasa sus diferencias
+# de precio (FBL3N clase ML, el mismo documento en los dos centros con signo
+# contrario: "ZUPRV: Diferencias de precio de material entrada"), que la
+# CKM3N muestra en Entradas > Traslado (pedido del usuario 2026-10-19: ene-26,
+# S/ 16,646.38). Precio = (valor del traslado + liquidación + esas
+# diferencias) ÷ toneladas de entrada (traslado neto + ajustes de
+# humedad/traslado Z15/Z16/Z31/Z32): el mismo valor y las mismas toneladas de
+# la fila Entradas de la CKM3N (verificado: ene-26 S/ 2,341,741.71 y
+# 36,647.83 T; set-26 39,624.01 T).
 PRODUCCION_PROPIA = {("14-00000024", "U001"): "U002"}
 CLASES_LIQUIDACION_PRODUCCION = ("PP", "X2")
 
@@ -2842,13 +2848,26 @@ def _produccion_propia(df, materiales=None):
 
 
 def liquidaciones_produccion_propia():
-    """Liquidación de las órdenes (FBL3N, clases PP/X2) de los materiales de
-    PRODUCCION_PROPIA en su centro, por mes: material_codigo, centro, mes, liquidacion."""
-    claves = " OR ".join(f"(material_codigo = {_texto_sql(m)} AND centro = {_texto_sql(c)})" for m, c in PRODUCCION_PROPIA)
+    """Costo real de los materiales de PRODUCCION_PROPIA en su centro, por
+    mes (FBL3N): la liquidación de sus órdenes (clases PP/X2) más las
+    diferencias de precio que le pasa el centro que envía en el cierre del
+    Material Ledger (clase ML, el mismo documento en el centro de origen con
+    importe contrario). Columnas: material_codigo, centro, mes, liquidacion."""
+    claves = " OR ".join(
+        f"""(d.material_codigo = {_texto_sql(m)} AND d.centro = {_texto_sql(c)} AND (
+                d.clase_documento IN {CLASES_LIQUIDACION_PRODUCCION}
+                OR (d.clase_documento = 'ML' AND EXISTS (
+                    SELECT 1 FROM gestion_ajustepreciofbl3n o
+                    WHERE o.material_codigo = d.material_codigo AND o.centro = {_texto_sql(origen)}
+                          AND o.numero_documento = d.numero_documento
+                          AND o.fecha_contabilizacion = d.fecha_contabilizacion
+                          AND ABS(o.importe + d.importe) < 0.01))))"""
+        for (m, c), origen in PRODUCCION_PROPIA.items())
     df = _query(f"""
-        SELECT material_codigo, centro, substr(fecha_contabilizacion, 1, 7) || '-01' AS mes, SUM(importe) AS liquidacion
-        FROM gestion_ajustepreciofbl3n
-        WHERE ({claves}) AND clase_documento IN {CLASES_LIQUIDACION_PRODUCCION}
+        SELECT d.material_codigo AS material_codigo, d.centro AS centro,
+               substr(d.fecha_contabilizacion, 1, 7) || '-01' AS mes, SUM(d.importe) AS liquidacion
+        FROM gestion_ajustepreciofbl3n d
+        WHERE {claves}
         GROUP BY 1, 2, 3
     """)
     if not df.empty:
@@ -3321,8 +3340,9 @@ def con_precio_real(base):
     # Lo ajustado en U004 ya viaja en el valor del traslado a la planta
     # (puesto en destino, ver _puesto_en_destino): no se suma otra vez.
     aj = aj[aj["centro"] != CENTRO_IMPORTACION]
-    # Producción propia: solo la liquidación de su orden (abajo), no el
-    # reparto del cierre del Material Ledger ni lo demás de la cuenta 2310002000.
+    # Producción propia: solo la liquidación de su orden y las diferencias
+    # que le pasa el centro de origen (abajo, liquidaciones_produccion_propia),
+    # no el resto del cierre del Material Ledger ni lo demás de la cuenta 2310002000.
     propios = {m for m, _ in PRODUCCION_PROPIA}
     aj = aj[~aj["material_codigo"].isin(propios)]
     importados = materiales_importados()
