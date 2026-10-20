@@ -1524,6 +1524,8 @@ details.detalle-calculo[open] > summary.boton-detalle { margin-bottom: 12px; }
 .matriz-tco tbody tr:hover .tco-fijo { background: var(--line); }
 /* Mes sin compra: se repite el último precio, en gris y cursiva. */
 .matriz-tco td.tco-repetido { color: var(--muted); font-style: italic; }
+/* IPU de un material sin compra el año anterior: no entra al IPU. */
+.matriz-tco td.tco-sin-base { color: var(--muted); font-weight: 400; font-size: 11.5px; cursor: help; }
 .codigo-suave { color: var(--muted); font-size: 12px; }
 @media print { details.detalle-calculo { display: none !important; } }
 /* Transporte (Logística de Materias Primas): tramos de carga por viaje (de

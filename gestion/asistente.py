@@ -672,7 +672,7 @@ FUENTES Y REGLAS DE NEGOCIO
 - Centros: U001 = Atocongo, U002 = Condorcocha, U004 = importación.
 - Cobertura de stock = stock de cierre (MB5B) ÷ consumo promedio de los 6 meses que terminan en ese mes (MB51 clases 2xx + Z01/Z04/353). Carbón Terceros en Condorcocha se consume vía el material chancado 14-00001112.
 - Evolución de inventario: stock inicial = cierre del mes anterior (MB5B); cada mes + abastecimiento − consumo − traslados. Mínimo/máximo del archivo MinMax SOP. Lead time: 1 mes (Carbón Importado 3, Escoria 4); dentro del lead time la cuota ya está comprometida.
-- Inflación: mes T vs el mismo mes del año anterior (interanual) o vs el mes anterior (mensual). Si ese mes no tuvo compra, se compara contra el último precio registrado antes (base sustituida).
+- Inflación: mes T vs el mismo mes del año anterior (interanual) o vs el mes anterior (mensual). Si ese mes no tuvo compra, se compara contra el último precio registrado antes (base sustituida). En la interanual la base siempre es un precio del año anterior (si no lo hay hasta T−12, la primera compra de ese año); un material sin compra el año anterior no entra al IPU.
 - IPU (Índice de Precios Unacem): índice acumulado del año, se reinicia cada enero. Interanual: Ene..T de este año vs el mismo tramo del año anterior, ponderado con las toneladas del año reciente. Mensual: variaciones de cada mes encadenadas.
 - Bolsa: (precio del mes − precio base) × toneladas del mes evaluado (cantidad del año más reciente de la comparación). Positiva = costo adicional; negativa = ahorro.
 - Comparaciones atípicas (precio ×2 o ÷2 vs la base) son datos anómalos de MB51 (p.ej. Ene-24 de Sílices a S/ 16.60 y Puzolana de Terceros a S/ 17.50 por T): se muestran pero no suman en bolsa ni IPU.

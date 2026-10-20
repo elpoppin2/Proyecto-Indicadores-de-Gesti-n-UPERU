@@ -3592,6 +3592,11 @@ def resumen_precios_entrada(df):
 # antes (T−12); mensual: el mes anterior (T−1). Si el mes de referencia no
 # tuvo compra, contra el último precio registrado ANTES de esa fecha (T−13,
 # T−14... / T−2, T−3...). Sin ninguna compra hasta ese mes, T no se compara.
+# Interanual (regla del usuario, 2026-10-20): la base siempre es un precio
+# del año anterior; si el último precio hasta T−12 es más antiguo, se usa el
+# primero del año anterior después de T−12, y sin compra ese año no hay
+# comparación (Puzolana Ica, Caliza HCIM y Puzolana Junín en 2026; Pelets
+# en 2025).
 # Bolsa = (precio T − precio base) × toneladas de T: el impacto en soles de
 # la variación, ponderado siempre con la cantidad del período más reciente
 # de la comparación (2025 vs 2024 con las toneladas de 2025, 2026 vs 2025
@@ -3666,6 +3671,22 @@ def inflacion_precios(df, desfase=12):
     # material y centro (exacto si T−12 tuvo compra).
     unido = pd.merge_asof(actual.sort_values("_clave"), bases.sort_values("_clave"), on="_clave",
                           by=["material_codigo", "centro"], direction="backward")
+    if desfase == 12:
+        # Regla del usuario (2026-10-20): el IPU de un año compara contra
+        # precios del año anterior; un material sin compra (ni precio de
+        # referencia) ese año no tiene comparación. Si el último precio hasta
+        # T−12 es de antes del año anterior (o no hay), la base es el primer
+        # precio del año anterior después de T−12 (Pelets: ene-26 contra
+        # may-25, su primera compra); si tampoco hay, no se compara.
+        anio_previo = [m.year - 1 for m in unido["mes"]]
+        fuera = [b is None or pd.isna(b) or b.year != a for b, a in zip(unido["mes_base"], anio_previo)]
+        fuera = pd.Series(fuera, index=unido.index)
+        if fuera.any():
+            adelante = pd.merge_asof(unido.loc[fuera, actual.columns].sort_values("_clave"), bases.sort_values("_clave"),
+                                     on="_clave", by=["material_codigo", "centro"], direction="forward")
+            adelante = adelante[[b is not None and not pd.isna(b) and b.year == m.year - 1
+                                 for b, m in zip(adelante["mes_base"], adelante["mes"])]]
+            unido = pd.concat([unido[~fuera], adelante], ignore_index=True)
     unido = unido[unido["precio_base"].notna()].copy()
     unido["base_sustituida"] = unido["mes_base"] != unido["mes_referencia"]
     unido["variacion"] = unido["precio"] / unido["precio_base"] - 1

@@ -242,7 +242,8 @@
         <p><strong>Precio TCO</strong> = (importe de MB51 + ajustes de la FBL3N) ÷ toneladas del mes, con los importados puestos
         en planta (AT = Atocongo U001, CC = Condorcocha U002). Los materiales son los de los filtros de arriba.</p>
         <p><strong>IPU</strong> = lo pagado en el año ÷ lo que habrían costado esas toneladas al precio de un año antes − 1. La última
-        fila es el IPU de todos los materiales de la tabla.</p>
+        fila es el IPU de todos los materiales de la tabla. Un material sin compra el año anterior no tiene contra qué compararse:
+        no entra al IPU de ese año, ni en porcentaje ni en soles ("Sin base").</p>
         <p>Mes sin compra: se repite el último precio, en gris y cursiva (no cambia el IPU, que solo pondera los meses con compra).
         Si el material tiene un precio de referencia para esos meses (p.ej. Arcilla Terceros antes de su primer ingreso), se muestra ese
         precio, que es su base del IPU; pasa el mouse para verlo.
@@ -264,7 +265,7 @@
                 <td class="tco-fijo tco-f3">{{ f.centro }}</td>
                 {% for c in f.celdas %}
                   {% if c is None %}<td class="num"></td>
-                  {% elif 'ipu' in c %}<td class="num tco-ipu">{% if c.ipu is not None %}{% if c.ipu > 0 %}+{% endif %}{{ c.ipu|numero:1 }}%{% else %}—{% endif %}</td>
+                  {% elif 'ipu' in c %}<td class="num tco-ipu{% if c.sin_base %} tco-sin-base{% endif %}"{% if c.titulo %} title="{{ c.titulo }}"{% endif %}>{% if c.ipu is not None %}{% if c.ipu > 0 %}+{% endif %}{{ c.ipu|numero:1 }}%{% elif c.sin_base %}Sin base{% else %}—{% endif %}</td>
                   {% else %}<td class="num{% if c.atipico %} tco-atipico{% endif %}{% if c.repetido %} tco-repetido{% endif %}" title="{{ c.titulo }}">{{ c.precio|numero:2 }}</td>{% endif %}
                 {% endfor %}
               </tr>
@@ -278,6 +279,9 @@
           </tfoot>
         </table>
       </div>
+      {% if mt.fuera_ipu %}
+        <p class="nota">El IPU de cada año, en porcentaje y en soles, solo cuenta los materiales comprados también el año anterior. No entran por no tener compra el año anterior:{% for x in mt.fuera_ipu %} <strong>IPU {{ x.anio }}</strong> (sin compra en {{ x.anio_base }}): {{ x.materiales }}.{% endfor %}</p>
+      {% endif %}
     </details>
   {% endif %}
   {% endwith %}

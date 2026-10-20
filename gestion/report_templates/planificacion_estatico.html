@@ -222,7 +222,7 @@
     </div>
     <p class="nota">Cuánto subió o bajó el precio de compra de cada mes frente al mismo mes del año anterior (Ene-26 vs Ene-25), y su impacto en soles (bolsa).</p>
     <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
-      <p>Precio de cada mes: precio real (MB51 + ajustes de la FBL3N), el mismo de Precios de entrada. Solo se evalúan los meses con compra. Si el mes de comparación no tuvo compra, se usa el último precio anterior, marcado con <span class="marca-sustituida">*</span>.</p>
+      <p>Precio de cada mes: precio real (MB51 + ajustes de la FBL3N), el mismo de Precios de entrada. Solo se evalúan los meses con compra. Si el mes de comparación no tuvo compra, se usa el último precio anterior, marcado con <span class="marca-sustituida">*</span>. La base siempre es un precio del año anterior: si no lo hay hasta ese mes, se usa la primera compra de ese año; un material sin compra el año anterior no se compara (no entra al IPU ni a la bolsa).</p>
       <p><strong>Bolsa</strong> = (precio del mes − precio base) × toneladas del mes evaluado: 2025 vs 2024 con las toneladas de 2025, 2026 vs 2025 con las de 2026. La fila Selección pondera todos los materiales: lo pagado ÷ lo que habrían costado esas toneladas al precio base.</p>
       <p><strong>IPU (Índice de Precios Unacem)</strong> acumulado del año: de enero al mes T contra el mismo tramo del año anterior, ponderado con las toneladas del año más reciente. Se reinicia cada enero.</p>
       <p>Si el precio se duplica o cae a menos de la mitad, la comparación se marca con <span class="marca-atipica">!</span> (dato atípico): se muestra, pero no suma en la bolsa ni en la selección.</p>
@@ -2223,6 +2223,13 @@ function inflacionPrecios(df, desfase){
       const ref = sumarMesesIso(r.mes, -desfase);
       let base = null;
       for(const b of bases){ if(b.mes <= ref) base = b; else break; }
+      // Interanual: la base siempre es un precio del año anterior (regla del
+      // usuario); si no lo hay hasta T−12, la primera compra de ese año
+      // después de T−12; sin compra ese año, no se compara (queries.inflacion_precios).
+      if(desfase === 12){
+        const previo = String(Number(r.mes.slice(0,4)) - 1);
+        if(!base || base.mes.slice(0,4) !== previo) base = bases.find(b => b.mes > ref && b.mes.slice(0,4) === previo) || null;
+      }
       if(!base) continue;
       const razon = r.precio/base.precio;
       salida.push({...r, mes_referencia:ref, mes_base:base.mes, precio_base:base.precio, base_sustituida: base.mes !== ref, base_referencia: base.referencia,
@@ -2353,7 +2360,7 @@ function calcularInflacion(suf, sel){
   const detalleCelda = r => {
     let baseTxt = mesCorto(r.mes_base);
     if(r.base_referencia) baseTxt += " (precio de referencia, sin compra)";
-    else if(r.base_sustituida) baseTxt += ` (último registrado; ${mesCorto(r.mes_referencia)} sin compra)`;
+    else if(r.base_sustituida) baseTxt += r.mes_base > r.mes_referencia ? ` (primera compra de ${r.mes_base.slice(0,4)}; ${mesCorto(r.mes_referencia)} sin compra)` : ` (último registrado; ${mesCorto(r.mes_referencia)} sin compra)`;
     let texto = `${r.texto_breve} (${nombreCentro(r.centro)}) · ${mesCorto(r.mes)}: ${fmtSigno1(r.variacion*100)}%\n` +
       `${mesCorto(r.mes)}: S/ ${numero(r.precio,2)} por T\nvs ${baseTxt}: S/ ${numero(r.precio_base,2)} por T\n` +
       `Bolsa: (S/ ${numero(r.precio,2)} − S/ ${numero(r.precio_base,2)}) × ${numero(r.toneladas)} T = ${r.bolsa >= 0 ? "+" : "−"}S/ ${numero(Math.abs(r.bolsa))}`;
@@ -2474,7 +2481,7 @@ function renderInflacion(suf){
         <thead><tr><th>Mes</th><th class="num">Toneladas</th><th class="num">Precio (S/ por T)</th><th>Comparado contra</th>
           <th class="num">Precio base (S/ por T)</th><th class="num">Variación</th><th class="num">Bolsa (S/)</th></tr></thead>
         <tbody>${c.detalle.map(d => { const pct = d.variacion*100; return `<tr><td>${mesCorto(d.mes)}</td><td class="num">${numero(d.toneladas)}</td>
-          <td class="num">${numero(d.precio,2)}</td><td>${mesCorto(d.mes_base)}${d.base_referencia ? ` <span class="texto-tenue">(precio de referencia, sin compra)</span>` : d.base_sustituida ? ` <span class="texto-tenue">(último registrado; ${mesCorto(d.mes_referencia)} sin compra)</span>` : ""}</td>
+          <td class="num">${numero(d.precio,2)}</td><td>${mesCorto(d.mes_base)}${d.base_referencia ? ` <span class="texto-tenue">(precio de referencia, sin compra)</span>` : d.base_sustituida ? ` <span class="texto-tenue">(${d.mes_base > d.mes_referencia ? "primera compra de " + d.mes_base.slice(0,4) : "último registrado"}; ${mesCorto(d.mes_referencia)} sin compra)</span>` : ""}</td>
           <td class="num">${numero(d.precio_base,2)}</td><td class="num ${claseVar(pct)}">${pct > 0 ? "+" : ""}${numero(pct,1)}%</td>
           <td class="num ${d.atipica ? "texto-tenue" : claseVar(d.bolsa)}">${numero(d.bolsa)}${d.atipica ? ` <span class="marca-atipica" title="Atípica: no suma en la bolsa">!</span>` : ""}</td></tr>`; }).join("")}</tbody>
       </table></div>` : ""}`;

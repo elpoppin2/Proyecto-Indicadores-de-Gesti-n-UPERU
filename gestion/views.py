@@ -2891,6 +2891,7 @@ def _matriz_tco(historia, df):
     reparto = q.reparto_por_embarque()
     de_barco = {(r.material_codigo, r.centro, datetime.date.fromisoformat(r.mes)): r.embarques
                 for r in reparto.itertuples() if r.embarques}
+    fuera_ipu = {}  # año -> materiales sin compra el año anterior (no entran a su IPU)
     for (material, centro), g in h.groupby(["material_codigo", "centro"]):
         por_mes = {r.mes: r for r in g.itertuples()}
         if not any(m in por_mes for a in anios for m in meses_de[a]):
@@ -2908,10 +2909,21 @@ def _matriz_tco(historia, df):
         # queries.PRECIOS_REFERENCIA_IPU): se muestra ese precio.
         referencia = q.bases_referencia_ipu(g)
         referencia = dict(zip(referencia["mes"], referencia["precio"]))
+        # Regla del usuario (2026-10-20): el IPU de un año solo cuenta los
+        # materiales con compra (o precio de referencia) el año anterior; un
+        # material que se compró por primera vez ese año no tiene contra qué
+        # compararse y queda fuera (en la tabla, "Sin base" y en la nota).
+        anios_con_precio = {m.year for m in por_mes} | {m.year for m in referencia}
         celdas = []
         for c in columnas:
             if c["tipo"] == "ipu":
-                celdas.append({"ipu": ipu.get(c["anio"])})
+                a = c["anio"]
+                sin_base = (a not in ipu and a in anios_con_precio and a - 1 not in anios_con_precio
+                            and a > anios[0])
+                if sin_base:
+                    fuera_ipu.setdefault(a, []).append(f"{g['texto_breve'].iloc[0].title()} ({_CENTRO_CORTO.get(centro, centro)})")
+                celdas.append({"ipu": ipu.get(a), "sin_base": sin_base,
+                               "titulo": f"Sin compra en {a - 1}: no entra al IPU {a}" if sin_base else ""})
                 continue
             r = por_mes.get(c["mes"])
             if r is None and c["mes"] in referencia:
@@ -2939,7 +2951,9 @@ def _matriz_tco(historia, df):
     filas.sort(key=lambda f: (f["orden_centro"], f["material"]))
     total = _ipu_por_anio(h, anios)
     return {"anios": anios, "columnas": columnas, "filas": filas,
-            "total": [total.get(c["anio"]) if c["tipo"] == "ipu" else "" for c in columnas]}
+            "total": [total.get(c["anio"]) if c["tipo"] == "ipu" else "" for c in columnas],
+            "fuera_ipu": [{"anio": a, "anio_base": a - 1, "materiales": ", ".join(sorted(m))}
+                          for a, m in sorted(fuera_ipu.items())]}
 
 
 def _tramos_de_meses(meses):
@@ -2956,6 +2970,21 @@ def _tramos_de_meses(meses):
 
 def _mes_corto(fecha):
     return f"{_MESES_ABREV_GUION[fecha.month]}-{fecha.year % 100:02d}"
+
+
+def _nota_base(r):
+    """Aclaración de la base de una comparación de q.inflacion_precios (fila
+    como dict), o "" si es exactamente el mes de referencia."""
+    if r["base_referencia"]:
+        return "precio de referencia, sin compra"
+    if not r["base_sustituida"]:
+        return ""
+    sin = f"{_mes_corto(r['mes_referencia'])} sin compra"
+    # Interanual: si no hubo precio del año anterior hasta T−12, la base es la
+    # primera compra de ese año después de T−12 (queries.inflacion_precios).
+    if r["mes_base"] > r["mes_referencia"]:
+        return f"primera compra de {r['mes_base'].year}; {sin}"
+    return f"último registrado; {sin}"
 
 
 # Las dos evaluaciones de precios de Planificación (ver
@@ -3096,10 +3125,9 @@ def _contexto_inflacion(request, sufijo="inflacion"):
 
     def detalle_celda(r):
         base_txt = _mes_corto(r["mes_base"])
-        if r["base_referencia"]:
-            base_txt += " (precio de referencia, sin compra)"
-        elif r["base_sustituida"]:
-            base_txt += f" (último registrado; {_mes_corto(r['mes_referencia'])} sin compra)"
+        nota = _nota_base(r)
+        if nota:
+            base_txt += f" ({nota})"
         signo = "+" if r["bolsa"] >= 0 else "−"
         texto = (f"{r['texto_breve']} ({q.nombre_centro(r['centro'])}) · {_mes_corto(r['mes'])}: {r['variacion'] * 100:+.1f}%\n"
                  f"{_mes_corto(r['mes'])}: S/ {r['precio']:,.2f} por T\n"
@@ -3224,7 +3252,7 @@ def _contexto_inflacion(request, sufijo="inflacion"):
     if len(filas) == 1:
         contexto["detalle"] = [
             {**r, "mes_corto": _mes_corto(r["mes"]), "mes_base_corto": _mes_corto(r["mes_base"]),
-             "mes_referencia_corto": _mes_corto(r["mes_referencia"]), "pct": r["variacion"] * 100}
+             "mes_referencia_corto": _mes_corto(r["mes_referencia"]), "nota_base": _nota_base(r), "pct": r["variacion"] * 100}
             for r in reversed(inflacion.to_dict("records"))
         ]
     return contexto
@@ -4187,8 +4215,7 @@ def _cat_precios(request, categoria, tiene_inventario):
         )
         pr["detalle"] = [
             {"mes": _mes_corto(r["mes"]), "cantidad": r["toneladas"], "precio": r["precio"],
-             "base": _mes_corto(r["mes_base"]) + (" (precio de referencia)" if r["base_referencia"]
-                                                  else " (último registrado)" if r["base_sustituida"] else ""),
+             "base": _mes_corto(r["mes_base"]) + (f" ({_nota_base(r)})" if _nota_base(r) else ""),
              "precio_base": r["precio_base"], "pct": r["variacion"] * 100, "bolsa": r["bolsa"], "atipica": bool(r["atipica"])}
             for r in reversed(inflacion.to_dict("records"))
         ]
@@ -5059,8 +5086,8 @@ def _desglose_precios(request, categoria):
     df = inflacion.assign(
         umb=inflacion["material_codigo"].map(umb).fillna(""),
         mes_texto=[_mes_corto(m) for m in inflacion["mes"]],
-        base_texto=[_mes_corto(m) + (" (precio de referencia)" if ref else " (último registrado)" if sust else "")
-                    for m, sust, ref in zip(inflacion["mes_base"], inflacion["base_sustituida"], inflacion["base_referencia"])],
+        base_texto=[_mes_corto(r["mes_base"]) + (f" ({_nota_base(r)})" if _nota_base(r) else "")
+                    for r in inflacion.to_dict("records")],
         variacion_pct=inflacion["variacion"] * 100,
         atipica_texto=inflacion["atipica"].map({True: "Sí", False: ""}),
     )
