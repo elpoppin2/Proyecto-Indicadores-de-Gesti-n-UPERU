@@ -3611,7 +3611,8 @@ def resumen_precios_entrada(df):
 _RAZON_ATIPICA = 2.0
 
 # Precio de referencia (S/ por T) de los meses SIN compra de un material,
-# definido por el usuario (2026-10-19): solo sirve de base de comparación del
+# definido por el usuario (2026-10-19; su referencia es el Excel "IPU Final
+# 2025 P.2026 O1 ACTUALIZABLE V2", hoja MP Ext): solo sirve de base de comparación del
 # IPU, no es una compra (no aparece en la evolución del precio ni suma
 # toneladas). Se muestra en la matriz de precios TCO. (material, centro o
 # None = todos, primer mes, último mes, precio).
@@ -3621,7 +3622,9 @@ PRECIOS_REFERENCIA_IPU = [
     ("07-00001181", None, datetime.date(2024, 1, 1), datetime.date(2024, 3, 1), 103.5),  # Yeso Terceros ATO-NAC
     ("07-00000026", None, datetime.date(2024, 1, 1), datetime.date(2024, 1, 1), 55.5),  # Yeso Terceros CDC
     ("07-00000028", None, datetime.date(2024, 1, 1), datetime.date(2024, 1, 1), 76.0),  # Óxido de Fierro Terceros
-    ("07-00000027", "U002", datetime.date(2024, 1, 1), datetime.date(2024, 6, 1), 93.0),  # Puzolana Ayacucho, Condorcocha
+    # Puzolana Ayacucho, Condorcocha: hasta may-25 (su primera compra de 2025 es
+    # jun-25), como la hoja "MP Ext" del Excel IPU del usuario (2026-10-20).
+    ("07-00000027", "U002", datetime.date(2024, 1, 1), datetime.date(2025, 5, 1), 93.0),
     ("07-00000027", "U001", datetime.date(2024, 1, 1), datetime.date(2025, 8, 1), 103.6),  # Puzolana Ayacucho, Atocongo
 ]
 
