@@ -3097,44 +3097,131 @@ def embarques_importados():
             partidas[vacio[1].columns].reset_index(drop=True))
 
 
+# Centro de acopio (regla del usuario, 2026-10-20): Atocongo recibe Carbón
+# Importado de U004 y reenvía una parte a Condorcocha. Para no contar dos
+# veces ni cargarle a Atocongo lo que no consume, Atocongo se queda solo con lo
+# que no reenvía y Condorcocha cuenta lo que recibe de Atocongo (641 desde
+# U001, neto de anulaciones 642), cada tonelada con el costo del barco del
+# que salió: lo reenviado en un mes se resta del último barco llegado a
+# Atocongo (y si no alcanza, del anterior). centro de acopio -> centro al que
+# reenvía.
+ACOPIO_IMPORTADOS = {"U001": "U002"}
+
+
+def _reenvios_acopio(materiales):
+    """Lo que cada centro de ACOPIO_IMPORTADOS reenvía a su destino (641 con
+    cantidad > 0 en el destino, neto de 642), por material/mes: origen,
+    centro (destino), mes, toneladas, entradas."""
+    columnas = ["material_codigo", "origen", "centro", "mes", "toneladas", "entradas"]
+    partes = []
+    for origen, destino in ACOPIO_IMPORTADOS.items():
+        partes.append(_query(f"""
+            SELECT r.material_codigo AS material_codigo, '{origen}' AS origen, r.centro AS centro,
+                   substr(r.fecha_contabilizacion, 1, 7) || '-01' AS mes, SUM(r.cantidad) AS toneladas,
+                   SUM(CASE WHEN r.clase_movimiento = '641' THEN 1 ELSE 0 END) AS entradas
+            FROM gestion_movimientomaterial r
+            WHERE r.material_codigo IN ({",".join(_texto_sql(m) for m in materiales)}) AND r.centro = '{destino}'
+                  AND ((r.clase_movimiento = '641' AND r.cantidad > 0) OR (r.clase_movimiento = '642' AND r.cantidad < 0))
+                  AND EXISTS (SELECT 1 FROM gestion_movimientomaterial o
+                              WHERE o.documento_material = r.documento_material
+                                    AND o.ejercicio_documento_material = r.ejercicio_documento_material
+                                    AND o.material_codigo = r.material_codigo AND o.centro = '{origen}')
+            GROUP BY r.material_codigo, r.centro, mes
+        """))
+    df = pd.concat(partes, ignore_index=True) if partes else pd.DataFrame(columns=columnas)
+    df["toneladas"] = df["toneladas"].astype(float)
+    return df[columnas]
+
+
 @_cacheado
 def reparto_por_embarque():
-    """Lo recibido en cada planta desde U004 (material/centro/mes, mismos
-    traslados que _puesto_en_destino) valorizado por FIFO con sus embarques:
-    toneladas, importe (MB51 de los barcos + valor del traslado de lo que no
-    tiene barco cargado), ajuste, ajuste_ordenes, humedad (T: la parte de
-    los ajustes por humedad de sus barcos; toneladas secas = toneladas +
-    humedad), sin_embarque (T) y embarques (texto)."""
+    """Lo que entra a cada planta desde U004 (material/centro/mes, mismos
+    traslados que _puesto_en_destino) valorizado por FIFO con sus embarques,
+    en toneladas secas (menos la humedad de sus barcos) y con el reenvío del
+    centro de acopio (ACOPIO_IMPORTADOS): toneladas, importe (MB51 de los
+    barcos + valor del traslado de lo que no tiene barco cargado), ajuste,
+    ajuste_ordenes, entradas, reenviado (T que llegaron desde el centro de
+    acopio), sin_embarque (T) y embarques (texto)."""
     columnas = ["material_codigo", "centro", "mes", "toneladas", "importe", "ajuste", "ajuste_ordenes",
-                "humedad", "sin_embarque", "embarques"]
+                "entradas", "reenviado", "sin_embarque", "embarques"]
     barcos, _ = embarques_importados()
     if barcos.empty:
         return pd.DataFrame(columns=columnas)
-    traslados = _traslados_desde_importacion(sorted(barcos["material_codigo"].unique()))
+    materiales = sorted(barcos["material_codigo"].unique())
+    traslados = _traslados_desde_importacion(materiales)
+    reenvios = _reenvios_acopio(materiales)
     filas = []
     for material, t in traslados.groupby("material_codigo"):
-        cola = [{"embarque": b.embarque, "llegada": b.llegada.replace(day=1), "quedan": b.toneladas,
-                 "mb51": b.importe / b.toneladas, "ajuste": b.ajuste / b.toneladas,
-                 "ordenes": b.ajuste_ordenes / b.toneladas, "humedad": b.humedad / b.toneladas}
-                for b in barcos[barcos["material_codigo"] == material].itertuples()]
+        # Costos por tonelada SECA de cada barco (la humedad baja sus toneladas).
+        cola = []
+        for b in barcos[barcos["material_codigo"] == material].itertuples():
+            secas = b.toneladas + b.humedad
+            cola.append({"embarque": b.embarque, "llegada": b.llegada.replace(day=1), "quedan": b.toneladas,
+                         "seca": secas / b.toneladas, "mb51": b.importe / secas, "ajuste": b.ajuste / secas,
+                         "ordenes": b.ajuste_ordenes / secas})
+        # 1) Lo que cada planta recibe de U004, por FIFO de barcos: un lote por
+        #    barco (o sin barco) y mes, con sus costos por tonelada seca.
+        lotes = []
         for r in t.sort_values(["mes", "centro"]).itertuples():
             mes = datetime.date.fromisoformat(r.mes)
-            falta, mb51, ajuste, ordenes, humedad, usados = r.toneladas, 0.0, 0.0, 0.0, 0.0, []
+            falta, primero = r.toneladas, True
             for b in cola:
                 if falta <= 1e-6:
                     break
                 if b["quedan"] <= 1e-6 or b["llegada"] > mes:
                     continue
                 toma = min(falta, b["quedan"])
-                mb51 += toma * b["mb51"]; ajuste += toma * b["ajuste"]; ordenes += toma * b["ordenes"]
-                humedad += toma * b["humedad"]
-                b["quedan"] -= toma; falta -= toma
-                usados.append(b["embarque"])
-            sin = max(falta, 0.0)
-            filas.append({"material_codigo": material, "centro": r.centro, "mes": r.mes, "toneladas": r.toneladas,
-                          "importe": mb51 + sin * r.importe / r.toneladas, "ajuste": ajuste, "ajuste_ordenes": ordenes,
-                          "humedad": humedad, "sin_embarque": sin, "embarques": ", ".join(usados)})
-    return pd.DataFrame(filas, columns=columnas)
+                lotes.append({"centro": r.centro, "mes": r.mes, "embarque": b["embarque"], "cantidad": toma * b["seca"],
+                              "mb51": b["mb51"], "ajuste": b["ajuste"], "ordenes": b["ordenes"], "sale": 0.0,
+                              "entradas": r.entradas if primero else 0})
+                b["quedan"] -= toma; falta -= toma; primero = False
+            if falta > 1e-6:  # sin barco cargado: al valor del traslado, sin ajustes
+                lotes.append({"centro": r.centro, "mes": r.mes, "embarque": None, "cantidad": falta,
+                              "mb51": r.importe / r.toneladas, "ajuste": 0.0, "ordenes": 0.0, "sale": 0.0,
+                              "entradas": r.entradas if primero else 0})
+        # 2) Reenvíos del centro de acopio: lo reenviado en un mes sale del
+        #    último barco llegado al acopio hasta ese mes (y si no alcanza, del
+        #    anterior) y entra al destino ese mes, con el costo de su barco. No
+        #    FIFO: el acopio también consume lo suyo, así que lo de un barco
+        #    viejo ya no está para reenviarse meses después.
+        recibidos = []
+        for f in reenvios[reenvios["material_codigo"] == material].sort_values("mes").itertuples():
+            falta = f.toneladas
+            disponibles = [x for x in lotes if x["centro"] == f.origen and x["mes"] <= f.mes][::-1]
+            primero = True
+            for x in disponibles:
+                if falta <= 1e-6:
+                    break
+                libre = x["cantidad"] - x["sale"]
+                if libre <= 1e-6:
+                    continue
+                toma = min(falta, libre)
+                x["sale"] += toma; falta -= toma
+                recibidos.append({**x, "centro": f.centro, "mes": f.mes, "cantidad": toma, "sale": 0.0,
+                                  "entradas": f.entradas if primero else 0, "reenviado": toma})
+                primero = False
+            if falta > 1e-6 and disponibles:  # más de lo recibido: al costo del último lote
+                ultimo = disponibles[0]
+                recibidos.append({**ultimo, "centro": f.centro, "mes": f.mes, "cantidad": falta, "sale": 0.0,
+                                  "entradas": f.entradas if primero else 0, "reenviado": falta})
+        # 3) Por planta y mes: lo que se queda (cantidad − reenviado) y lo recibido.
+        por_fila = {}
+        for x in [{**x, "cantidad": x["cantidad"] - x["sale"], "reenviado": 0.0} for x in lotes] + recibidos:
+            f = por_fila.setdefault((x["centro"], x["mes"]), {
+                "material_codigo": material, "centro": x["centro"], "mes": x["mes"], "toneladas": 0.0, "importe": 0.0,
+                "ajuste": 0.0, "ajuste_ordenes": 0.0, "entradas": 0, "reenviado": 0.0, "sin_embarque": 0.0,
+                "embarques": []})
+            f["toneladas"] += x["cantidad"]; f["importe"] += x["cantidad"] * x["mb51"]
+            f["ajuste"] += x["cantidad"] * x["ajuste"]; f["ajuste_ordenes"] += x["cantidad"] * x["ordenes"]
+            f["entradas"] += x["entradas"]; f["reenviado"] += x["reenviado"]
+            if x["embarque"] is None:
+                f["sin_embarque"] += x["cantidad"]
+            elif x["cantidad"] > 1e-6 and x["embarque"] not in f["embarques"]:
+                f["embarques"].append(x["embarque"])
+        for f in por_fila.values():
+            f["embarques"] = ", ".join(f["embarques"])
+            filas.append(f)
+    return pd.DataFrame(filas, columns=columnas).sort_values(["material_codigo", "centro", "mes"]).reset_index(drop=True)
 
 
 def _puesto_en_destino(df):
@@ -3142,28 +3229,28 @@ def _puesto_en_destino(df):
     importación U004, sino el valor PUESTO EN DESTINO (U001/U002). Las
     compras de `df` en U004 se reemplazan por lo que cada planta recibe de
     U004 por traslado (641, neto de anulaciones 642, lado receptor): misma
-    cantidad, al valor con que entra a la planta. Solo el primer destino
-    (desde U004): el Carbón Importado que luego va de U001 a U002 no se
-    cuenta dos veces. Lo comprado en U004 que nunca se traslada (repuestos y
-    suministros del muelle, ~S/ 8 MM) queda fuera del análisis.
+    cantidad, al valor con que entra a la planta. Lo que el centro de acopio
+    (Atocongo) reenvía a Condorcocha cuenta en Condorcocha y no en Atocongo
+    (ACOPIO_IMPORTADOS, importados por embarque). Lo comprado en U004 que
+    nunca se traslada (repuestos y suministros del muelle, ~S/ 8 MM) queda
+    fuera del análisis.
     `df`: material_codigo, centro, mes (texto 'AAAA-MM-01'), toneladas,
     importe, entradas, proveedores (salida del SQL de los precios)."""
     if df.empty or not (df["centro"] == CENTRO_IMPORTACION).any():
         return df
     materiales = sorted(df.loc[df["centro"] == CENTRO_IMPORTACION, "material_codigo"].unique())
     destino = _traslados_desde_importacion(materiales).copy()
-    # Importados por embarque: el valor MB51 de lo recibido es el del ingreso
-    # del barco de donde salió (FIFO), no el valor del traslado (que trae
-    # revaluaciones de U004 de otros barcos), y sus toneladas son las secas
-    # (menos la humedad de esos barcos). Ver embarques_importados.
+    # Importados por embarque: lo recibido sale de reparto_por_embarque (el
+    # valor MB51 del barco de donde salió por FIFO, no el valor del traslado
+    # que trae revaluaciones de U004 de otros barcos; toneladas secas; el
+    # reenvío del centro de acopio ya repartido entre las plantas).
     reparto = reparto_por_embarque()
     if not reparto.empty:
-        destino = destino.merge(reparto[["material_codigo", "centro", "mes", "importe", "humedad"]]
-                                .rename(columns={"importe": "_fifo", "humedad": "_humedad"}),
-                                on=["material_codigo", "centro", "mes"], how="left")
-        destino["importe"] = destino["_fifo"].where(destino["_fifo"].notna(), destino["importe"])
-        destino["toneladas"] = destino["toneladas"] + destino["_humedad"].fillna(0.0)
-        destino = destino.drop(columns=["_fifo", "_humedad"])
+        # Un mes en que el acopio reenvió todo lo recibido queda sin toneladas.
+        propios = reparto[reparto["material_codigo"].isin(materiales) & (reparto["toneladas"] >= 0.5)]
+        destino = pd.concat([destino[~destino["material_codigo"].isin(set(reparto["material_codigo"]))],
+                             propios[["material_codigo", "centro", "mes", "toneladas", "importe", "entradas"]]],
+                            ignore_index=True)
     proveedores = df[df["centro"] == CENTRO_IMPORTACION].groupby("material_codigo")["proveedores"].max()
     destino["proveedores"] = destino["material_codigo"].map(proveedores).fillna(1).astype(int)
     resto = df[df["centro"] != CENTRO_IMPORTACION]
