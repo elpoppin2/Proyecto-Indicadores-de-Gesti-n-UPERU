@@ -1515,10 +1515,10 @@ details.detalle-calculo[open] > summary.boton-detalle { margin-bottom: 12px; }
   position: sticky; z-index: 1; box-sizing: border-box; background: var(--surface);
   overflow: hidden; text-overflow: ellipsis;
 }
-.matriz-tco .tco-f1 { left: 0; width: 96px; min-width: 96px; max-width: 96px; }
-.matriz-tco .tco-f2 { left: 96px; width: 280px; min-width: 280px; max-width: 280px; }
-.matriz-tco .tco-f3 { left: 376px; width: 64px; min-width: 64px; max-width: 64px; box-shadow: 2px 0 0 var(--table-line); }
-.matriz-tco .tco-f123 { left: 0; width: 440px; min-width: 440px; max-width: 440px; box-shadow: 2px 0 0 var(--table-line); }
+.matriz-tco .tco-f1 { left: 0; width: 116px; min-width: 116px; max-width: 116px; }
+.matriz-tco .tco-f2 { left: 116px; width: 280px; min-width: 280px; max-width: 280px; }
+.matriz-tco .tco-f3 { left: 396px; width: 64px; min-width: 64px; max-width: 64px; box-shadow: 2px 0 0 var(--table-line); }
+.matriz-tco .tco-f123 { left: 0; width: 460px; min-width: 460px; max-width: 460px; box-shadow: 2px 0 0 var(--table-line); }
 .matriz-tco thead .tco-fijo { z-index: 3; background: var(--th-bg); }
 .matriz-tco tbody tr:nth-child(even) .tco-fijo { background: var(--surface-2); }
 .matriz-tco tbody tr:hover .tco-fijo { background: var(--line); }
