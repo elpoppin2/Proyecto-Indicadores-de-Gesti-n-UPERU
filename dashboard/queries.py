@@ -2166,7 +2166,11 @@ def cumplimiento_mensual_abastecimiento(categoria=None, centro=None):
             "diferencia": None if sin_comparacion else real_total - plan_total,
             "cumplimiento_pct": None if sin_comparacion else round(real_total / plan_total * 100, 1),
         })
-    return filas
+    # La serie arranca en el primer mes con Plan: la ZMM056 trae ingresos desde
+    # ene-2025 (cargada el 2026-10-20) y el Plan recién desde set-2026; sin
+    # esto el gráfico abría con 20 meses vacíos.
+    primero = next((i for i, f in enumerate(filas) if f["cantidad_plan"]), len(filas))
+    return filas[primero:]
 
 
 # Consumo real de Planificación (Materias Primas/Combustibles): la misma regla
