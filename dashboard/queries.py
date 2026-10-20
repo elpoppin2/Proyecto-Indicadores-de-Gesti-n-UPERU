@@ -3353,18 +3353,37 @@ def concepto_ajuste(clase, transaccion, texto):
     return "Otros"
 
 
+# Partidas de la FBL3N que NO entran al precio real (pedido del usuario,
+# 2026-10-20), solo para ese material: (material, número de documento). En la
+# CKM3N de mar-26 de la Puzolana de Terceros (U001) aparecen como "Otras
+# entradas/consumos > Debe/haber" (cargo/descargo de material, MR22), fuera
+# de Entradas (855.517 T, S/ 110,573.92): sumarlas bajaba el precio de 129.25
+# a ~112.
+AJUSTES_EXCLUIDOS = [("07-00000055", "3100005265"), ("07-00000055", "3100005280")]
+
+
+def _sql_ajuste_excluido(material="material_codigo", documento="numero_documento"):
+    """Condición SQL verdadera para las partidas de AJUSTES_EXCLUIDOS."""
+    if not AJUSTES_EXCLUIDOS:
+        return "0"
+    return "(" + " OR ".join(f"({material} = {_texto_sql(m)} AND {documento} = {_texto_sql(d)})"
+                             for m, d in AJUSTES_EXCLUIDOS) + ")"
+
+
 @_cacheado
 def ajustes_precio_fbl3n():
     """Ajustes de la FBL3N sumados por material/centro/mes: ajuste (S/, entra
     al precio real), ajuste_ordenes (S/, liquidaciones de órdenes, aparte) y
     lineas. Vacío si todavía no se cargó la FBL3N. Los códigos antiguos
-    pasan al código nuevo de AJUSTES_CODIGOS_ANTERIORES."""
+    pasan al código nuevo de AJUSTES_CODIGOS_ANTERIORES. Sin las partidas de
+    AJUSTES_EXCLUIDOS."""
     df = _query(f"""
         SELECT material_codigo, centro, substr(fecha_contabilizacion, 1, 7) || '-01' AS mes,
                SUM(CASE WHEN clase_documento IN {CLASES_LIQUIDACION_ORDENES} THEN 0 ELSE importe END) AS ajuste,
                SUM(CASE WHEN clase_documento IN {CLASES_LIQUIDACION_ORDENES} THEN importe ELSE 0 END) AS ajuste_ordenes,
                COUNT(*) AS lineas
         FROM gestion_ajustepreciofbl3n
+        WHERE NOT {_sql_ajuste_excluido()}
         GROUP BY material_codigo, centro, mes
     """)
     if not df.empty:
@@ -3583,7 +3602,9 @@ def ajustes_fbl3n_detalle(materiales, desde=None, hasta=None):
         df["fecha_contabilizacion"] = pd.to_datetime(df["fecha_contabilizacion"]).dt.date
         antiguo = df["material_codigo"].isin(anteriores)
         df.loc[antiguo, "texto"] = ["[" + m + "] " + (t or "") for m, t in zip(df.loc[antiguo, "material_codigo"], df.loc[antiguo, "texto"])]
-        df["en_precio"] = ~df["clase_documento"].isin(CLASES_LIQUIDACION_ORDENES)
+        excluidos = set(AJUSTES_EXCLUIDOS)
+        df["en_precio"] = ~df["clase_documento"].isin(CLASES_LIQUIDACION_ORDENES) & pd.Series(
+            [(m, str(d)) not in excluidos for m, d in zip(df["material_codigo"], df["numero_documento"])], index=df.index)
         # Importados por embarque: a qué barco se asignó cada partida.
         barcos, _ = embarques_importados()
         barcos = barcos[barcos["material_codigo"].isin(materiales)]
