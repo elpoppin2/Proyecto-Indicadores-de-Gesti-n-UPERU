@@ -2802,6 +2802,20 @@ _MINIMO_TRASLADO = 0.02
 # 36,647.83 T; set-26 39,624.01 T).
 PRODUCCION_PROPIA = {("14-00000024", "U001"): "U002"}
 CLASES_LIQUIDACION_PRODUCCION = ("PP", "X2")
+# Anulaciones de traslado (642) que fueron un error de SAP y no se descuentan
+# (pedido del usuario, 2026-10-20): (material, fecha). El 26-jun-26 se
+# anularon 137 traslados de la Caliza Roca Extraída (4,607 T) que sí llegaron;
+# sin esto jun-26 quedaba con 18,401 T en vez de ~23,000 (precio 83.75 en vez
+# de ~67). Las otras anulaciones de junio (un camión cada una) sí cuentan.
+ANULACIONES_ERRONEAS = [("14-00000024", datetime.date(2026, 6, 26))]
+
+
+def _sql_sin_anulaciones_erroneas(material):
+    """Condición SQL que deja fuera las 642 de ANULACIONES_ERRONEAS de `material`."""
+    fechas = [f"'{f.isoformat()}'" for m, f in ANULACIONES_ERRONEAS if m == material]
+    if not fechas:
+        return "1"
+    return f"NOT (clase_movimiento = '642' AND fecha_contabilizacion IN ({', '.join(fechas)}))"
 
 
 def _produccion_propia(df, materiales=None):
@@ -2823,6 +2837,7 @@ def _produccion_propia(df, materiales=None):
             FROM gestion_movimientomaterial
             WHERE material_codigo = {_texto_sql(material)} AND centro IN ({_texto_sql(centro)}, {_texto_sql(origen)})
                   AND clase_movimiento IN ('641', '642', 'Z15', 'Z16', 'Z31', 'Z32') AND fecha_contabilizacion IS NOT NULL
+                  AND {_sql_sin_anulaciones_erroneas(material)}
             GROUP BY 1, 2, 3
         """)
         if m.empty:
@@ -3188,6 +3203,28 @@ def _con_codigos_anteriores(materiales):
     return sorted(nuevos | anteriores)
 
 
+def _sql_traspasos_cambio_codigo():
+    """Condición SQL de las entradas por traspaso entre materiales (309) con
+    que el stock de un código antiguo pasó a su código nuevo: cuentan como
+    compra del código nuevo, con su cantidad y valor (pedido del usuario,
+    2026-10-20; así lo mide su Excel de IPU). Jul-25 "CAMBIO COD. COORD
+    COSTOS": 07-00000005 -> Roca Fuerte 5,778 T y Andina 8,667 T, a S/ 55.75.
+    Solo el lado que entra (cantidad > 0) y solo documentos donde sale un
+    código antiguo; "0" si no hay ninguno."""
+    antiguos = sorted(set(CODIGOS_ANTERIORES) | set(CODIGOS_ANTERIORES_POR_PROVEEDOR))
+    if not antiguos:
+        return "0"
+    docs = _query(f"""
+        SELECT DISTINCT documento_material AS doc FROM gestion_movimientomaterial
+        WHERE material_codigo IN ({",".join(_texto_sql(m) for m in antiguos)}) AND clase_movimiento = '309' AND cantidad < 0
+    """)
+    if docs.empty:
+        return "0"
+    lista = ",".join(_texto_sql(d) for d in docs["doc"])
+    return (f"(clase_movimiento = '309' AND cantidad > 0 AND documento_material IN ({lista}) "
+            f"AND material_codigo NOT IN ({','.join(_texto_sql(m) for m in antiguos)}))")
+
+
 @_cacheado
 def precios_entrada_sop():
     """Una fila por material/centro/mes con compras: toneladas, importe (S/),
@@ -3208,10 +3245,10 @@ def precios_entrada_sop():
                substr(fecha_contabilizacion, 1, 7) || '-01' AS mes,
                SUM(cantidad) AS toneladas, SUM(importe_moneda_local) AS importe,
                SUM(CASE WHEN clase_movimiento = '101' THEN 1 ELSE 0 END) AS entradas,
-               COUNT(DISTINCT proveedor) AS proveedores
+               COUNT(DISTINCT NULLIF(proveedor, '')) AS proveedores
         FROM gestion_movimientomaterial
         WHERE material_codigo IN ({",".join(f"'{m}'" for m in _con_codigos_anteriores(materiales))})
-              AND +clase_movimiento IN {_CLASES_ENTRADA_COMPRA} AND proveedor <> ''
+              AND ((+clase_movimiento IN {_CLASES_ENTRADA_COMPRA} AND proveedor <> '') OR {_sql_traspasos_cambio_codigo()})
               AND fecha_contabilizacion IS NOT NULL
         GROUP BY {vigente}, centro, mes
     """)
@@ -3248,10 +3285,10 @@ def precios_entrada_materiales():
                substr(fecha_contabilizacion, 1, 7) || '-01' AS mes,
                SUM(cantidad) AS toneladas, SUM(importe_moneda_local) AS importe,
                SUM(CASE WHEN clase_movimiento = '101' THEN 1 ELSE 0 END) AS entradas,
-               COUNT(DISTINCT proveedor) AS proveedores
+               COUNT(DISTINCT NULLIF(proveedor, '')) AS proveedores
         FROM gestion_movimientomaterial
-        WHERE clase_movimiento IN {_CLASES_ENTRADA_COMPRA} AND proveedor <> '' AND material_codigo <> ''
-              AND fecha_contabilizacion IS NOT NULL
+        WHERE ((clase_movimiento IN {_CLASES_ENTRADA_COMPRA} AND proveedor <> '') OR {_sql_traspasos_cambio_codigo()})
+              AND material_codigo <> '' AND fecha_contabilizacion IS NOT NULL
         GROUP BY {vigente}, centro, mes
     """)
     df = _produccion_propia(_puesto_en_destino(df))
