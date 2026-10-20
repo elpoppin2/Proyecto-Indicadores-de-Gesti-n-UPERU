@@ -2776,11 +2776,14 @@ def _contexto_precios_entrada(request):
         de_barco = {(r.centro, datetime.date.fromisoformat(r.mes)): r for r in reparto.itertuples()}
         barcos, _ = q.embarques_importados()
         for b in barcos[barcos["material_codigo"] == material_uno].itertuples():
+            # Precios por tonelada seca (menos los ajustes por humedad del barco).
+            secas = b.toneladas + b.humedad
             embarques.append({
                 "embarque": b.embarque, "pedido": b.pedido, "llegada": b.llegada, "toneladas": b.toneladas,
+                "humedad": b.humedad, "secas": secas,
                 "importe": b.importe, "ajuste": b.ajuste, "partidas": b.partidas,
-                "precio_mb51": b.importe / b.toneladas, "precio_real": (b.importe + b.ajuste) / b.toneladas,
-                "ajuste_por_t": b.ajuste / b.toneladas,
+                "precio_mb51": b.importe / secas, "precio_real": (b.importe + b.ajuste) / secas,
+                "ajuste_por_t": b.ajuste / secas,
             })
         for r in g.itertuples():
             barco = de_barco.get((r.centro, r.mes))

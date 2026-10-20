@@ -14,7 +14,9 @@
     <p><strong>Puesto en destino, por embarque:</strong> los importados (Carbón Importado, Escoria japonesa) se compran en el centro
     {{ pr.centro_importacion }} y se miden en lo que recibe cada planta (U001/U002) desde {{ pr.centro_importacion }}. Cada barco
     junta su ingreso en MB51 con todas sus partidas de la FBL3N (por el pedido que citan, o la fecha), aunque se registren
-    meses después; cada tonelada recibida lleva el costo del barco del que salió (el primero en llegar sale primero).</p>
+    meses después; cada tonelada recibida lleva el costo del barco del que salió (el primero en llegar sale primero).
+    Los ajustes por humedad (MB51 Z15/Z16, solo cantidad) van al último barco llegado antes y bajan sus toneladas: el
+    precio es por tonelada seca.</p>
     {% if pr.es_real %}
     <p><strong>Precio real</strong> = (importe de MB51 + ajustes de la FBL3N) ÷ toneladas. Los ajustes llegan a la cuenta de
     existencias sin pasar por MB51: diferencias de factura, fletes, desestiba y cargos de importación (MIRO), anulaciones (MR8M)
@@ -84,12 +86,13 @@
       {% endif %}
       {% if pr.embarques %}
         <h3 class="subtitulo">Composición por embarque</h3>
-        <p class="nota">Costo completo de cada barco: su ingreso en MB51 más todas las partidas de la FBL3N que le corresponden (flete, desestiba, demurrage, aduanas, diferencias de factura), aunque se registren meses después. Cada tonelada que llega a planta lleva el costo del barco del que salió.</p>
+        <p class="nota">Costo completo de cada barco: su ingreso en MB51 más todas las partidas de la FBL3N que le corresponden (flete, desestiba, demurrage, aduanas, diferencias de factura), aunque se registren meses después. Los precios son por tonelada seca: las toneladas del ingreso menos sus ajustes por humedad (MB51 Z15/Z16). Cada tonelada que llega a planta lleva el costo del barco del que salió.</p>
         <div class="tabla-scroll">
           <table>
             <thead>
               <tr>
                 <th>Embarque (pedido)</th><th>Llegada a U004</th><th class="num">Toneladas</th>
+                <th class="num">Ajuste humedad (T)</th><th class="num">Toneladas secas</th>
                 <th class="num">Importe MB51 (S/)</th><th class="num">Ajustes FBL3N (S/)</th><th class="num">Partidas</th>
                 <th class="num">Precio MB51 (S/ por T)</th><th class="num">Ajuste por T</th><th class="num">Precio real (S/ por T)</th>
               </tr>
@@ -99,6 +102,8 @@
                 <tr>
                   <td>{{ b.pedido }}</td><td>{{ b.llegada|date:"d/m/Y" }}</td>
                   <td class="num">{{ b.toneladas|numero:0 }}</td>
+                  <td class="num">{% if b.humedad %}{{ b.humedad|numero:0 }}{% else %}—{% endif %}</td>
+                  <td class="num">{{ b.secas|numero:0 }}</td>
                   <td class="num">{{ b.importe|numero:0 }}</td>
                   <td class="num">{{ b.ajuste|numero:0 }}</td>
                   <td class="num">{{ b.partidas }}</td>

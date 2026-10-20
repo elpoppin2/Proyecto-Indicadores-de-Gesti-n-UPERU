@@ -2938,11 +2938,18 @@ def _traslados_desde_importacion(materiales):
 #   costo de los barcos de donde salió (un barco solo abastece desde su
 #   llegada). Toneladas sin barco cargado que las cubra (falta la MB51 de
 #   ese ingreso) quedan al valor del traslado, sin ajustes.
+# - Ajustes por humedad (pedido del usuario, 2026-10-19): MB51 clases Z15
+#   (entrada) / Z16 (salida), solo cantidad y sin valor ("Ajuste Humedad
+#   SET-25", "M/V EVA BRIGHT"). Van al último barco llegado antes del ajuste,
+#   en cualquier centro, y bajan sus toneladas: el costo del barco se reparte
+#   en las toneladas secas (Escoria ~6-8% por barco). Cada tonelada recibida
+#   lleva la parte de humedad de su barco (FIFO).
 # Solo para importados que se compran únicamente en U004 (Carbón Importado,
 # Escoria japonesa...); los demás siguen con el reparto por mes.
 # ---------------------------------------------------------------------------
 _PEDIDO_EN_TEXTO = re.compile(r"(?<!\d)45(\d{8})(?!\d)|(?<!\d)45/(\d{4,8})(?!\d)")
 _DIAS_ENTRE_BARCOS = 45
+CLASES_AJUSTE_HUMEDAD = ("Z15", "Z16")
 
 
 def _pedido_de_partida(*campos):
@@ -2986,12 +2993,13 @@ def _embarque_de_partidas(partidas, barcos):
 @_cacheado
 def embarques_importados():
     """(embarques, partidas) de los importados comprados solo en U004.
-    embarques: material_codigo, embarque, pedido, llegada, toneladas, importe
-    (MB51), ajuste (FBL3N al precio), ajuste_ordenes, partidas.
+    embarques: material_codigo, embarque, pedido, llegada, toneladas (las
+    del ingreso), importe (MB51), ajuste (FBL3N al precio), ajuste_ordenes,
+    partidas, humedad (T de sus ajustes Z15/Z16, negativo = se secó).
     partidas: material_codigo, numero_documento, fecha, centro, importe,
     embarque (None = fuera) y criterio (pedido / fecha / anterior)."""
     vacio = (pd.DataFrame(columns=["material_codigo", "embarque", "pedido", "llegada", "toneladas", "importe",
-                                   "ajuste", "ajuste_ordenes", "partidas"]),
+                                   "ajuste", "ajuste_ordenes", "partidas", "humedad"]),
              pd.DataFrame(columns=["material_codigo", "numero_documento", "fecha", "centro", "importe",
                                    "embarque", "criterio"]))
     importados = sorted(materiales_importados())
@@ -3048,6 +3056,24 @@ def embarques_importados():
     for c in ("ajuste", "ajuste_ordenes"):
         barcos[c] = barcos[c].fillna(0.0)
     barcos["partidas"] = barcos["partidas"].fillna(0).astype(int)
+
+    # Ajustes por humedad: al último barco llegado antes (sin pedido ni texto
+    # que lo cite, criterio "fecha"); los anteriores al primer barco, fuera.
+    humedad = _query(f"""
+        SELECT material_codigo, fecha_contabilizacion AS fecha, SUM(cantidad) AS toneladas
+        FROM gestion_movimientomaterial
+        WHERE material_codigo IN ({",".join(_texto_sql(m) for m in barcos["material_codigo"].unique())})
+              AND clase_movimiento IN {CLASES_AJUSTE_HUMEDAD} AND fecha_contabilizacion IS NOT NULL
+        GROUP BY material_codigo, fecha_contabilizacion
+    """)
+    barcos["humedad"] = 0.0
+    if not humedad.empty:
+        humedad["fecha"] = pd.to_datetime(humedad["fecha"]).dt.date
+        humedad["toneladas"] = humedad["toneladas"].astype(float)
+        humedad = humedad.assign(documento_compras="", texto="", referencia="")
+        humedad["embarque"], _ = _embarque_de_partidas(humedad, barcos)
+        por_barco = humedad[humedad["embarque"].notna()].groupby("embarque")["toneladas"].sum()
+        barcos["humedad"] = barcos["embarque"].map(por_barco).fillna(0.0)
     return (barcos[vacio[0].columns].reset_index(drop=True),
             partidas[vacio[1].columns].reset_index(drop=True))
 
@@ -3057,10 +3083,11 @@ def reparto_por_embarque():
     """Lo recibido en cada planta desde U004 (material/centro/mes, mismos
     traslados que _puesto_en_destino) valorizado por FIFO con sus embarques:
     toneladas, importe (MB51 de los barcos + valor del traslado de lo que no
-    tiene barco cargado), ajuste, ajuste_ordenes, sin_embarque (T) y
-    embarques (texto)."""
+    tiene barco cargado), ajuste, ajuste_ordenes, humedad (T: la parte de
+    los ajustes por humedad de sus barcos; toneladas secas = toneladas +
+    humedad), sin_embarque (T) y embarques (texto)."""
     columnas = ["material_codigo", "centro", "mes", "toneladas", "importe", "ajuste", "ajuste_ordenes",
-                "sin_embarque", "embarques"]
+                "humedad", "sin_embarque", "embarques"]
     barcos, _ = embarques_importados()
     if barcos.empty:
         return pd.DataFrame(columns=columnas)
@@ -3069,11 +3096,11 @@ def reparto_por_embarque():
     for material, t in traslados.groupby("material_codigo"):
         cola = [{"embarque": b.embarque, "llegada": b.llegada.replace(day=1), "quedan": b.toneladas,
                  "mb51": b.importe / b.toneladas, "ajuste": b.ajuste / b.toneladas,
-                 "ordenes": b.ajuste_ordenes / b.toneladas}
+                 "ordenes": b.ajuste_ordenes / b.toneladas, "humedad": b.humedad / b.toneladas}
                 for b in barcos[barcos["material_codigo"] == material].itertuples()]
         for r in t.sort_values(["mes", "centro"]).itertuples():
             mes = datetime.date.fromisoformat(r.mes)
-            falta, mb51, ajuste, ordenes, usados = r.toneladas, 0.0, 0.0, 0.0, []
+            falta, mb51, ajuste, ordenes, humedad, usados = r.toneladas, 0.0, 0.0, 0.0, 0.0, []
             for b in cola:
                 if falta <= 1e-6:
                     break
@@ -3081,12 +3108,13 @@ def reparto_por_embarque():
                     continue
                 toma = min(falta, b["quedan"])
                 mb51 += toma * b["mb51"]; ajuste += toma * b["ajuste"]; ordenes += toma * b["ordenes"]
+                humedad += toma * b["humedad"]
                 b["quedan"] -= toma; falta -= toma
                 usados.append(b["embarque"])
             sin = max(falta, 0.0)
             filas.append({"material_codigo": material, "centro": r.centro, "mes": r.mes, "toneladas": r.toneladas,
                           "importe": mb51 + sin * r.importe / r.toneladas, "ajuste": ajuste, "ajuste_ordenes": ordenes,
-                          "sin_embarque": sin, "embarques": ", ".join(usados)})
+                          "humedad": humedad, "sin_embarque": sin, "embarques": ", ".join(usados)})
     return pd.DataFrame(filas, columns=columnas)
 
 
@@ -3107,13 +3135,16 @@ def _puesto_en_destino(df):
     destino = _traslados_desde_importacion(materiales).copy()
     # Importados por embarque: el valor MB51 de lo recibido es el del ingreso
     # del barco de donde salió (FIFO), no el valor del traslado (que trae
-    # revaluaciones de U004 de otros barcos). Ver embarques_importados.
+    # revaluaciones de U004 de otros barcos), y sus toneladas son las secas
+    # (menos la humedad de esos barcos). Ver embarques_importados.
     reparto = reparto_por_embarque()
     if not reparto.empty:
-        destino = destino.merge(reparto[["material_codigo", "centro", "mes", "importe"]].rename(columns={"importe": "_fifo"}),
+        destino = destino.merge(reparto[["material_codigo", "centro", "mes", "importe", "humedad"]]
+                                .rename(columns={"importe": "_fifo", "humedad": "_humedad"}),
                                 on=["material_codigo", "centro", "mes"], how="left")
         destino["importe"] = destino["_fifo"].where(destino["_fifo"].notna(), destino["importe"])
-        destino = destino.drop(columns="_fifo")
+        destino["toneladas"] = destino["toneladas"] + destino["_humedad"].fillna(0.0)
+        destino = destino.drop(columns=["_fifo", "_humedad"])
     proveedores = df[df["centro"] == CENTRO_IMPORTACION].groupby("material_codigo")["proveedores"].max()
     destino["proveedores"] = destino["material_codigo"].map(proveedores).fillna(1).astype(int)
     resto = df[df["centro"] != CENTRO_IMPORTACION]
