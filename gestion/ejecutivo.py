@@ -132,11 +132,11 @@ def proveedor_unico(inicio, fin, categoria=None, meses_minimos=3, excluir=("CAPE
     se compra a un solo proveedor. Se mide sobre recurrentes porque un
     repuesto o un equipo de CAPEX comprado una vez es casi siempre de un
     solo fabricante (95% de los códigos), y ahí no hay alternativa que
-    gestionar. Devuelve el % del valor, los totales, el detalle por
-    categoría y los materiales de más valor."""
+    gestionar. `categoria`: una categoría o varias (tupla). Devuelve el % del
+    valor, los totales, el detalle por categoría y los materiales de más valor."""
     df = q.compras_por_material_proveedor_rango(inicio, fin)
     if categoria:
-        df = df[df["categoria"] == categoria]
+        df = df[df["categoria"].isin((categoria,) if isinstance(categoria, str) else categoria)]
     df = df[~df["categoria"].isin(excluir)]
     vacio = {"pct": None, "valor_unico": 0.0, "valor_recurrente": 0.0, "materiales_unicos": 0,
              "materiales_recurrentes": 0, "por_categoria": [], "materiales": []}
@@ -261,16 +261,55 @@ def otif(inicio, fin, categoria=None):
 
 # --- Portada ----------------------------------------------------------------
 
-def contexto(mes):
+def contexto(mes, area=None):
     """Todo lo de la portada y el informe para `mes`, guardado en la caché
     versionada de queries (se recalcula si cambian los datos, este código o
-    metas.json)."""
-    clave = ("ejecutivo", mes.isoformat(), _HUELLA, os.stat(_RUTA_METAS).st_mtime_ns, datetime.date.today())
-    return q._cache_obtener(clave, lambda: _calcular(mes, cargar_metas()))
+    metas.json). `area`: None = toda la compañía (portada e informe
+    general); si no, un dict de area_categoria / area_planificacion (solo
+    sus categorías, con los enlaces a sus pestañas), para el Resumen y el
+    Informe mensual de cada área (pedido del usuario, 2026-10-21)."""
+    clave = ("ejecutivo", mes.isoformat(), _HUELLA, os.stat(_RUTA_METAS).st_mtime_ns, datetime.date.today(),
+             tuple(area["categorias"]) if area else None)
+    return q._cache_obtener(clave, lambda: _calcular(mes, cargar_metas(), area))
 
 
-def _calcular(mes, config):
+def area_categoria(categoria, url, zonas):
+    """Área de una página de categoría: sus enlaces van a sus pestañas."""
+    nombre = categoria if categoria == "CAPEX" else categoria.capitalize()  # como en la barra de navegación
+    return {"nombre": nombre, "categorias": (categoria,), "url": url, "zonas": set(zonas)}
+
+
+def area_planificacion(url, zonas):
+    """Área de Planificación: las categorías del S&OP (Materias Primas y Combustibles)."""
+    return {"nombre": "Planificación", "categorias": tuple(sorted(q.CATEGORIAS_PLANIFICACION_SOP)), "url": url,
+            "zonas": set(zonas)}
+
+
+def _pmp_de(df):
+    """PMP ponderado por valor de `df` (condicion_pago, valor_total)."""
+    if df.empty or not df["valor_total"].sum():
+        return 0.0
+    dias = df["condicion_pago"].map(q.dias_ponderados_condicion_pago)
+    return float((dias * df["valor_total"]).sum() / df["valor_total"].sum())
+
+
+def _calcular(mes, config, area=None):
     metas, supuestos = config["metas"], config["supuestos"]
+    categorias_area = set(area["categorias"]) if area else None
+
+    def del_area(df):
+        """`df` (con columna categoria) solo con las categorías del área."""
+        return df[df["categoria"].isin(categorias_area)] if area and not df.empty else df
+
+    def en_area(categoria):
+        return not area or categoria in categorias_area
+
+    def enlace(zona, ancla_general):
+        """Enlace de un indicador: en la portada, al Overview (o la página
+        indicada); en un área, a su pestaña `zona` (vacío si no la tiene)."""
+        if not area:
+            return ancla_general
+        return f"{area['url']}#{zona}" if zona in area["zonas"] else ""
     hoy = datetime.date.today()
     fin = min(_fin_mes(mes), hoy)
     inicio = datetime.date(mes.year, 1, 1)
@@ -293,13 +332,15 @@ def _calcular(mes, config):
 
     # 1-2. Compras del año y % bajo contrato (sin CAPEX ni Empaques: la
     # fórmula de contrato no los alcanza y se ajustan a mano).
-    df = q.compras_por_categoria_contrato_rango(inicio, fin)
-    df_ant = q.compras_por_categoria_contrato_rango(inicio_ant, fin_ant)
+    df = del_area(q.compras_por_categoria_contrato_rango(inicio, fin))
+    df_ant = del_area(q.compras_por_categoria_contrato_rango(inicio_ant, fin_ant))
     total, total_ant = float(df["valor_total"].sum()), float(df_ant["valor_total"].sum())
     dias = (fin - inicio).days + 1
     diario = total / dias if dias else 0.0
-    serie_compras = q.compras_por_mes_y_condicion_pago(None)
-    serie_compras = serie_compras.assign(mes=pd.to_datetime(serie_compras["mes"]).dt.date).groupby("mes")["valor_total"].sum()
+    # Compras por mes y condición de pago (insumo también del PMP mensual).
+    por_mes_condicion = (pd.concat([q.compras_por_mes_y_condicion_pago(c) for c in area["categorias"]], ignore_index=True)
+                         if area else q.compras_por_mes_y_condicion_pago(None))
+    serie_compras = por_mes_condicion.assign(mes=pd.to_datetime(por_mes_condicion["mes"]).dt.date).groupby("mes")["valor_total"].sum()
     spark_compras = [(m, v) for m, v in serie_compras.items() if q._sumar_meses(mes, -12) <= m <= mes]
     variacion = (total / total_ant - 1) * 100 if total_ant else None
     # Compras del año: cifra de contexto en la cabecera (no tiene meta); la
@@ -313,22 +354,31 @@ def _calcular(mes, config):
     contrato_pct = contrato / base_contrato * 100 if base_contrato else None
     fuera = base_contrato - contrato
     estado = _estado(contrato_pct, metas["contrato_pct"])
-    kpi("contrato", "Compras bajo contrato", _pct(contrato_pct), f"{tramo} · sin CAPEX ni Empaques (se ajustan a mano)",
-        estado, _texto_meta(metas["contrato_pct"], lambda v: f"{v:.0f}%"),
-        f"{soles(fuera)} comprados fuera de contrato", enlace=f"{url_overview}#sec-compras", valor=contrato_pct)
-    if contrato_pct is not None:
-        mensaje(estado, fuera * supuestos["ahorro_contrato_marco_pct"] / 100,
-                f"El {_pct(contrato_pct, decimales=0)} de las compras se hace bajo contrato "
-                f"({soles(fuera)} fuera de contrato en {tramo}, sin CAPEX ni Empaques).")
+    # Un área de solo CAPEX o Empaques no tiene este indicador (la fórmula no los alcanza).
+    if not area or categorias_area - excluidas:
+        kpi("contrato", "Compras bajo contrato", _pct(contrato_pct),
+            f"{tramo} · sin CAPEX ni Empaques (se ajustan a mano)" if not area else tramo,
+            estado, _texto_meta(metas["contrato_pct"], lambda v: f"{v:.0f}%"),
+            f"{soles(fuera)} comprados fuera de contrato", enlace=enlace("compras", f"{url_overview}#sec-compras"),
+            valor=contrato_pct)
+        if contrato_pct is not None:
+            mensaje(estado, fuera * supuestos["ahorro_contrato_marco_pct"] / 100,
+                    f"El {_pct(contrato_pct, decimales=0)} de las compras se hace bajo contrato "
+                    f"({soles(fuera)} fuera de contrato en {tramo}{'' if area else ', sin CAPEX ni Empaques'}).")
 
     # 3. Plazo medio de pago, con su equivalente en caja.
-    pmp = q.calcular_pmp_rango(inicio, fin)
-    pmp_ant = q.calcular_pmp_rango(inicio_ant, fin_ant)
+    if area:
+        pmp = _pmp_de(del_area(q.compras_por_categoria_y_condicion_pago_rango(inicio, fin)))
+        pmp_ant = _pmp_de(del_area(q.compras_por_categoria_y_condicion_pago_rango(inicio_ant, fin_ant)))
+        serie_pmp = [(datetime.date.fromisoformat(str(m)[:10]), _pmp_de(g)) for m, g in por_mes_condicion.groupby("mes")]
+    else:
+        pmp = q.calcular_pmp_rango(inicio, fin)
+        pmp_ant = q.calcular_pmp_rango(inicio_ant, fin_ant)
+        serie_pmp = [(r.mes, r.pmp) for r in q.pmp_mensual().itertuples()]
     cfg = metas["pmp_dias"]
     estado = _estado(pmp, cfg)
     brecha = cfg["meta"] - pmp
     caja_meta = brecha * diario
-    serie_pmp = q.pmp_mensual()
     dif_pmp = round(pmp - pmp_ant)
     kpi("pmp", "Plazo medio de pago", f"{pmp:.0f} días",
         f"{tramo} · " + (f"{dif_pmp:+d} días vs {mes.year - 1}" if dif_pmp else f"igual que {mes.year - 1}"),
@@ -336,8 +386,8 @@ def _calcular(mes, config):
         (f"Llegar a la meta liberaría {soles(caja_meta)} de caja" if brecha > 0 else
          f"{-brecha:.0f} días sobre la meta: {soles(-caja_meta)} de caja a favor")
         + f" · cada día = {soles(diario)}",
-        _sparkline([(r.mes, r.pmp) for r in serie_pmp.itertuples() if q._sumar_meses(mes, -12) <= r.mes <= mes]),
-        f"{url_overview}#sec-compras", pmp)
+        _sparkline([(m, v) for m, v in serie_pmp if q._sumar_meses(mes, -12) <= m <= mes]),
+        enlace("cuentas", f"{url_overview}#sec-compras"), pmp)
     mensaje(estado, caja_meta,
             f"Pagamos a {pmp:.0f} días en promedio "
             + (f"({dif_pmp:+d} vs {mes.year - 1})" if dif_pmp else f"(igual que {mes.year - 1})") + "; cada día adicional de plazo "
@@ -345,7 +395,7 @@ def _calcular(mes, config):
                                                  if brecha > 0 else "."))
 
     # 4. IPU: inflación de los precios de compra del año.
-    base_precios = q.precios_entrada_materiales_real()
+    base_precios = del_area(q.precios_entrada_materiales_real())
     inflacion = q.inflacion_precios(base_precios, 12) if not base_precios.empty else pd.DataFrame()
     ipu = q.ipu_por_mes(inflacion, 12) if not inflacion.empty else {}
     meses_ipu = [m for m in ipu if m.year == mes.year and m <= mes]
@@ -359,11 +409,11 @@ def _calcular(mes, config):
             estado, _texto_meta(cfg, lambda v: f"{v:+.1f}%"),
             f"{'Sobrecosto' if bolsa > 0 else 'Ahorro'} de {soles(abs(bolsa))} por precio",
             _sparkline([(m, ipu[m]["individual"] * 100) for m in sorted(ipu) if q._sumar_meses(mes, -12) <= m <= mes]),
-            "", ipu_pct)
+            enlace("precios", ""), ipu_pct)
         mensaje(estado, bolsa,
                 f"Los precios de compra {'subieron' if ipu_pct > 0 else 'bajaron'} {abs(ipu_pct):.1f}% en {mes.year} (IPU): "
                 f"{'un sobrecosto' if bolsa > 0 else 'un ahorro'} de {soles(abs(bolsa))} frente a {mes.year - 1}.")
-    else:
+    elif not area:  # un área sin precios comparables (servicios) no lo muestra
         kpi("ipu", "IPU · inflación de compras", "—", "Sin compras comparables en el año")
 
     # 5-6. Inventario y capital inmovilizado (al último corte del mes).
@@ -371,11 +421,12 @@ def _calcular(mes, config):
     corte = cortes[-1] if cortes else None
     resumen_categorias = {}
     valor_inv = valor_obs = 0.0
-    if corte:
-        inv = q.inventario_por_material(corte)
+    inv = del_area(q.inventario_por_material(corte)) if corte else pd.DataFrame()
+    # Un área sin inventario (CAPEX, servicios) no tiene estos indicadores.
+    if corte and not inv.empty:
         valor_inv = float(inv["valor_total"].sum())
         dic = next((c for c in reversed(cortes) if c.year == mes.year - 1 and c.month == 12), None)
-        valor_dic = float(q.inventario_por_material(dic)["valor_total"].sum()) if dic else None
+        valor_dic = float(del_area(q.inventario_por_material(dic))["valor_total"].sum()) if dic else None
         consumo = q.consumo_valorizado_6_meses_por_material(corte)
         consumo = consumo[consumo["material_codigo"].isin(set(inv["material_codigo"]))]
         consumo = consumo.merge(q.catalogo_materiales()[["material_codigo", "categoria"]], on="material_codigo", how="left")
@@ -384,7 +435,7 @@ def _calcular(mes, config):
         var_inv = (valor_inv / valor_dic - 1) * 100 if valor_dic else None
         cfg = metas["inventario_var_pct"]
         estado = _estado(var_inv, cfg)
-        serie = q.valor_inventario_mensual_por_categoria(fecha_desde=cortes[max(0, len(cortes) - 13)])
+        serie = del_area(q.valor_inventario_mensual_por_categoria(fecha_desde=cortes[max(0, len(cortes) - 13)]))
         serie = serie[serie["fecha"].isin(cortes)].groupby("fecha")["valor_total"].sum()
         kpi("inventario", "Inventario", soles(valor_inv),
             f"Al {corte:%d/%m/%Y} · {_pct(var_inv, True)} vs diciembre {mes.year - 1}" if var_inv is not None else f"Al {corte:%d/%m/%Y}",
@@ -392,28 +443,31 @@ def _calcular(mes, config):
             (f"{doh:,.0f} días de inventario (DOH)" if doh else "")
             + (f" · {soles(valor_inv - valor_dic, True)} en el año" if valor_dic else ""),
             _sparkline([(f.replace(day=1), v) for f, v in serie.items()]),
-            f"{url_overview}#bloque-inventario", var_inv)
+            enlace("inventario", f"{url_overview}#bloque-inventario"), var_inv)
         if valor_dic:
             mensaje(estado, valor_inv - valor_dic,
                     f"El inventario {'creció' if valor_inv > valor_dic else 'bajó'} {soles(abs(valor_inv - valor_dic))} "
                     f"en el año ({_pct(var_inv, True)}) y cubre {doh:,.0f} días de consumo." if doh else
                     f"El inventario {'creció' if valor_inv > valor_dic else 'bajó'} {soles(abs(valor_inv - valor_dic))} en el año.")
 
-        obsoletos = q.materiales_obsoletos_por_categoria(corte)
+        obsoletos = [r for r in q.materiales_obsoletos_por_categoria(corte) if en_area(r["categoria"])]
         valor_obs = sum(float(r["valor_obsoleto"]) for r in obsoletos)
         obs_pct = valor_obs / valor_inv * 100 if valor_inv else None
         cfg = metas["inmovilizado_pct"]
         estado = _estado(obs_pct, cfg)
         mayor = max(obsoletos, key=lambda r: r["valor_obsoleto"]) if obsoletos else None
+        # En un área de una sola categoría no se repite su nombre.
+        una_categoria = area and len(categorias_area) == 1
         kpi("inmovilizado", "Capital inmovilizado", soles(valor_obs),
             f"{_pct(obs_pct, decimales=0)} del inventario sin consumo en 3 años",
             estado, _texto_meta(cfg, lambda v: f"{v:.0f}% del inventario"),
-            f"{mayor['categoria'].title()}: {soles(mayor['valor_obsoleto'])}" if mayor else "",
-            enlace=f"{url_overview}#sec-obsoletos", valor=obs_pct)
+            (f"{mayor['materiales_obsoletos']:,} materiales" if una_categoria else
+             f"{mayor['categoria'].title()}: {soles(mayor['valor_obsoleto'])}") if mayor else "",
+            enlace=enlace("inventario", f"{url_overview}#sec-obsoletos"), valor=obs_pct)
         if mayor:
             mensaje(estado, valor_obs,
-                    f"{soles(valor_obs)} de inventario ({_pct(obs_pct, decimales=0)}) no tiene consumo hace 3 años; "
-                    f"{soles(mayor['valor_obsoleto'])} es de {mayor['categoria'].title()}.")
+                    f"{soles(valor_obs)} de inventario ({_pct(obs_pct, decimales=0)}) no tiene consumo hace 3 años"
+                    + ("." if una_categoria else f"; {soles(mayor['valor_obsoleto'])} es de {mayor['categoria'].title()}."))
         for cat, g in inv.groupby("categoria"):
             c_mes = float(consumo.loc[consumo["categoria"] == cat, "consumo_valor_6meses"].sum()) / 6
             resumen_categorias.setdefault(cat, {})["inventario"] = float(g["valor_total"].sum())
@@ -421,54 +475,68 @@ def _calcular(mes, config):
 
     # OTIF de Repuestos y Suministros Industriales (del año, por valor), con
     # su evolución de los últimos 12 meses.
+    # Un área sin categorías con OTIF (todas menos Repuestos y Suministros) no lo muestra.
     cfg = metas["otif_pct"]
-    otif_anio = otif(inicio, fin)
+    categorias_otif = [c for c in supuestos["otif_categorias"] if en_area(c)]
+    nombre_otif = (" y ".join(c.title() for c in categorias_otif) if area else "Repuestos y Suministros")
+    otif_anio = otif_12 = None
+    if categorias_otif:
+        if area and len(categorias_otif) == 1:
+            otif_anio, otif_12 = otif(inicio, fin, categorias_otif[0]), otif(inicio_12, fin, categorias_otif[0])
+        else:
+            otif_anio, otif_12 = otif(inicio, fin), otif(inicio_12, fin)
     if otif_anio:
-        serie_otif = otif(inicio_12, fin)
         estado = _estado(otif_anio["otif"], cfg)
         kpi("otif", "OTIF · a tiempo y completo", _pct(otif_anio["otif"]),
-            f"{tramo} · Repuestos y Suministros · a tiempo {otif_anio['a_tiempo']:.0f}% · completo {otif_anio['completo']:.0f}%",
+            f"{tramo} · {nombre_otif} · a tiempo {otif_anio['a_tiempo']:.0f}% · completo {otif_anio['completo']:.0f}%",
             estado, _texto_meta(cfg, lambda v: f"{v:.0f}%"),
             f"{soles(otif_anio['valor_falla'])} entregados fuera de plazo o incompletos",
-            serie_otif["spark"] if serie_otif else None,
-            reverse("categoria_detalle", kwargs={"slug": "repuestos"}) + "#sec-otif", otif_anio["otif"])
+            otif_12["spark"] if otif_12 else None,
+            enlace("compras", reverse("categoria_detalle", kwargs={"slug": "repuestos"}) + "#sec-otif"), otif_anio["otif"])
         if estado != "ok":
             problema = "la puntualidad" if otif_anio["a_tiempo"] < otif_anio["completo"] else "las cantidades"
             mensaje(estado, otif_anio["valor_falla"],
-                    f"Solo el {otif_anio['otif']:.0f}% del valor de Repuestos y Suministros llegó a tiempo y completo en "
+                    f"Solo el {otif_anio['otif']:.0f}% del valor de {nombre_otif} llegó a tiempo y completo en "
                     f"{tramo} (meta {cfg['meta']:.0f}%); el problema es {problema} "
                     f"(a tiempo {otif_anio['a_tiempo']:.0f}%, completo {otif_anio['completo']:.0f}%).")
-    else:
+    elif categorias_otif:
         kpi("otif", "OTIF · a tiempo y completo", "—", "Sin entregas evaluables en el período")
 
-    # 7. Cumplimiento del plan de abastecimiento S&OP del mes.
+    # 7. Cumplimiento del plan de abastecimiento S&OP del mes (solo áreas con S&OP).
     cfg = metas["cumplimiento_sop_pct"]
-    if mes in set(q.meses_planificacion_disponibles()):
-        det = q.plan_vs_real_abastecimiento_por_material(mes)
+    categorias_sop = [c for c in sorted(q.CATEGORIAS_PLANIFICACION_SOP) if en_area(c)]
+    categoria_sop = categorias_sop[0] if area and len(categorias_sop) == 1 else None
+    nombre_sop = categoria_sop.lower() if categoria_sop else "materias primas y combustibles"
+    if categorias_sop and mes in set(q.meses_planificacion_disponibles()):
+        det = q.plan_vs_real_abastecimiento_por_material(mes, categoria=categoria_sop)
         plan, real = float(det["cantidad_plan"].sum()), float(det["cantidad_real"].sum())
         cumpl = real / plan * 100 if plan else None
         estado = _estado(cumpl, cfg)
-        serie = [(f["mes"], f["cumplimiento_pct"]) for f in q.cumplimiento_mensual_abastecimiento() if f["mes"] <= mes]
+        serie = [(f["mes"], f["cumplimiento_pct"]) for f in q.cumplimiento_mensual_abastecimiento(categoria=categoria_sop)
+                 if f["mes"] <= mes]
         kpi("sop", "Cumplimiento del plan de abastecimiento", _pct(cumpl),
-            f"{q.formato_mes_anio(mes)} · {real:,.0f} de {plan:,.0f} T (Materias Primas y Combustibles)",
+            f"{q.formato_mes_anio(mes)} · {real:,.0f} de {plan:,.0f} T ({nombre_sop.capitalize()})",
             estado, _texto_meta(cfg, lambda v: f"{v:.0f}%"),
             f"{plan - real:,.0f} T por debajo del plan" if real < plan else f"{real - plan:,.0f} T sobre el plan",
-            _sparkline(serie), reverse("planificacion") + "#cumplimiento", cumpl)
+            _sparkline(serie), enlace("abastecimiento" if categoria_sop else "cumplimiento",
+                                      reverse("planificacion") + "#cumplimiento"), cumpl)
         if cumpl is not None and estado != "ok":
-            mensaje(estado, 0, f"El abastecimiento de materias primas y combustibles cumplió el {cumpl:.0f}% del plan en "
+            mensaje(estado, 0, f"El abastecimiento de {nombre_sop} cumplió el {cumpl:.0f}% del plan en "
                                f"{q.formato_mes_anio(mes)} ({plan - real:,.0f} T por debajo).")
-    else:
+    elif categorias_sop:
         kpi("sop", "Cumplimiento del plan de abastecimiento", "—", f"Sin plan S&OP de {q.formato_mes_anio(mes)}")
 
-    # 8. Dependencia de proveedor único (materiales recurrentes, 12 meses).
-    unico = proveedor_unico(inicio_12, fin, meses_minimos=supuestos["meses_compra_recurrente"])
+    # 8. Dependencia de proveedor único (materiales recurrentes, 12 meses; sin CAPEX).
+    unico = proveedor_unico(inicio_12, fin, categoria=area["categorias"] if area else None,
+                            meses_minimos=supuestos["meses_compra_recurrente"])
     cfg = metas["proveedor_unico_pct"]
     estado = _estado(unico["pct"], cfg)
-    kpi("unico", "Dependencia de proveedor único", _pct(unico["pct"], decimales=0),
-        f"De las compras recurrentes de {_tramo(inicio_12, fin)} (sin CAPEX)",
-        estado, _texto_meta(cfg, lambda v: f"{v:.0f}%"),
-        f"{soles(unico['valor_unico'])} en {unico['materiales_unicos']:,} materiales con un solo proveedor",
-        enlace=f"{url_overview}#sec-unico", valor=unico["pct"])
+    if not area or unico["pct"] is not None:
+        kpi("unico", "Dependencia de proveedor único", _pct(unico["pct"], decimales=0),
+            f"De las compras recurrentes de {_tramo(inicio_12, fin)}" + ("" if area else " (sin CAPEX)"),
+            estado, _texto_meta(cfg, lambda v: f"{v:.0f}%"),
+            f"{soles(unico['valor_unico'])} en {unico['materiales_unicos']:,} materiales con un solo proveedor",
+            enlace=enlace("compras", f"{url_overview}#sec-unico"), valor=unico["pct"])
     if unico["pct"] is not None and estado != "ok":
         mensaje(estado, unico["valor_unico"],
                 f"El {unico['pct']:.0f}% de las compras recurrentes depende de un solo proveedor "
@@ -476,20 +544,22 @@ def _calcular(mes, config):
 
     # 9. Materiales críticos en riesgo de quiebre.
     cfg = metas["criticos_en_riesgo"]
-    criticos = q.cobertura_materiales_criticos_por_categoria(corte) if corte else []
+    criticos = [r for r in (q.cobertura_materiales_criticos_por_categoria(corte) if corte else []) if en_area(r["categoria"])]
     en_riesgo = sum(r["en_riesgo"] for r in criticos)
     total_criticos = sum(r["materiales_criticos"] for r in criticos)
     estado = _estado(en_riesgo, cfg) if criticos else "neutro"
-    kpi("criticos", "Críticos en riesgo", f"{en_riesgo:,}" if criticos else "—",
-        f"De {total_criticos:,} materiales críticos, con menos de 1 mes de cobertura" if criticos else "Sin datos de cobertura",
-        estado, _texto_meta(cfg, lambda v: f"{v:.0f}"),
-        ", ".join(f"{r['categoria'].title()}: {r['en_riesgo']}" for r in criticos if r["en_riesgo"]),
-        enlace=f"{url_overview}#sec-criticos", valor=en_riesgo)
+    if not area or criticos:
+        kpi("criticos", "Críticos en riesgo", f"{en_riesgo:,}" if criticos else "—",
+            f"De {total_criticos:,} materiales críticos, con menos de 1 mes de cobertura" if criticos else "Sin datos de cobertura",
+            estado, _texto_meta(cfg, lambda v: f"{v:.0f}"),
+            "" if area and len(categorias_area) == 1 else
+            ", ".join(f"{r['categoria'].title()}: {r['en_riesgo']}" for r in criticos if r["en_riesgo"]),
+            enlace=enlace("inventario", f"{url_overview}#sec-criticos"), valor=en_riesgo)
     if en_riesgo:
         mensaje(estado, 0, f"{en_riesgo} materiales críticos tienen menos de 1 mes de cobertura.")
 
     # Resumen por categoría (compras, contrato, PMP, IPU y proveedor único).
-    pmp_cat = q.pmp_por_categoria_rango(inicio, fin).set_index("categoria")["pmp"]
+    pmp_cat = del_area(q.pmp_por_categoria_rango(inicio, fin)).set_index("categoria")["pmp"]
     for r in df.itertuples():
         anterior = df_ant.loc[df_ant["categoria"] == r.categoria, "valor_total"]
         fila = resumen_categorias.setdefault(r.categoria, {})
@@ -510,9 +580,11 @@ def _calcular(mes, config):
     for r in unico["por_categoria"]:
         resumen_categorias.setdefault(r["categoria"], {})["unico"] = r["pct"]
     categorias = [{"categoria": c, "slug": c.lower().replace(" ", "-"), **v} for c, v in sorted(resumen_categorias.items())
-                  if v.get("compras") or v.get("inventario")]
+                  if (v.get("compras") or v.get("inventario")) and en_area(c)]
 
-    cartera = _cartera(mes, inicio_12, fin, inicio, corte, supuestos, inflacion, ipu_categoria, valor_obs)
+    cartera = _cartera(mes, inicio_12, fin, inicio, corte, supuestos, inflacion, ipu_categoria, valor_obs, en_area)
+    if area:  # en un área, solo las palancas que tienen casos
+        cartera["palancas"] = [p for p in cartera["palancas"] if p["casos"]]
 
     # Los 3 mensajes del mes: la oportunidad total, la alerta de más impacto
     # y la mejor noticia (un gerente también necesita ver qué va bien); si no
@@ -523,7 +595,8 @@ def _calcular(mes, config):
     if cartera["total_caja"] or cartera["total_ahorro"]:
         elegidos.append({"estado": "oportunidad", "texto":
                          f"Hay {soles(cartera['total_caja'])} de caja que se puede liberar y {soles(cartera['total_ahorro'])} "
-                         f"de ahorro potencial; la mayor palanca es {cartera['palancas'][0]['nombre'].lower()} "
+                         f"de ahorro potencial; la mayor palanca es "
+                         f"{cartera['palancas'][0]['nombre'][:1].lower()}{cartera['palancas'][0]['nombre'][1:]} "
                          f"({soles(cartera['palancas'][0]['valor'])})."})
     elegidos += malos[:1] + buenos[:1]
     elegidos += [m for m in malos[1:] if m not in elegidos][:3 - len(elegidos)]
@@ -532,18 +605,28 @@ def _calcular(mes, config):
         "cartera": cartera, "categorias": categorias, "unico": unico,
         "metas_propuestas": any(not m.get("confirmada") for m in metas.values()), "supuestos": supuestos,
         "generado": datetime.datetime.now(),
+        "area": area["nombre"] if area else None,
+        # El enlace de la cifra de compras de la cabecera.
+        "enlace_compras": enlace("compras", f"{url_overview}#bloque-compras"),
+        "con_inventario": bool(corte) and not inv.empty,
     }
 
 
 # --- Cartera de oportunidades --------------------------------------------
 
-def _cartera(mes, inicio_12, fin, inicio_anio, corte, supuestos, inflacion, ipu_categoria, valor_obs):
+def _cartera(mes, inicio_12, fin, inicio_anio, corte, supuestos, inflacion, ipu_categoria, valor_obs,
+             en_area=lambda c: True):
     """Palancas con su valor en soles. Caja = capital de trabajo que se puede
     liberar una vez; Ahorro = menor costo anual. Cada palanca trae su
-    supuesto a la vista y sus casos de más valor."""
+    supuesto a la vista y sus casos de más valor. `en_area`: qué categorías
+    entran (Resumen de un área); el valor de cada palanca es la suma de sus casos."""
     palancas, dias_12 = [], (fin - inicio_12).days + 1
 
     def palanca(clave, nombre, tipo, valor, descripcion, items, supuesto=""):
+        todos = len(items)
+        items = [i for i in items if en_area(i["categoria"])]
+        if len(items) != todos:
+            valor = sum(i["valor"] for i in items)
         items = sorted(items, key=lambda i: -i["valor"])
         palancas.append({"clave": clave, "nombre": nombre, "tipo": tipo, "valor": float(valor),
                          "descripcion": descripcion, "supuesto": supuesto, "casos": len(items), "items": items[:12]})

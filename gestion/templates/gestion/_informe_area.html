@@ -1,0 +1,24 @@
+{% load dashboard_extras %}
+{# Pestaña Informe mensual de un área (views._contexto_informe_area): el documento del Informe mensual (A4 horizontal) solo con las categorías del área, dentro de un marco, con su propio Mes. Se imprime o se guarda en PDF desde el botón (también en la copia HTML, sin servidor; el manejador está en base.html). #}
+<section class="bloque" id="sec-informe-area">
+  <div class="bloque-cabecera">
+    <h2>Informe mensual · {{ ia.area }}</h2>
+    <div class="acciones-informe">
+      <button type="button" class="btn-primario" data-imprimir-informe="marco-informe-area">Imprimir o guardar en PDF</button>
+      <a class="btn-link" href="{{ ia.url_informe }}&amp;pdf=1" data-descarga-informe>Descargar PDF</a>
+    </div>
+  </div>
+  <p class="nota">El informe del mes en 3 hojas: indicadores con su meta, oportunidades y detalle. Para el PDF, elige "Guardar como PDF" en la ventana de impresión.</p>
+  <form class="filtros" method="get" data-target="sec-informe-area" data-sin-reinicio>
+    <div class="campo">
+      <label for="mes_informe">Mes</label>
+      <select name="mes_informe" id="mes_informe">
+        {% for m in ia.meses %}
+          <option value="{{ m|fechaiso }}" {% if m == ia.mes_sel %}selected{% endif %}>{{ m|mesanio }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+  <iframe class="marco-informe" id="marco-informe-area" title="Informe mensual {{ ia.area }}" srcdoc="{{ ia.html|force_escape }}"></iframe>
+</section>

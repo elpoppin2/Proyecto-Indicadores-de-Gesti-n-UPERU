@@ -531,5 +531,25 @@
       });
     })();
   </script>
+  <script>
+    /* Informe mensual (Portada y pestaña Informe mensual de cada área): aquí y
+       no en la pestaña, porque el HTML de una pestaña llega con innerHTML y
+       sus <script> no corren. Descargar: el PDF se arma en el servidor (unos
+       segundos) y el botón avisa mientras tanto. Imprimir: imprime el marco
+       con el informe (también en la copia HTML, sin servidor). */
+    document.addEventListener('click', function (evento) {
+      var boton = evento.target.closest && evento.target.closest('[data-descarga-informe]');
+      if (boton) {
+        var texto = boton.textContent;
+        boton.textContent = 'Preparando el PDF…';
+        boton.classList.add('ocupado');
+        setTimeout(function () { boton.textContent = texto; boton.classList.remove('ocupado'); }, 12000);
+        return;
+      }
+      var imprimir = evento.target.closest && evento.target.closest('[data-imprimir-informe]');
+      var marco = imprimir && document.getElementById(imprimir.dataset.imprimirInforme);
+      if (marco && marco.contentWindow) { marco.contentWindow.focus(); marco.contentWindow.print(); }
+    });
+  </script>
 </body>
 </html>

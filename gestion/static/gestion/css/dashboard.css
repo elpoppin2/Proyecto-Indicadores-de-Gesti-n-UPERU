@@ -1038,6 +1038,10 @@ tbody.tabla-ordenada { animation: filas-asentar .25s ease-out; }
    mensajes del mes, la grilla de indicadores con semáforo (filete superior),
    la cartera de oportunidades y el resumen por categoría. Pedido por el usuario. */
 .wrap-portada { max-width: 1240px; }
+/* Pestaña Informe mensual de un área: el documento A4 dentro de un marco. */
+.acciones-informe { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.marco-informe { display: block; width: 100%; height: 78vh; min-height: 560px; margin-top: 12px;
+  border: 1px solid var(--line); border-radius: 6px; background: #fff; }
 .portada { display: flex; flex-direction: column; gap: 24px; }
 .portada-cabecera { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 16px 28px; }
 .portada-eyebrow { font-size: 13px; font-weight: 500; color: var(--muted); }

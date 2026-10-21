@@ -368,21 +368,67 @@ def portada(request):
     return render(request, "gestion/portada.html", contexto)
 
 
+def _area_ejecutiva(slug):
+    """Área del Resumen / Informe mensual de una página (pedido del usuario,
+    2026-10-21: cada área con los suyos): "planificacion" = Materias Primas y
+    Combustibles (S&OP); el slug de una categoría = esa categoría. None si no
+    es un área (Portada / Informe general)."""
+    if slug == "planificacion":
+        return ejecutivo.area_planificacion(reverse("planificacion"), [c for c, _, _, _ in _ZONAS_PLANIFICACION])
+    _, categorias = _construir_nav(slug)
+    categoria = {_slug(c): c for c in categorias}.get(slug)
+    if categoria is None:
+        return None
+    tiene_inventario = bool(q.fechas_inventario_disponibles()) and categoria in set(q.categorias_inventario_disponibles())
+    return ejecutivo.area_categoria(categoria, reverse("categoria_detalle", kwargs={"slug": slug}),
+                                    [z["clave"] for z in _zonas_categoria(categoria, tiene_inventario)])
+
+
+def _html_informe(mes, area, usuario):
+    return render_to_string("gestion/informe_mensual.html", {
+        "e": ejecutivo.contexto(mes, area), "logo": ejecutivo.logo_data_uri(), "usuario": usuario,
+    })
+
+
+def _contexto_resumen_area(request, slug):
+    """Pestaña Resumen de un área: el resumen ejecutivo de la Portada (meta,
+    semáforo, mensajes del mes y cartera de oportunidades) solo con sus
+    categorías, con su propio Mes (mes_resumen)."""
+    meses = ejecutivo.meses_disponibles()
+    mes = _por_str(request.GET.get("mes_resumen"), meses) or ejecutivo.mes_defecto()
+    return {"ra": {"e": ejecutivo.contexto(mes, _area_ejecutiva(slug)), "meses": meses, "mes_sel": mes,
+                   "en_curso": mes == datetime.date.today().replace(day=1),
+                   "url_informe": f"{reverse('informe_mensual')}?area={slug}"}}
+
+
+def _contexto_informe_area(request, slug):
+    """Pestaña Informe mensual de un área: el mismo documento del Informe
+    mensual (A4, para imprimir o guardar en PDF) solo con sus categorías,
+    con su propio Mes (mes_informe)."""
+    meses = ejecutivo.meses_disponibles()
+    mes = _por_str(request.GET.get("mes_informe"), meses) or ejecutivo.mes_defecto()
+    area = _area_ejecutiva(slug)
+    return {"ia": {"html": _html_informe(mes, area, request.user.get_username() if request.user.is_authenticated else ""),
+                   "meses": meses, "mes_sel": mes, "area": area["nombre"],
+                   "url_informe": f"{reverse('informe_mensual')}?area={slug}&mes={mes.isoformat()}"}}
+
+
 @login_required
 def informe_mensual(request):
     """Informe mensual de Supply Chain: la portada del mes en formato de
     documento (A4 horizontal), autocontenido (estilos y logo dentro). Con
     ?pdf=1 se descarga en PDF, generado con Edge en el servidor (un clic);
-    sin él, se ve en el navegador."""
+    sin él, se ve en el navegador. ?area=<slug>: el de esa área (categoría o
+    "planificacion")."""
     _, mes = _mes_ejecutivo(request)
-    html = render_to_string("gestion/informe_mensual.html", {
-        "e": ejecutivo.contexto(mes), "logo": ejecutivo.logo_data_uri(), "usuario": request.user.get_username(),
-    })
+    area = _area_ejecutiva(request.GET.get("area", ""))
+    html = _html_informe(mes, area, request.user.get_username())
     if request.GET.get("pdf"):
         pdf = ejecutivo.pdf_desde_html(html)
         if pdf:
+            nombre = _slug(area["nombre"]).replace("-", "_").title() if area else "Supply_Chain"
             respuesta = HttpResponse(pdf, content_type="application/pdf")
-            respuesta["Content-Disposition"] = f'attachment; filename="Informe_Supply_Chain_{mes:%Y-%m}.pdf"'
+            respuesta["Content-Disposition"] = f'attachment; filename="Informe_{nombre}_{mes:%Y-%m}.pdf"'
             return respuesta
         # Sin Edge en el servidor: el mismo informe para imprimir desde el navegador.
         html = html.replace("</body>", "<script>window.print()</script></body>")
@@ -1284,6 +1330,11 @@ _SECCIONES_PLANIFICACION = {
     "sec-premios": ("gestion/planificacion/_premios.html", "planificacion_premios", lambda r: _contexto_premios(r), ("premios",)),
     "sec-energia": ("gestion/planificacion/_energia.html", "planificacion_energia", lambda r: _contexto_energia(r), ("energia",)),
     "sec-transporte": ("gestion/logistica/_transporte.html", "tr", _contexto_transporte, ("transp",)),
+    # Resumen e Informe mensual del área (Materias Primas y Combustibles).
+    "sec-resumen-area": ("gestion/_resumen_area.html", "ra",
+                         lambda r: _contexto_resumen_area(r, "planificacion")["ra"], ("resumen",)),
+    "sec-informe-area": ("gestion/_informe_area.html", "ia",
+                         lambda r: _contexto_informe_area(r, "planificacion")["ia"], ("informe",)),
 }
 
 # Zonas (pestañas): clave, nombre, qué contiene, secciones en orden.
@@ -1295,6 +1346,9 @@ _ZONAS_PLANIFICACION = [
     ("inventario", "Inventario", "Cobertura y proyección S&OP", ["sec-cobertura", "sec-proyeccion"]),
     ("precios", "Precios e IPU", "Precios de entrada e inflación", ["sec-precios", "sec-inflacion", "sec-inflacion-mensual"]),
     ("calidad", "Calidad y energía", "Análisis, premios y costo por Gcal", ["sec-calidad", "sec-premios", "sec-energia"]),
+    # Pedido del usuario (2026-10-21): cada área con su resumen e informe mensual.
+    ("resumen", "Resumen ejecutivo", "Metas, mensajes y oportunidades del mes", ["sec-resumen-area"]),
+    ("informe", "Informe mensual", "Para imprimir o guardar en PDF", ["sec-informe-area"]),
 ]
 
 # Logística de Materias Primas (pedido por el usuario el 2026-10-16): los
@@ -3817,6 +3871,9 @@ _ZONAS_CATEGORIA = [
     ("precios", "Precios e IPU", "Precio de compra e inflación", ["sec-ipu-categoria"], None),
     ("cuentas", "Cuentas por pagar", "Plazo de pago (PMP)",
      ["bloque-cuentas", "sec-pmp", "sec-plazos", "sec-dispersion-cxp", "sec-proveedores-cxp", "sec-deuda"], None),
+    # Pedido del usuario (2026-10-21): cada área con su resumen e informe mensual.
+    ("resumen", "Resumen ejecutivo", "Metas, mensajes y oportunidades del mes", ["sec-resumen-area"], None),
+    ("informe", "Informe mensual", "Para imprimir o guardar en PDF", ["sec-informe-area"], None),
 ]
 
 # Meses de la gráfica Compras por mes (pestaña Compras y su panel en Indicadores).
@@ -4644,6 +4701,8 @@ _CONTENIDO_ZONA_CATEGORIA = {
     "abastecimiento": ("gestion/categoria/_abastecimiento.html", _cat_abastecimiento),
     "precios": ("gestion/categoria/_precios.html", _cat_precios),
     "cuentas": ("gestion/categoria/_cuentas.html", _cat_cuentas),
+    "resumen": ("gestion/_resumen_area.html", lambda r, c, t: _contexto_resumen_area(r, _slug(c))),
+    "informe": ("gestion/_informe_area.html", lambda r, c, t: _contexto_informe_area(r, _slug(c))),
 }
 
 

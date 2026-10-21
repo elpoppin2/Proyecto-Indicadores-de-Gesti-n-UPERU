@@ -1,0 +1,154 @@
+{% load dashboard_extras %}
+{% comment %}
+  Resumen ejecutivo (gestion/ejecutivo.py): lo que el gerente lee en 60 segundos.
+  Lo usan la Portada (toda la compañía) y la pestaña Resumen de cada área (solo
+  sus categorías; pedido del usuario, 2026-10-21). Variables: e (ejecutivo.contexto),
+  meses, mes_sel, en_curso, cuerpo_id (contenedor que se vuelve a pedir al cambiar
+  el Mes), nombre_mes (parámetro GET del Mes), url_informe (informe mensual del
+  mismo alcance, sin el mes) y url_informe_sep ("?" o "&amp;").
+{% endcomment %}
+<div id="{{ cuerpo_id }}" class="portada">
+
+  <div class="portada-cabecera">
+    <div class="portada-titulo">
+      <span class="portada-eyebrow">Resumen ejecutivo{% if e.area %} · {{ e.area }}{% endif %}{% if en_curso %} · mes en curso{% endif %}</span>
+      <h2>{{ e.mes|mesanio }}</h2>
+      {% with c=e.compras %}
+        <p class="portada-compras">{% if e.enlace_compras %}<a href="{{ e.enlace_compras }}">{% endif %}<strong>{{ c.total|soles_mm }}</strong>{% if e.enlace_compras %}</a>{% endif %} comprados en {{ e.tramo }}{% if c.variacion is not None %}, {% if c.variacion > 0 %}+{% endif %}{{ c.variacion|numero:1 }}% frente al mismo tramo de {{ c.anio_anterior }}{% endif %} ({{ c.diario|soles_mm }} por día)</p>
+      {% endwith %}
+      <p class="portada-nota">Compras y plazo de pago de {{ e.tramo }};{% if e.con_inventario %} inventario al {{ e.corte|date:"d/m/Y" }};{% endif %} riesgos y oportunidades de los últimos 12 meses.{% if e.metas_propuestas %} Las metas marcadas como propuesta están por confirmar.{% endif %}</p>
+    </div>
+    <div class="portada-acciones">
+      <form class="filtros" method="get" data-target="{{ cuerpo_id }}" data-sin-reinicio>
+        <div class="campo">
+          <label for="{{ nombre_mes }}">Mes</label>
+          <select name="{{ nombre_mes }}" id="{{ nombre_mes }}">
+            {% for m in meses %}
+              <option value="{{ m|fechaiso }}" {% if m == mes_sel %}selected{% endif %}>{{ m|mesanio }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <noscript><button type="submit">Aplicar</button></noscript>
+      </form>
+      <a class="btn-primario" href="{{ url_informe }}{{ url_informe_sep|safe }}mes={{ mes_sel|fechaiso }}&amp;pdf=1" data-descarga-informe>Descargar informe mensual (PDF)</a>
+      <a class="btn-link" href="{{ url_informe }}{{ url_informe_sep|safe }}mes={{ mes_sel|fechaiso }}" target="_blank" rel="noopener">Ver informe en el navegador</a>
+    </div>
+  </div>
+
+  <section class="mensajes-mes" aria-label="Mensajes del mes">
+    {% for m in e.mensajes %}
+      <article class="mensaje mensaje-{{ m.estado }}">
+        <span class="mensaje-num">{{ forloop.counter }}</span>
+        <p>{{ m.texto }}</p>
+      </article>
+    {% endfor %}
+  </section>
+
+  <section class="kpi-grid" aria-label="Indicadores clave">
+    {% for k in e.kpis %}
+      <article class="kpi-tarjeta kpi-{{ k.estado }}">
+        <header class="kpi-cabecera">
+          <h3>{{ k.titulo }}</h3>
+          {% if k.estado_texto %}<span class="pill-estado estado-{{ k.estado }}">{{ k.estado_texto }}</span>{% endif %}
+        </header>
+        <div class="kpi-cuerpo">
+          <span class="kpi-cifra">{{ k.cifra }}</span>
+          {% with m=k.spark %}{% if m %}
+            <svg class="minigrafico kpi-spark" viewBox="0 0 {{ m.ancho }} {{ m.alto }}" preserveAspectRatio="none" aria-hidden="true"><path d="{{ m.linea }}"></path><circle cx="{{ m.fin_x }}" cy="{{ m.fin_y }}" r="2.6"></circle></svg>
+          {% endif %}{% endwith %}
+        </div>
+        <p class="kpi-sub">{{ k.sub }}</p>
+        {% if k.impacto %}<p class="kpi-impacto">{{ k.impacto }}</p>{% endif %}
+        <footer class="kpi-pie">
+          <span class="kpi-meta">{{ k.meta }}</span>
+          {% if k.enlace %}<a class="btn-link" href="{{ k.enlace }}">Ver detalle<span class="chevron" aria-hidden="true"></span></a>{% endif %}
+        </footer>
+      </article>
+    {% endfor %}
+  </section>
+
+  {% with c=e.cartera %}
+  <section class="bloque" id="{{ cuerpo_id }}-cartera">
+    <div class="bloque-cabecera">
+      <h2>Cartera de oportunidades</h2>
+      <button type="button" class="btn-link" data-imprimir="{{ cuerpo_id }}-cartera">Descargar / Imprimir</button>
+    </div>
+    <p class="nota">Dónde está el valor en {{ c.periodo }}. <strong>Caja:</strong> capital de trabajo que se libera una vez (plazo de pago, stock). <strong>Ahorro:</strong> menor costo cada año (contratos, precio).</p>
+    <div class="cartera-totales">
+      <div class="cartera-total cartera-caja"><span class="cartera-cifra">{{ c.total_caja|soles_mm }}</span><span class="cartera-etiqueta">Caja que se puede liberar</span></div>
+      <div class="cartera-total cartera-ahorro"><span class="cartera-cifra">{{ c.total_ahorro|soles_mm }}</span><span class="cartera-etiqueta">Ahorro potencial al año</span></div>
+    </div>
+    <div class="palancas">
+      {% for p in c.palancas %}{% if p.casos or not e.area %}
+        <div class="palanca">
+          <div class="palanca-titulo">
+            <span class="chip-tipo chip-{{ p.tipo|lower }}">{{ p.tipo }}</span>
+            <strong>{{ p.nombre }}</strong>
+            <span class="palanca-casos">{{ p.casos|numero }} caso{{ p.casos|pluralize }}</span>
+          </div>
+          <span class="barra-pista"><span class="barra-relleno palanca-{{ p.tipo|lower }}" style="width:{{ p.pct }}%"></span></span>
+          <span class="palanca-valor">{{ p.valor|soles_mm }}</span>
+          <p class="palanca-desc">{{ p.descripcion }} <span class="texto-tenue">{{ p.supuesto }}</span></p>
+        </div>
+      {% endif %}{% endfor %}
+    </div>
+    {% if c.casos %}
+    <h3 class="subtitulo">Los casos de más valor</h3>
+    <div class="tabla-buscable">
+      <div class="buscador">
+        <div class="campo">
+          <label for="buscar-{{ cuerpo_id }}">Buscar</label>
+          <input type="text" id="buscar-{{ cuerpo_id }}" data-buscar="descripcion" placeholder="Proveedor, material o categoría">
+        </div>
+      </div>
+      <div class="tabla-scroll">
+        <table>
+          <thead><tr><th>Palanca</th><th>Tipo</th><th>Categoría</th><th>Caso</th><th class="num" data-orden="desc">Oportunidad</th></tr></thead>
+          <tbody>
+            {% for i in c.casos %}
+              <tr>
+                <td>{{ i.palanca }}</td>
+                <td><span class="chip-tipo chip-{{ i.tipo|lower }}">{{ i.tipo }}</span></td>
+                <td>{{ i.categoria }}</td>
+                <td class="col-descripcion">{{ i.detalle }} <span class="texto-tenue">· {{ i.categoria|lower }}</span></td>
+                <td class="num" data-valor="{{ i.valor|stringformat:'.2f' }}">{{ i.valor|soles_mm }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </section>
+  {% endwith %}
+
+  {% if not e.area or e.categorias|length > 1 %}
+  <section class="bloque" id="{{ cuerpo_id }}-categorias">
+    <h2>Resumen por categoría</h2>
+    <p class="nota">{{ e.tramo }}.{% if not e.area %} Elige una categoría para ver su detalle.{% endif %} Bajo contrato no aplica a CAPEX ni Empaques. Días de inventario = valor del inventario ÷ consumo valorizado promedio de 6 meses.</p>
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr><th>Categoría</th><th class="num">Compras</th><th class="num">Var. vs año anterior</th><th class="num">Bajo contrato</th><th class="num">PMP</th><th class="num">Inventario</th><th class="num">Días de inventario</th><th class="num">IPU</th><th class="num">Proveedor único</th></tr>
+        </thead>
+        <tbody>
+          {% for f in e.categorias %}
+            <tr>
+              <td>{% if e.area %}{{ f.categoria }}{% else %}<a class="enlace-tabla" href="{% url 'categoria_detalle' slug=f.slug %}">{{ f.categoria }}</a>{% endif %}</td>
+              <td class="num">{{ f.compras|soles_mm|default:"—" }}</td>
+              <td class="num {% if f.variacion > 0 %}dato-positivo{% elif f.variacion < 0 %}dato-negativo{% endif %}">{% if f.variacion is not None %}{% if f.variacion > 0 %}+{% endif %}{{ f.variacion|numero:1 }}%{% else %}—{% endif %}</td>
+              <td class="num">{% if f.contrato is not None %}{{ f.contrato|numero:0 }}%{% else %}<span class="texto-tenue" title="La fórmula de contrato no aplica a esta categoría">n.a.</span>{% endif %}</td>
+              <td class="num">{% if f.pmp is not None %}{{ f.pmp|numero:0 }} d{% else %}—{% endif %}</td>
+              <td class="num">{{ f.inventario|soles_mm|default:"—" }}</td>
+              <td class="num">{% if f.doh %}{{ f.doh|numero:0 }}{% else %}—{% endif %}</td>
+              <td class="num {% if f.ipu > 0 %}dato-negativo{% elif f.ipu < 0 %}dato-positivo{% endif %}">{% if f.ipu is not None %}{% if f.ipu > 0 %}+{% endif %}{{ f.ipu|numero:1 }}%{% else %}—{% endif %}</td>
+              <td class="num">{% if f.unico is not None %}{{ f.unico|numero:0 }}%{% else %}—{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+</div>

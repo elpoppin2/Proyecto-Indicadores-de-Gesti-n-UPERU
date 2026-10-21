@@ -257,7 +257,9 @@ class Command(BaseCommand):
                 destino = f"{DESCARGAS}/{quote(self.descargas[clave][0])}"
             elif ruta in mapa:
                 destino = quote(mapa[ruta])
-            elif partes.path.endswith("/exportar/") or "pdf=1" in partes.query:
+            elif partes.path.endswith("/exportar/") or "pdf=1" in partes.query or partes.path == "/informe-mensual/":
+                # Descargas y el informe en otra pestaña necesitan el servidor; en
+                # la copia, el Informe mensual de cada área se imprime desde su pestaña.
                 return 'data-descarga-localhost'
             else:
                 return 'data-solo-localhost'

@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<title>Informe Supply Chain — {{ e.mes|mesanio }}</title>
+<title>Informe {% if e.area %}{{ e.area }}{% else %}Supply Chain{% endif %} — {{ e.mes|mesanio }}</title>
 {# Informe mensual de Supply Chain (views.informe_mensual / gestion/ejecutivo.py): la portada del mes en formato de documento A4 horizontal, autocontenido (estilos y logo dentro) para que Edge lo convierta en PDF igual en cualquier equipo. Pedido por el usuario: "informe mensual con un clic". #}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
@@ -81,7 +81,7 @@
       <img src="{{ logo }}" alt="UNACEM">
       <span class="sep"></span>
       <div>
-        <div class="eyebrow">Informe mensual · Supply Chain</div>
+        <div class="eyebrow">Informe mensual · {% if e.area %}{{ e.area }}{% else %}Supply Chain{% endif %}</div>
         <h1>{{ e.mes|mesanio }}</h1>
       </div>
     </div>
@@ -168,12 +168,12 @@
 {# ---------------- Página 3: categorías y riesgos ---------------- #}
 <section class="hoja">
   <header class="cabecera">
-    <div><div class="eyebrow">Detalle · {{ e.tramo }}</div><h1>Categorías y riesgos</h1></div>
+    <div><div class="eyebrow">Detalle · {{ e.tramo }}</div><h1>{% if e.area and e.categorias|length <= 1 %}Compras, inventario y riesgos{% else %}Categorías y riesgos{% endif %}</h1></div>
     <div class="meta-doc">{{ e.mes|mesanio }}</div>
   </header>
 
   <div class="bloque">
-    <h2>Resumen por categoría</h2>
+    <h2>{% if e.area and e.categorias|length <= 1 %}Resumen{% else %}Resumen por categoría{% endif %}</h2>
     <table>
       <thead><tr><th>Categoría</th><th class="num">Compras</th><th class="num">Var. año ant.</th><th class="num">Bajo contrato</th><th class="num">PMP</th><th class="num">Inventario</th><th class="num">Días inv.</th><th class="num">IPU</th><th class="num">Prov. único</th></tr></thead>
       <tbody>
