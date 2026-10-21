@@ -1,0 +1,1 @@
+"""Consultas y cálculos del dashboard, un módulo por tema (antes todo iba en dashboard/queries.py, ~4,400 líneas; reordenado el 2026-10-21 a pedido del usuario). dashboard/queries.py re-exporta todo: el resto del código sigue usando `from dashboard import queries as q`."""
