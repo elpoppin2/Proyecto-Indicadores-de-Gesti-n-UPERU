@@ -31,7 +31,7 @@ warnings.filterwarnings("ignore", message="pandas only supports SQLAlchemy")
 # Las agregaciones sobre tablas de millones de filas tardan segundos en SQLite, y
 # los datos cambian una vez al día (carga desatendida de la madrugada). Así que:
 #   1. Cada resultado se guarda en disco (.cache_consultas/<versión>/<hash>.pkl),
-#      compartido entre procesos: el servidor, la tarea programada y Streamlit.
+#      compartido entre procesos: el servidor y la tarea programada.
 #      `calentar_cache` (tras la carga diaria) recorre todas las páginas y las
 #      deja calculadas, así gerencia nunca espera una consulta pesada.
 #   2. Encima, un dict en memoria por proceso, para no releer el disco.
@@ -123,8 +123,8 @@ def _cache_obtener(clave, calcular):
         with open(ruta, "rb") as f:
             datos = f.read()
         valor = pickle.loads(datos)
-    except (OSError, EOFError, pickle.UnpicklingError):
-        pass
+    except (OSError, EOFError, pickle.UnpicklingError, ImportError, AttributeError):
+        pass  # sin guardar, o guardado con otra versión de las librerías: se recalcula
     if valor is _SIN_VALOR:
         valor = calcular()
         datos = pickle.dumps(valor, protocol=pickle.HIGHEST_PROTOCOL)

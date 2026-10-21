@@ -13,17 +13,14 @@ import collections
 import datetime
 import io
 import math
-import sys
 import threading
-from pathlib import Path
 from urllib.parse import urlencode
 
 import pandas as pd
 from django.http import Http404, HttpResponse
 from django.template.loader import render_to_string
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dashboard"))
-import queries as q  # noqa: E402
+from dashboard import queries as q
 
 # Filas por página (el resto se pide con "Cargar más" o al bajar el scroll)
 # y tope de la descarga a Excel.

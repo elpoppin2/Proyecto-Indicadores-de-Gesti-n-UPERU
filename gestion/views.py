@@ -6,7 +6,6 @@ import io
 import json
 import math
 import re
-import sys
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -22,8 +21,7 @@ from django.views.decorators.http import require_POST
 # dashboard/queries.py concentra toda la lógica de agregación (compras, inventario,
 # rotación, variación) ya probada en el dashboard de Streamlit; esta vista la
 # reutiliza tal cual en vez de duplicar SQL, igual que hacen las vistas de Streamlit.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dashboard"))
-import queries as q  # noqa: E402
+from dashboard import queries as q
 
 from . import asistente, charts, desglose, ejecutivo  # noqa: E402
 from .models import ConsultaAsistente  # noqa: E402

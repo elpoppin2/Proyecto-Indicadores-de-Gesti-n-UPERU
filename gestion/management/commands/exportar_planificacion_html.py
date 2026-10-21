@@ -4,7 +4,7 @@ import os
 
 from django.core.management.base import BaseCommand, CommandError
 
-import dashboard.queries as q
+from dashboard import queries as q
 
 _GESTION = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PLANTILLA = os.path.join(_GESTION, "report_templates", "planificacion_estatico.html")

@@ -19,7 +19,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
 from pathlib import Path
@@ -27,8 +26,7 @@ from pathlib import Path
 import pandas as pd
 from django.urls import reverse
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dashboard"))
-import queries as q  # noqa: E402
+from dashboard import queries as q
 
 from . import charts  # noqa: E402
 

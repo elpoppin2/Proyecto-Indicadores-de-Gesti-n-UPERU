@@ -1,11 +1,9 @@
 import datetime
-import sys
 from pathlib import Path
 
 from django import template
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "dashboard"))
-import queries as q  # noqa: E402
+from dashboard import queries as q
 
 register = template.Library()
 

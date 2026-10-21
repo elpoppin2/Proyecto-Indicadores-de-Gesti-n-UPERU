@@ -1,6 +1,7 @@
 import glob
 import os
 import time
+import traceback
 
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
@@ -29,25 +30,33 @@ class Command(BaseCommand):
         if not os.path.isdir(base):
             raise CommandError(f"No se encontró la carpeta {base}")
 
-        categorias_csv = self._un_archivo_opcional(base, "CATEGORÍAS")
+        # Si una tabla falla, se sigue con las demás (cada importador es una
+        # transacción: la que falla queda con sus datos anteriores, completos)
+        # y al final se informa cuáles fallaron. Antes, un error en MB51
+        # dejaba sin cargar también ZMM056 y FBL3N.
+        self._fallidos = []
+        inicio = time.monotonic()
+        categorias_csv = self._paso("Categorías", lambda: self._un_archivo_opcional(base, "CATEGORÍAS"))
         if categorias_csv:
-            self.stdout.write("== Categorías ==")
-            call_command("import_categorias", categorias_csv)
-        else:
+            self._paso("Categorías", "import_categorias", categorias_csv)
+        elif categorias_csv is None and "Categorías" not in self._fallidos:
             self.stdout.write("== Categorías == (omitido, no se encontró la carpeta 'CATEGORÍAS')")
 
-        inicio = time.monotonic()
-        materiales_xlsx = self._mas_reciente(base, "TABLA_SQ01_ZMM60")
-        self._paso("Materiales", "import_materiales", materiales_xlsx, forzar=forzar)
+        materiales_xlsx = self._paso("Materiales", lambda: self._mas_reciente(base, "TABLA_SQ01_ZMM60"))
+        if materiales_xlsx:
+            self._paso("Materiales", "import_materiales", materiales_xlsx, forzar=forzar)
 
-        inventario_dir = self._carpeta(base, "TABLA_MB5B")
-        self._paso("Inventario mensual", "import_inventario", inventario_dir, forzar=forzar)
-
-        compras_dir = self._carpeta(base, "TABLA_SQ01_ME2N")
-        self._paso("Compras", "import_compras", compras_dir, reemplazar=True, forzar=forzar)
-
-        movimientos_dir = self._carpeta(base, "TABLA_MB51")
-        self._paso("Movimientos (MB51)", "import_movimientos", movimientos_dir, forzar=forzar)
+        for titulo, comando, carpeta, extra in [
+            ("Inventario mensual", "import_inventario", "TABLA_MB5B", {}),
+            ("Compras", "import_compras", "TABLA_SQ01_ME2N", {"reemplazar": True}),
+            ("Movimientos (MB51)", "import_movimientos", "TABLA_MB51", {}),
+        ]:
+            ruta = os.path.join(base, carpeta)
+            if not os.path.isdir(ruta):
+                self.stderr.write(f"== {titulo} == ERROR: no se encontró la carpeta '{carpeta}' dentro de {base}")
+                self._fallidos.append(titulo)
+                continue
+            self._paso(titulo, comando, ruta, forzar=forzar, **extra)
 
         plan_sop_dir = self._carpeta_opcional(base, "TABLA SOP ABASTECIMIENTO")
         if plan_sop_dir:
@@ -79,19 +88,37 @@ class Command(BaseCommand):
         else:
             self.stdout.write("== Ajustes de valor de existencias (FBL3N) == (omitido, no se encontró la carpeta)")
 
-        self.stdout.write(self.style.SUCCESS(
-            f"Carga completa finalizada en {self._duracion(time.monotonic() - inicio)}."
-        ))
+        duracion = self._duracion(time.monotonic() - inicio)
+        if self._fallidos:
+            # Código 2 = carga parcial: el resto quedó cargado y la tarea diaria
+            # sigue con el HTML y la caché (ver actualizar_tablas_mm.ps1).
+            raise CommandError(
+                f"Carga finalizada en {duracion} con errores en: {', '.join(self._fallidos)}. "
+                "Esas tablas conservan los datos de la carga anterior.", returncode=2)
+        self.stdout.write(self.style.SUCCESS(f"Carga completa finalizada en {duracion}."))
 
     def _paso(self, titulo, comando, *args, **kwargs):
-        """Corre un importador mostrando cuánto tardó, para saber dónde se va
-        el tiempo de la carga diaria (el log de la tarea programada)."""
-        self.stdout.write(f"== {titulo} ==")
-        self.stdout.flush()
+        """Corre un importador (o una función, si `comando` no es un nombre)
+        mostrando cuánto tardó, para saber dónde se va el tiempo de la carga
+        diaria (el log de la tarea programada). Si falla, anota el error y
+        devuelve None para que la carga siga con las demás tablas."""
+        silencioso = callable(comando)
+        if not silencioso:
+            self.stdout.write(f"== {titulo} ==")
+            self.stdout.flush()
         t = time.monotonic()
-        call_command(comando, *args, **kwargs)
-        self.stdout.write(f"   ({titulo}: {self._duracion(time.monotonic() - t)})")
-        self.stdout.flush()
+        try:
+            resultado = comando() if silencioso else call_command(comando, *args, **kwargs)
+        except Exception as error:  # noqa: BLE001 — se informa y se sigue con la tabla siguiente
+            self.stderr.write(f"== {titulo} == ERROR: {type(error).__name__}: {error}")
+            if not isinstance(error, CommandError):  # un CommandError ya dice qué pasó
+                self.stderr.write("".join(traceback.format_exception(error)[-4:]))
+            self._fallidos.append(titulo)
+            return None
+        if not silencioso:
+            self.stdout.write(f"   ({titulo}: {self._duracion(time.monotonic() - t)})")
+            self.stdout.flush()
+        return resultado if silencioso else True
 
     @staticmethod
     def _duracion(segundos):

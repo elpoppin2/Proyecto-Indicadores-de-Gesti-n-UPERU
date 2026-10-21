@@ -1,16 +1,16 @@
 # Indicadores de Gestión
 
-Aplicación Django + Streamlit para indicadores de gestión de materiales, inventario y
-compras, alimentada desde extracciones CSV de SAP (MB5B, ME2N, SQ01/ZMM060) y un
-catálogo de categorías.
+Dashboard Django de indicadores de gestión de Supply Chain (compras, inventario,
+precios/IPU, cuentas por pagar y Planificación S&OP), alimentado desde extracciones de
+SAP (MB51, MB5B, ME2N, ZMM060, ZMM056, FBL3N) y un catálogo de categorías.
 
 ## Arquitectura
 
-- **Django** (`config/`, app `gestion/`): modelos, base de datos (SQLite en local,
-  PostgreSQL en Azure — ver más abajo) y comandos de management para ingestar los CSV.
-- **Streamlit** (`dashboard/`): dashboards que leen la misma base de datos (vía el
-  ORM/conexión de Django) para mostrar indicadores. Es una app independiente que
-  comparte la base de datos con Django, no un módulo de la misma.
+- `config/`: configuración de Django.
+- `gestion/`: modelos, vistas (`gestion/vistas/`), plantillas, gráficos SVG
+  (`charts.py`), resumen ejecutivo (`ejecutivo.py`) y comandos de carga y exportación.
+- `dashboard/queries.py`: consultas y cálculos (SQL directo + pandas) con caché versionada.
+  (La antigua app de Streamlit se retiró el 2026-10-21; el dashboard web la reemplazó.)
 
 ## Instalación
 
@@ -47,12 +47,12 @@ para no duplicar líneas.
 
 ## Roles y autenticación
 
-Hay dos roles, implementados como grupos de Django y validados en el login de Streamlit:
+Todas las páginas piden iniciar sesión. Hay dos roles, implementados como grupos de Django:
 
-- **admin**: acceso total (CRUD completo vía el panel de Django + todos los dashboards,
-  incluida la sección "Administración").
-- **coordinador**: solo visualización (dashboards de Streamlit; sin acceso al panel de
-  Django, sin permisos de escritura).
+- **admin**: además del dashboard, entra al panel de Django (`/admin/`).
+- **coordinador**: solo el dashboard.
+
+Todavía no hay permisos por área: cualquier usuario ve todas las páginas.
 
 Primero, crea los grupos de roles (una sola vez):
 
@@ -68,28 +68,19 @@ Luego crea usuarios asignándoles un rol:
 ```
 
 `crear_usuario` es idempotente: si el usuario ya existe, actualiza su contraseña y su rol.
-Ya se crearon dos cuentas de ejemplo (**cámbiales la contraseña o bórralas antes de
-usar esto en producción**):
-
-| Usuario       | Contraseña       | Rol         |
-|---------------|------------------|-------------|
-| `admin`       | `CambiaEsta123!` | admin       |
-| `coordinador` | `CambiaEsta123!` | coordinador |
-
-El login de Streamlit valida usuario/contraseña contra la tabla `auth_user` de Django
-(`dashboard/auth.py`, función `requerir_login`), y el rol determina qué páginas aparecen
-en la barra de navegación (`dashboard/app.py`) — un coordinador nunca ve ni puede
-navegar a la página "Administración".
+Las contraseñas no se escriben en este repositorio.
 
 ## Uso
 
 ```powershell
-# Panel de administración de Django (solo entran usuarios con rol admin)
+# Desarrollo (el uso diario es con waitress, ver abajo)
 .\venv\Scripts\python.exe manage.py runserver
-# abrir http://localhost:8000/admin/
 
-# Dashboards de Streamlit (pide usuario/contraseña al entrar)
-.\venv\Scripts\python.exe -m streamlit run dashboard\app.py
+# Prueba de humo después de un cambio: todas las páginas, filtros, detalles y descargas
+.\venv\Scripts\python.exe manage.py revisar_paginas
+
+# Cifras de meses cerrados contra la foto guardada (IPU, PMP, compras, S&OP...)
+.\venv\Scripts\python.exe manage.py verificar_calculos
 ```
 
 ## Operación diaria (dashboard web para gerencia)
@@ -118,18 +109,24 @@ ejecuta `C:\Users\BLAZO\Scripts\actualizar_tablas_mm.ps1`:
 
 1. Copia las tablas SAP desde OneDrive.
 2. `import_todo`: importa solo lo nuevo o modificado, con el tiempo de cada paso
-   en el log (`C:\Users\BLAZO\Scripts\logs\actualizar_tablas_mm.log`).
+   en el log. Un log por corrida en `C:\Users\BLAZO\Scripts\logs\`
+   (`actualizar_tablas_mm_AAAA-MM-DD_HHMM.log`, se guardan 30 días;
+   `actualizar_tablas_mm.log` es siempre la última).
    - MB51, MB5B y ZMM056 solo recargan el mes en curso, más el anterior hasta el
      día 10 (cierre contable). Los meses cerrados no se tocan salvo con `--forzar`.
    - ME2N se recarga completo cuando cambia.
    - Cada importador corre en una sola transacción: si falla, no deja datos a medias.
+   - Si una tabla falla, se sigue con las demás y termina con código 2 (carga
+     parcial); la tabla que falló conserva los datos de la carga anterior.
 3. `exportar_planificacion_html`: regenera el HTML compartido de Planificación.
 4. `calentar_cache`: abre todas las páginas para dejarlas calculadas.
+5. `exportar_sitio_html`: copia estática por área en la carpeta de SharePoint.
 
 ### Por qué es rápido
 
 - **Caché de consultas en disco** (`.cache_consultas/`, ver `dashboard/queries.py`).
-  - La comparten el servidor, la tarea programada y Streamlit.
+  - La comparten el servidor y la tarea programada.
+  - En memoria, cada proceso guarda lo más usado hasta 1 GB (`UPERU_CACHE_MEMORIA_MB`).
   - No vence por tiempo: cada importación que carga datos cambia la versión y
     todo se recalcula con los datos nuevos, sin reiniciar el servidor.
   - Se puede borrar sin riesgo: se regenera sola.
@@ -151,9 +148,8 @@ ejecuta `C:\Users\BLAZO\Scripts\actualizar_tablas_mm.ps1`:
 La app ya está preparada para producción: `config/settings.py` lee `SECRET_KEY`, `DEBUG`,
 `ALLOWED_HOSTS`, `DATABASE_URL`, etc. desde variables de entorno (con valores por defecto
 que mantienen el desarrollo local igual que hasta ahora, usando SQLite). En producción se
-usa **Azure Database for PostgreSQL** en vez de SQLite: dos Web Apps (Django y Streamlit)
-no pueden compartir un archivo `db.sqlite3` local entre sí de forma segura, pero sí una
-base de datos gestionada.
+usa **Azure Database for PostgreSQL** en vez de SQLite (una Web App no conserva un
+archivo `db.sqlite3` local de forma segura entre reinicios y despliegues).
 
 Esto requiere tener [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli)
 instalado y haber hecho `az login` con tu cuenta. Los comandos son PowerShell.
@@ -165,7 +161,6 @@ $RG = "rg-indicadores-gestion"
 $LOCATION = "eastus2"                     # o la región más cercana a ti
 $PLAN = "plan-indicadores"
 $DJANGO_APP = "indicadores-admin"         # define la URL: <nombre>.azurewebsites.net
-$STREAMLIT_APP = "indicadores-dashboard"
 $PG_SERVER = "pg-indicadores"
 $PG_ADMIN = "pgadmin"
 $PG_PASSWORD = "<clave-fuerte-aqui>"
@@ -173,7 +168,7 @@ $DB_NAME = "indicadores"
 
 az group create --name $RG --location $LOCATION
 
-# Plan Linux compartido por las dos apps (B1 ~ USD 13/mes; usa F1 si solo quieres probar gratis)
+# Plan Linux (B1 ~ USD 13/mes; usa F1 si solo quieres probar gratis)
 az appservice plan create --resource-group $RG --name $PLAN --is-linux --sku B1
 ```
 
@@ -190,31 +185,25 @@ az postgres flexible-server db create --resource-group $RG --server-name $PG_SER
 ```
 
 Después de cargar los datos (paso 5) puedes restringir `--public-access` solo a las IPs
-salientes de tus dos Web Apps (`az webapp show --query outboundIpAddresses`).
+salientes de la Web App (`az webapp show --query outboundIpAddresses`).
 
-### 3. Las dos Web Apps
+### 3. La Web App
 
 ```powershell
 az webapp create --resource-group $RG --plan $PLAN --name $DJANGO_APP --runtime "PYTHON:3.12"
 az webapp config set --resource-group $RG --name $DJANGO_APP `
   --startup-file "python manage.py collectstatic --noinput && gunicorn config.wsgi --bind=0.0.0.0:8000 --timeout 600"
 
-az webapp create --resource-group $RG --plan $PLAN --name $STREAMLIT_APP --runtime "PYTHON:3.12"
-az webapp config set --resource-group $RG --name $STREAMLIT_APP `
-  --startup-file "python -m streamlit run dashboard/app.py --server.port 8000 --server.address 0.0.0.0 --server.headless true"
-
 $DB_URL = "postgres://${PG_ADMIN}:${PG_PASSWORD}@${PG_SERVER}.postgres.database.azure.com:5432/${DB_NAME}?sslmode=require"
 
-foreach ($app in @($DJANGO_APP, $STREAMLIT_APP)) {
-  az webapp config appsettings set --resource-group $RG --name $app --settings `
-    DATABASE_URL=$DB_URL `
-    DJANGO_SECRET_KEY="<genera-una-clave-larga-y-distinta-a-la-de-local>" `
-    DJANGO_DEBUG="False" `
-    DJANGO_ALLOWED_HOSTS="$DJANGO_APP.azurewebsites.net,$STREAMLIT_APP.azurewebsites.net" `
-    DJANGO_CSRF_TRUSTED_ORIGINS="https://$DJANGO_APP.azurewebsites.net" `
-    SCM_DO_BUILD_DURING_DEPLOYMENT="1" `
-    WEBSITES_PORT="8000"
-}
+az webapp config appsettings set --resource-group $RG --name $DJANGO_APP --settings `
+  DATABASE_URL=$DB_URL `
+  DJANGO_SECRET_KEY="<genera-una-clave-larga-y-distinta-a-la-de-local>" `
+  DJANGO_DEBUG="False" `
+  DJANGO_ALLOWED_HOSTS="$DJANGO_APP.azurewebsites.net" `
+  DJANGO_CSRF_TRUSTED_ORIGINS="https://$DJANGO_APP.azurewebsites.net" `
+  SCM_DO_BUILD_DURING_DEPLOYMENT="1" `
+  WEBSITES_PORT="8000"
 ```
 
 Genera `DJANGO_SECRET_KEY` con, por ejemplo:
@@ -222,13 +211,11 @@ Genera `DJANGO_SECRET_KEY` con, por ejemplo:
 
 ### 4. Desplegar el código
 
-Deploy por zip (no requiere GitHub); el mismo zip sirve para las dos apps porque solo
-cambia el *startup command*:
+Deploy por zip (no requiere GitHub):
 
 ```powershell
 Compress-Archive -Path * -DestinationPath ..\deploy.zip -Force -Exclude venv,db.sqlite3,staticfiles
 az webapp deploy --resource-group $RG --name $DJANGO_APP --src-path ..\deploy.zip --type zip
-az webapp deploy --resource-group $RG --name $STREAMLIT_APP --src-path ..\deploy.zip --type zip
 ```
 
 ### 5. Migrar el esquema y cargar los datos
@@ -245,15 +232,14 @@ $env:DATABASE_URL = $DB_URL
 Remove-Item Env:\DATABASE_URL   # tu entorno local vuelve a usar SQLite
 ```
 
-Al terminar: `https://indicadores-admin.azurewebsites.net/admin/` (panel de Django, solo
-admins) y `https://indicadores-dashboard.azurewebsites.net` (dashboards, pide login).
+Al terminar: `https://indicadores-admin.azurewebsites.net` (dashboard, pide login) y
+`/admin/` (panel de Django, solo admins).
 
 ### Notas
 
 - Costo aproximado con esta configuración: Plan B1 (~USD 13/mes) + Postgres B1ms
   (~USD 12-25/mes según región/almacenamiento). Para solo probar, cambia `--sku B1` por
   `F1` (gratis) en el App Service Plan — con límite de CPU/hora y sin *always on*.
-  El dashboard de Streamlit necesita WebSocket, que sí funciona en F1.
 - La reimportación de compras (`import_compras`) no tiene *unique constraint*, así que si
   vuelves a correr `import_todo` sobre la BD de Azure, primero borra `LineaCompra` para no
   duplicar filas (igual que en local).

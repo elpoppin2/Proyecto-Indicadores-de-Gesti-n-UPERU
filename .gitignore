@@ -4,7 +4,6 @@ __pycache__/
 db.sqlite3
 db.sqlite3-shm
 db.sqlite3-wal
-.streamlit/secrets.toml
 # Clave de API del asistente de IA (ver config/settings.py)
 secretos/
 staticfiles/

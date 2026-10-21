@@ -17,16 +17,13 @@ import datetime
 import inspect
 import json
 import math
-import sys
 import time
 import unicodedata
-from pathlib import Path
 
 import pandas as pd
 from django.conf import settings
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dashboard"))
-import queries as q  # noqa: E402
+from dashboard import queries as q
 
 CENTROS = {"U001": "Atocongo", "U002": "Condorcocha", "U004": "Importación (compra de importados)"}
 _MESES = ["", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
