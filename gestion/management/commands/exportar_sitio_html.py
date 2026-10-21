@@ -23,6 +23,9 @@ INICIO = "/portada/"
 # ("Planificacion - Logistica de Materias Primas.html") con la barra de las
 # dos, y el "Logistica de Materias Primas.html" suelto solo se ve a sí mismo.
 GRUPOS = {"/planificacion/": ["/planificacion/", "/logistica-materias-primas/"]}
+# Páginas que resumen todas las áreas: no van en la copia por área (pedido del
+# usuario, 2026-10-21; cada área debería tener las suyas, con sus segmentadores).
+SIN_COPIA = {INICIO, "/overview/", "/informe-mensual/"}
 
 # Lo que en la copia no puede funcionar (necesita el servidor): los filtros
 # quedan en su valor por defecto y deshabilitados, y se ocultan la sesión, el
@@ -109,6 +112,7 @@ class Command(BaseCommand):
             nombre = _sin_tildes(nombre.strip())
             archivos[ruta] = "Inicio - Indicadores Supply Chain.html" if ruta == INICIO else f"{nombre}.html"
         archivos["/informe-mensual/"] = "Informe mensual.html"
+        archivos = {r: a for r, a in archivos.items() if r not in SIN_COPIA}
 
         # Qué se escribe: cada página suelta (solo se enlaza a sí misma) y, por
         # grupo, sus otras páginas en un archivo del grupo que enlaza a todas.
