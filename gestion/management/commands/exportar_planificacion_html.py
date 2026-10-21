@@ -61,7 +61,7 @@ class Command(BaseCommand):
 
         # Evolución de entregas por proveedor (replica views._contexto_entregas):
         # entregas por mes/material/centro/proveedor de los últimos meses.
-        from gestion.views import _ENTREGAS_MESES
+        from gestion.vistas.plan_cumplimiento import _ENTREGAS_MESES
         entregas = q.entregas_por_proveedor_sop()
         if not entregas.empty:
             entregas = entregas[entregas["mes"].isin(sorted(entregas["mes"].unique())[-_ENTREGAS_MESES:])]

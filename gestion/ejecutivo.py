@@ -233,18 +233,30 @@ def otif(inicio, fin, categoria=None):
                 "lineas": int(len(g)), "valor": float(g["valor"].sum()),
                 "valor_falla": float(g.loc[~g["otif"], "valor"].sum())}
 
-    proveedores = []
-    for nombre, g in df.groupby("proveedor"):
-        tarde = g[~g["a_tiempo"] & g["primera_entrada"].notna()]
-        atraso = [(p - f).days for p, f in zip(tarde["primera_entrada"], tarde["fecha_entrega"])]
-        proveedores.append({"proveedor": nombre, **resumen(g),
-                            "atraso": sum(atraso) / len(atraso) if atraso else None})
-    proveedores.sort(key=lambda p: -p["valor"])
+    # Por proveedor y por mes, agrupado en pandas (antes, un resumen() por
+    # proveedor: ~500 grupos y ~3 s por cálculo de la portada). Mismo
+    # resultado: % por valor, atraso promedio de las líneas que llegaron tarde.
+    tarde = ~df["a_tiempo"] & df["primera_entrada"].notna()
+    atraso = [(p - f).days if t else float("nan")
+              for p, f, t in zip(df["primera_entrada"], df["fecha_entrega"], tarde)]
+    pesos = df.assign(v_otif=df["valor"].where(df["otif"], 0.0), v_tiempo=df["valor"].where(df["a_tiempo"], 0.0),
+                      v_completo=df["valor"].where(df["completo"], 0.0), atraso=pd.Series(atraso, index=df.index, dtype=float),
+                      mes=[f.replace(day=1) for f in df["fecha_entrega"]])
+    por_proveedor = pesos.groupby("proveedor").agg(
+        valor=("valor", "sum"), v_otif=("v_otif", "sum"), v_tiempo=("v_tiempo", "sum"),
+        v_completo=("v_completo", "sum"), lineas=("valor", "size"), atraso=("atraso", "mean"),
+    ).sort_values("valor", ascending=False, kind="stable")
+
+    def pct(parte, total):
+        return float(parte / total * 100) if total else None
+
+    proveedores = [{"proveedor": nombre, "otif": pct(r.v_otif, r.valor), "a_tiempo": pct(r.v_tiempo, r.valor),
+                    "completo": pct(r.v_completo, r.valor), "lineas": int(r.lineas), "valor": float(r.valor),
+                    "valor_falla": float(r.valor - r.v_otif), "atraso": None if pd.isna(r.atraso) else float(r.atraso)}
+                   for nombre, r in por_proveedor.iterrows()]
     fallas = df[~df["otif"]].sort_values("valor", ascending=False).head(15)
-    meses = {}
-    for r in df.itertuples():
-        meses.setdefault(r.fecha_entrega.replace(day=1), []).append(r.Index)
-    serie = [(m, _pct_valor(df.loc[idx], "otif")) for m, idx in sorted(meses.items())]
+    por_mes = pesos.groupby("mes")[["valor", "v_otif"]].sum()
+    serie = [(m, pct(r.v_otif, r.valor)) for m, r in por_mes.iterrows()]
     return {
         **resumen(df), "pendientes": pendientes, "dias": dias, "tolerancia": supuestos["otif_cantidad_tolerancia_pct"],
         "categorias": [{"categoria": c, **resumen(g)} for c, g in df.groupby("categoria")],

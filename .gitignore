@@ -14,3 +14,6 @@ staticfiles/
 
 # Sesiones de usuarios del dashboard (ver config/settings.py)
 .sesiones/
+
+# Foto de cifras de meses cerrados (manage.py verificar_calculos): datos de la empresa
+datos_locales/
