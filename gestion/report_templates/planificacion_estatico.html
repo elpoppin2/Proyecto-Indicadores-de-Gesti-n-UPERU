@@ -344,7 +344,8 @@ function numero(v,d=0){
     r = Number(corte);
     if(Number(corte[corte.length-1]) % 2) r += 1/10**d;
   } else r = Number(abs.toFixed(d));
-  return (x < 0 ? -r : r).toLocaleString('es-PE',{maximumFractionDigits:d,minimumFractionDigits:d});
+  // r && : un negativo que redondea a 0 se muestra "0.0", no "-0.0" (como f"{v:z.1f}").
+  return (x < 0 && r ? -r : r).toLocaleString('es-PE',{maximumFractionDigits:d,minimumFractionDigits:d});
 }
 function titulo(s){ return s ? s.charAt(0)+s.slice(1).toLowerCase() : ""; }
 // Filtro Material de varios (como views._selector_material): su .value son
@@ -515,7 +516,7 @@ function curvaDoble(puntosA, puntosB, {ancho=640, alto=220, padX=8, padY=24, for
 
 /* ---------- gráfico de barras: cálculo puro (replica charts.py::barras_mensuales) ---------- */
 function barrasMensuales(puntos, {ancho=640, alto=240, padX=10, padY=28, meta=100, formatoValor} = {}){
-  formatoValor = formatoValor || (v => v.toFixed(1)+"%");
+  formatoValor = formatoValor || (v => (Number(v.toFixed(1)) || 0).toFixed(1)+"%");  // sin "-0.0%"
   if(!puntos.length) return null;
   const valores = puntos.map(p=>p[1]).filter(v=>v!=null);
   const maximo = (valores.length ? Math.max(meta, ...valores) : meta) * 1.15;
@@ -1970,7 +1971,7 @@ const PARAMS_CAL = DATA.parametros_calidad || [];   // [campo, etiqueta, unidad,
 const CENTRO_IMPORTACION = DATA.centro_importacion || "U004";
 const MAT_PCQ = PCQ.materiales.map(([codigo, texto, categoria]) => ({codigo, texto, categoria}));
 const PROV_PCQ = PCQ.proveedores;
-const fmtSigno1 = v => (v >= 0 ? "+" : "-") + Math.abs(v).toFixed(1);   // f"{v:+.1f}"
+const fmtSigno1 = v => (v < 0 && Number(Math.abs(v).toFixed(1)) ? "-" : "+") + Math.abs(v).toFixed(1);   // f"{v:+z.1f}"
 const solesCorto = v => (v > 0 ? "+" : (v < 0 ? "−" : "")) + "S/ " + toneladasCorto(Math.abs(v));
 const solesLargo = v => "S/. " + numero(v, 2);                             // queries.formato_soles
 const soloDif = v => numero(Math.abs(v));                                   // numero:0|cut:"-"

@@ -3,6 +3,7 @@ conexión de Django (más eficiente que el ORM para agregaciones sobre tablas de
 millones de filas) y devuelven DataFrames de pandas listos para graficar."""
 
 import calendar
+import collections
 import contextlib
 import contextvars
 import copy
@@ -49,7 +50,13 @@ _ARCHIVO_VERSION = os.path.join(_DIR_CACHE, "version.txt")
 # deja de usarse — si no, la caché seguiría devolviendo el resultado viejo.
 with open(os.path.abspath(__file__), "rb") as _f:
     _HUELLA_CODIGO = hashlib.sha1(_f.read()).hexdigest()[:10]
-_query_cache = {}
+# Memoria: los más recientes primero en salir por el final (LRU), con un tope
+# por el tamaño que ocupan guardados (pickle). Sin tope, cada combinación de
+# filtros que se abre en el día quedaba en la memoria del servidor hasta la
+# carga siguiente; lo que sale de la memoria se sigue leyendo del disco.
+_MAX_BYTES_MEMORIA = int(os.environ.get("UPERU_CACHE_MEMORIA_MB", "1024")) * 1024 * 1024
+_query_cache = collections.OrderedDict()  # clave_version -> (valor, bytes)
+_query_cache_bytes = 0
 _query_cache_lock = threading.Lock()
 _version_leida = {"mtime": None, "version": None}
 
@@ -57,6 +64,7 @@ _version_leida = {"mtime": None, "version": None}
 def _version_datos():
     """Versión actual de los datos (texto en version.txt). Se relee solo si el
     archivo cambió (un os.stat por consulta, microsegundos)."""
+    global _query_cache_bytes
     try:
         mtime = os.stat(_ARCHIVO_VERSION).st_mtime_ns
     except FileNotFoundError:
@@ -70,6 +78,7 @@ def _version_datos():
         with _query_cache_lock:
             if version != _version_leida["version"]:
                 _query_cache.clear()
+                _query_cache_bytes = 0
             _version_leida.update(mtime=mtime, version=version)
     return _version_leida["version"]
 
@@ -97,33 +106,45 @@ def _copia(valor):
 def _cache_obtener(clave, calcular):
     """Devuelve el valor guardado para `clave` en la versión de datos actual
     (memoria, luego disco) o lo calcula con `calcular()` y lo guarda."""
+    global _query_cache_bytes
     version = f"{_version_datos()}-{_HUELLA_CODIGO}"
     clave_version = (version, clave)
     with _query_cache_lock:
-        valor = _query_cache.get(clave_version, _SIN_VALOR)
-    if valor is not _SIN_VALOR:
-        return _copia(valor)
+        guardado = _query_cache.get(clave_version)
+        if guardado is not None:
+            _query_cache.move_to_end(clave_version)
+    if guardado is not None:
+        return _copia(guardado[0])
 
     huella = hashlib.sha1(repr(clave).encode("utf-8")).hexdigest()
     ruta = os.path.join(_DIR_CACHE, version, huella + ".pkl")
     valor = _SIN_VALOR
     try:
         with open(ruta, "rb") as f:
-            valor = pickle.load(f)
+            datos = f.read()
+        valor = pickle.loads(datos)
     except (OSError, EOFError, pickle.UnpicklingError):
         pass
     if valor is _SIN_VALOR:
         valor = calcular()
+        datos = pickle.dumps(valor, protocol=pickle.HIGHEST_PROTOCOL)
         try:
             os.makedirs(os.path.dirname(ruta), exist_ok=True)
             tmp = f"{ruta}.{os.getpid()}.{threading.get_ident()}.tmp"
             with open(tmp, "wb") as f:
-                pickle.dump(valor, f, protocol=pickle.HIGHEST_PROTOCOL)
+                f.write(datos)
             os.replace(tmp, ruta)
         except OSError:
             pass  # sin disco disponible la caché en memoria sigue funcionando
     with _query_cache_lock:
-        _query_cache[clave_version] = valor
+        anterior = _query_cache.pop(clave_version, None)
+        if anterior is not None:
+            _query_cache_bytes -= anterior[1]
+        _query_cache[clave_version] = (valor, len(datos))
+        _query_cache_bytes += len(datos)
+        while _query_cache_bytes > _MAX_BYTES_MEMORIA and len(_query_cache) > 1:
+            _, (_, tamano) = _query_cache.popitem(last=False)
+            _query_cache_bytes -= tamano
     return _copia(valor)
 
 

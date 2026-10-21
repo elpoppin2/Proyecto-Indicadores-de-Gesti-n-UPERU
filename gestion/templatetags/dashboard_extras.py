@@ -54,7 +54,7 @@ def soles_mm(valor):
         return "—"
     if valor != valor:
         return "—"
-    v, signo = abs(valor), "−" if valor < 0 else ""
+    v, signo = abs(valor), "−" if valor <= -0.5 else ""  # sin "−S/ 0"
     if v >= 1e6:
         return f"{signo}S/ {v / 1e6:,.1f} MM"
     if v >= 1e3:
@@ -86,7 +86,7 @@ def numero(valor, decimales=0):
     try:
         if valor != valor:  # NaN
             return ""
-        return f"{float(valor):,.{int(decimales)}f}"
+        return f"{float(valor):z,.{int(decimales)}f}"  # z: -0.04 -> "0.0", no "-0.0"
     except (TypeError, ValueError):
         return valor
 

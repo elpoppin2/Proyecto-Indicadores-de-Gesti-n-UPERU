@@ -6,7 +6,7 @@ from django.db import transaction
 from django.core.management.base import BaseCommand, CommandError
 
 from gestion.models import LineaCompra
-from ._csv_utils import codigo, decimal, entero, fecha, leer_filas, texto
+from ._csv_utils import codigo, decimal, fecha, leer_filas, texto
 from ._seguimiento_archivos import necesita_importar, registrar_importado
 
 AÑO_RE = re.compile(r"(20\d{2})")

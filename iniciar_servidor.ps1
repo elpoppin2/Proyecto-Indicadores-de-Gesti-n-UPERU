@@ -20,4 +20,8 @@ $env:PYTHONUTF8 = "1"
 $env:PYTHONIOENCODING = "utf-8"
 
 & $python manage.py collectstatic --noinput | Out-Null
-& $python -m waitress --listen=0.0.0.0:8000 --threads=8 --channel-timeout=300 config.wsgi:application
+# Solo este equipo (127.0.0.1): ALLOWED_HOSTS ya rechazaba los pedidos de la
+# red, pero el puerto quedaba abierto a ella. Para compartirlo en la red de
+# UNACEM (con permiso de Sistemas) habria que volver a 0.0.0.0 y agregar el
+# nombre del equipo en DJANGO_ALLOWED_HOSTS.
+& $python -m waitress --listen=127.0.0.1:8000 --threads=8 --channel-timeout=300 config.wsgi:application

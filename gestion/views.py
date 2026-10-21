@@ -514,7 +514,7 @@ def overview(request):
     pmp_serie = q.pmp_mensual()
     puntos_pmp = [(_mes_abrev_guion(row["mes"]), float(row["pmp"])) for _, row in pmp_serie.iterrows()]
     contexto["pmp_evolucion"] = {
-        "grafico": charts.serie_area(puntos_pmp, formato_valor=lambda v: f"{v:.0f}"),
+        "grafico": charts.serie_area(puntos_pmp, formato_valor=lambda v: f"{v:z.0f}"),
     }
 
     if not fechas_inv:
@@ -837,7 +837,7 @@ def _contexto_plan_detalle(request):
         puntos_plan = [(str(f["dia"]), f["acumulado_plan"]) for f in diario]
         dias_reales = [f for f in diario if f["fecha"] <= hoy] or diario[:1]
         puntos_real = [(str(f["dia"]), f["acumulado_real"]) for f in dias_reales]
-        curva_s = charts.curva_doble(puntos_plan, puntos_real, alto=380, formato_valor=lambda v: f"{v:,.0f} T")
+        curva_s = charts.curva_doble(puntos_plan, puntos_real, alto=380, formato_valor=lambda v: f"{v:z,.0f} T")
 
     # Ingresos de cada material separados por proveedor (ZMM056), como filas
     # hijas que se despliegan debajo del material. El plan por proveedor
@@ -977,10 +977,10 @@ def _contexto_entregas(request):
     for m in meses_df:
         tm, cm = float(total_mes.at[m, "toneladas"]), int(total_mes.at[m, "carros"])
         de_mes = {k: (float(r.toneladas), int(r.carros)) for k, r in por_mes.loc[m].iterrows()}
-        lineas = [f"{_mes_corto(m)} · {tm:,.0f} T · {cm:,} carros"]
+        lineas = [f"{_mes_corto(m)} · {tm:z,.0f} T · {cm:,} carros"]
         for k in sorted(de_mes, key=lambda k: -de_mes[k][0])[:6]:
             t, c = de_mes[k]
-            lineas.append(f"{etiqueta(k)}: {t:,.0f} T ({t / tm * 100 if tm else 0:,.1f}%) · {c:,} carros")
+            lineas.append(f"{etiqueta(k)}: {t:z,.0f} T ({t / tm * 100 if tm else 0:z,.1f}%) · {c:,} carros")
         if len(de_mes) > 6:
             lineas.append(f"y {len(de_mes) - 6} proveedores más")
         segmentos = [{"valor": valor(*de_mes.get(k, (0.0, 0)), tm), "clase": color[k]} for k in con_color]
@@ -991,8 +991,8 @@ def _contexto_entregas(request):
         segmentos[0]["detalle"] = "\n".join(lineas)
         pilas.append(segmentos)
         textos.append(charts._toneladas_corto(tm) if ver == "toneladas" else f"{cm:,}" if ver == "carros" else "")
-    formato = (charts._toneladas_corto if ver == "toneladas" else (lambda v: f"{v:,.0f}") if ver == "carros"
-               else (lambda v: f"{v:,.0f}%"))
+    formato = (charts._toneladas_corto if ver == "toneladas" else (lambda v: f"{v:z,.0f}") if ver == "carros"
+               else (lambda v: f"{v:z,.0f}%"))
     grafico = charts.columnas([_mes_corto(m) for m in meses_df], pilas, formato, textos=textos, ancho=960, alto=260)
 
     # Tabla: una fila por proveedor y material, de más a menos toneladas.
@@ -1037,10 +1037,10 @@ def _clave_proveedor(nombre):
 def _texto_entrega(ver, toneladas, carros, total_toneladas):
     """Celda de la tabla de Evolución de entregas según lo que se ve."""
     if ver == "toneladas":
-        return f"{toneladas:,.0f}" if toneladas else "—"
+        return f"{toneladas:z,.0f}" if toneladas else "—"
     if ver == "carros":
         return f"{carros:,}" if carros else "—"
-    return f"{toneladas / total_toneladas * 100:,.1f}%" if toneladas and total_toneladas else "—"
+    return f"{toneladas / total_toneladas * 100:z,.1f}%" if toneladas and total_toneladas else "—"
 
 
 # Transporte de Logística de Materias Primas (pedido del usuario, 2026-10-19):
@@ -1121,7 +1121,7 @@ def _contexto_transporte(request):
     medidos = d["minutos"].dropna()
     con_tiempo = [f for f in filas if f["mediana"] is not None]
     barras = [{"nombre": f["nombre"], "sub": centro(f["centro"]).title(), "valor": f["mediana"],
-               "texto": f"{f['mediana']:,.0f} min", "clase": _clase_tiempo(f["mediana"]),
+               "texto": f"{f['mediana']:z,.0f} min", "clase": _clase_tiempo(f["mediana"]),
                "detalle": f"{f['nombre']} ({centro(f['centro'])}) · {mes_txt}\nMediana {_minutos_texto(f['mediana'])} · "
                           f"peor 10%: más de {_minutos_texto(f['p90'])}\n{f['medidos']:,} de {f['viajes']:,} viajes medidos"}
               for f in con_tiempo[:_PANEL_FILAS]]
@@ -1139,7 +1139,7 @@ def _contexto_transporte(request):
         "grafico": {"titulo": "Tiempo en planta por material", "tipo": "escala",
                     "g": charts.barras_escala(barras, 0, tope, referencias=[(_TIEMPO_BIEN, "1 h"), (_TIEMPO_MAL, "2 h")])},
         "tendencia": {"titulo": "Tiempo en planta por mes", "tipo": "lineas",
-                      "g": charts.lineas_mensuales(tendencia, _mes_corto, lambda v: f"{v:,.0f} min", desde_cero=True)},
+                      "g": charts.lineas_mensuales(tendencia, _mes_corto, lambda v: f"{v:z,.0f} min", desde_cero=True)},
         "leyenda_tendencia": [(s["clase"], s["nombre"]) for s in tendencia if s["puntos"]],
     }
 
@@ -1156,8 +1156,8 @@ def _contexto_transporte(request):
                 dentro &= t < hasta
             k = int(dentro.sum())
             segmentos.append({"valor": k, "clase": clase,
-                              "detalle": f"{etiqueta(g)} ({centro(cen)}) · {texto}\n{k:,} de {len(g):,} viajes ({k / len(g) * 100:,.0f}%)"})
-        filas.append({"nombre": etiqueta(g), "sub": centro(cen).title(), "texto": f"{t.mean():,.1f} T", "segmentos": segmentos,
+                              "detalle": f"{etiqueta(g)} ({centro(cen)}) · {texto}\n{k:,} de {len(g):,} viajes ({k / len(g) * 100:z,.0f}%)"})
+        filas.append({"nombre": etiqueta(g), "sub": centro(cen).title(), "texto": f"{t.mean():z,.1f} T", "segmentos": segmentos,
                       "material": cod, "centro": cen, "viajes": len(g), "toneladas": float(t.sum()), "t_viaje": float(t.mean()),
                       "p10": float(t.quantile(0.1)), "p90": float(t.quantile(0.9)),
                       "bajo_30": segmentos[0]["valor"] / len(g) * 100})
@@ -1180,9 +1180,9 @@ def _contexto_transporte(request):
                       "materiales": ", ".join(sorted({_nombre_material(x) for x in g["descripcion"]}))})
     filas.sort(key=lambda f: -f["toneladas"])
     barras = [{"nombre": _nombre_corto(f["nombre"], 26), "sub": f"{f['viajes']:,} viajes", "valor": f["pct"],
-               "texto": f"{f['pct']:,.1f}%", "clase": "neutra",
-               "detalle": f"{f['nombre']} · {mes_txt}\n{f['toneladas']:,.0f} T en {f['viajes']:,} viajes "
-                          f"({f['t_viaje']:,.1f} T por viaje)\n{f['placas']} camiones · {f['materiales']}"}
+               "texto": f"{f['pct']:z,.1f}%", "clase": "neutra",
+               "detalle": f"{f['nombre']} · {mes_txt}\n{f['toneladas']:z,.0f} T en {f['viajes']:,} viajes "
+                          f"({f['t_viaje']:z,.1f} T por viaje)\n{f['placas']} camiones · {f['materiales']}"}
               for f in filas[:6]]
     ctx["transportistas"] = {
         "filas": filas, "top3": sum(f["pct"] for f in filas[:3]),
@@ -1202,7 +1202,7 @@ def _contexto_transporte(request):
     ctx["llegadas"] = {
         "horas": [f"{h:02d}" for h in range(24)],
         "filas": [{"dia": _DIAS_SEMANA[i], "celdas": [
-            {"n": int(v), "nivel": f"{v / maximo:.2f}",
+            {"n": int(v), "nivel": f"{v / maximo:z.2f}",
              "detalle": f"{_DIAS_SEMANA[i]} de {h:02d}:00 a {h + 1:02d}:00 · {int(v):,} camiones en {mes_txt}"}
             for h, v in tabla.loc[i].items()]} for i in range(7)],
         "hora_pico": f"{pico:02d}:00 a {pico + 1:02d}:00", "pct_pico": por_hora[pico] / total_hora * 100,
@@ -1211,7 +1211,7 @@ def _contexto_transporte(request):
         "grafico": {"titulo": "Llegadas por hora", "tipo": "columnas", "g": charts.columnas(
             [f"{h:02d}" for h in range(24)],
             [[{"valor": int(v), "clase": "col-compras", "detalle": f"{h:02d}:00 a {h + 1:02d}:00 · {int(v):,} camiones"}]
-             for h, v in por_hora.items()], lambda v: f"{v:,.0f}")},
+             for h, v in por_hora.items()], lambda v: f"{v:z,.0f}")},
     }
 
     # 6. Flota: camiones (placas) del mes.
@@ -1223,9 +1223,9 @@ def _contexto_transporte(request):
     por_placa["viajes_dia"] = por_placa["viajes"] / por_placa["dias"]
     top = por_placa.head(_TRANSPORTE_FILAS)
     barras = [{"nombre": placa, "sub": _nombre_corto(r.transportista, 20), "valor": float(r.viajes_dia),
-               "texto": f"{r.viajes_dia:,.1f}", "clase": "neutra",
+               "texto": f"{r.viajes_dia:z,.1f}", "clase": "neutra",
                "detalle": f"Placa {placa} · {r.transportista}\n{int(r.viajes)} viajes en {int(r.dias)} días "
-                          f"({r.viajes_dia:,.1f} por día) · {r.toneladas:,.0f} T"}
+                          f"({r.viajes_dia:z,.1f} por día) · {r.toneladas:z,.0f} T"}
               for placa, r in top.head(_PANEL_FILAS).sort_values("viajes_dia", ascending=False).iterrows()]
     ctx["flota"] = {
         "placas": len(por_placa), "viajes_por_placa": float(por_placa["viajes"].mean()) if len(por_placa) else 0.0,
@@ -1247,10 +1247,10 @@ def _contexto_transporte(request):
                       "secas": secas, "agua": humedas - secas, "pct": (humedas - secas) / humedas * 100 if humedas else 0.0})
     filas.sort(key=lambda f: -f["agua"])
     humedas, secas = float(con_seco["toneladas"].sum()), float(con_seco["toneladas_secas"].sum())
-    barras = [{"nombre": f["nombre"], "sub": centro(f["centro"]).title(), "valor": f["pct"], "texto": f"{f['pct']:,.1f}%",
+    barras = [{"nombre": f["nombre"], "sub": centro(f["centro"]).title(), "valor": f["pct"], "texto": f"{f['pct']:z,.1f}%",
                "clase": "neutra",
-               "detalle": f"{f['nombre']} ({centro(f['centro'])}) · {mes_txt}\n{f['agua']:,.0f} T de agua en "
-                          f"{f['humedas']:,.0f} T húmedas ({f['viajes']:,} viajes)"} for f in filas[:_PANEL_FILAS]]
+               "detalle": f"{f['nombre']} ({centro(f['centro'])}) · {mes_txt}\n{f['agua']:z,.0f} T de agua en "
+                          f"{f['humedas']:z,.0f} T húmedas ({f['viajes']:,} viajes)"} for f in filas[:_PANEL_FILAS]]
     ctx["agua"] = {
         "filas": filas, "humedas": humedas, "secas": secas, "agua": humedas - secas,
         "pct": (humedas - secas) / humedas * 100 if humedas else None, "viajes": len(con_seco),
@@ -1283,27 +1283,27 @@ def _paneles_transporte(panel, vacio, tr):
               "escala", ti["grafico"]["g"], tono, estado,
               leyenda=[("bien", "Hasta 1 h"), ("regular", "1 a 2 h"), ("mal", "Más de 2 h")], nota=nota)
     ca = tr["carga"]
-    panel("transporte", titulos[1], f"{r['t_viaje']:,.1f} T", f"{mes_txt} · {r['viajes']:,} viajes · "
-          f"{ca['bajo_30']:,.0f}% con menos de 30 T", "pilas", ca["grafico"]["g"], leyenda=ca["leyenda"],
+    panel("transporte", titulos[1], f"{r['t_viaje']:z,.1f} T", f"{mes_txt} · {r['viajes']:,} viajes · "
+          f"{ca['bajo_30']:z,.0f}% con menos de 30 T", "pilas", ca["grafico"]["g"], leyenda=ca["leyenda"],
           nota="Pesaje neto húmedo de cada viaje (ZMM056). Cifra: toneladas por viaje del mes.")
     tp = tr["transportistas"]
-    panel("transporte", titulos[2], f"{r['transportistas']}", f"{mes_txt} · los 3 principales llevan el {tp['top3']:,.0f}% de las T",
+    panel("transporte", titulos[2], f"{r['transportistas']}", f"{mes_txt} · los 3 principales llevan el {tp['top3']:z,.0f}% de las T",
           "escala", tp["grafico"]["g"], nota="Participación de cada transportista en las toneladas recibidas (ZMM056).")
     ll = tr["llegadas"]
-    panel("transporte", titulos[3], ll["hora_pico"], f"{mes_txt} · hora con más llegadas ({ll['pct_pico']:,.0f}% de los camiones) · "
-          f"{ll['pct_noche']:,.0f}% llega entre las 20:00 y las 06:00", "columnas", ll["grafico"]["g"],
+    panel("transporte", titulos[3], ll["hora_pico"], f"{mes_txt} · hora con más llegadas ({ll['pct_pico']:z,.0f}% de los camiones) · "
+          f"{ll['pct_noche']:z,.0f}% llega entre las 20:00 y las 06:00", "columnas", ll["grafico"]["g"],
           nota="Camiones por hora del pesaje lleno (llegada a la báscula), todo el mes.")
     fl = tr["flota"]
-    panel("transporte", titulos[4], f"{fl['placas']:,} camiones", f"{mes_txt} · {fl['viajes_placa_dia']:,.1f} viajes por camión al día · "
-          f"los 10 con más viajes hacen el {fl['top10']:,.0f}%", "escala", fl["grafico"]["g"],
+    panel("transporte", titulos[4], f"{fl['placas']:,} camiones", f"{mes_txt} · {fl['viajes_placa_dia']:z,.1f} viajes por camión al día · "
+          f"los 10 con más viajes hacen el {fl['top10']:z,.0f}%", "escala", fl["grafico"]["g"],
           nota="Placas distintas que entregaron en el mes; barras: viajes por día trabajado de los camiones con más viajes.")
     ag = tr["agua"]
     if ag["pct"] is None:
         vacio("transporte", titulos[5], mensaje="Ningún viaje del mes trae peso seco.")
     else:
-        panel("transporte", titulos[5], f"{ag['pct']:,.1f}%", f"{mes_txt} · {ag['agua']:,.0f} T de agua en {ag['humedas']:,.0f} T húmedas",
+        panel("transporte", titulos[5], f"{ag['pct']:z,.1f}%", f"{mes_txt} · {ag['agua']:z,.0f} T de agua en {ag['humedas']:z,.0f} T húmedas",
               "escala", ag["grafico"]["g"],
-              nota=f"Pesaje húmedo − seco de los viajes con descuento de humedad ({ag['cobertura']:,.0f}% de los viajes). "
+              nota=f"Pesaje húmedo − seco de los viajes con descuento de humedad ({ag['cobertura']:z,.0f}% de los viajes). "
                    "El flete se paga por el peso húmedo.")
 
 
@@ -1406,10 +1406,12 @@ _CONTEXTOS_KPIS = {
 def _huella_vistas():
     """Huella del código de las vistas, gráficos y plantillas: si cambian, lo
     guardado en caché con el código anterior deja de usarse (la de queries.py
-    ya va en la versión de la caché)."""
+    ya va en la versión de la caché). ejecutivo.py y desglose.py también: el
+    Resumen y el Informe por área de Planificación se guardan ya dibujados."""
     base = Path(__file__).resolve().parent
     huella = hashlib.sha1()
-    for ruta in sorted([base / "views.py", base / "charts.py", *(base / "templates").rglob("*.html")]):
+    for ruta in sorted([base / "views.py", base / "charts.py", base / "ejecutivo.py", base / "desglose.py",
+                        *(base / "templates").rglob("*.html")]):
         huella.update(ruta.read_bytes())
     return huella.hexdigest()[:10]
 
@@ -1427,7 +1429,10 @@ def _parametros_seccion(request, sufijos):
 def _clave_planificacion(tipo, *partes):
     # Con el alcance: Logística de Materias Primas usa las mismas secciones
     # con menos materiales y no debe tomar lo guardado por Planificación.
-    return ("planificacion", tipo, *partes, datetime.date.today().isoformat(), _HUELLA_VISTAS, q.alcance_actual())
+    # Con la fecha de metas.json: si se editan las metas, el Resumen y el
+    # Informe por área (guardados ya dibujados) se recalculan como la Portada.
+    return ("planificacion", tipo, *partes, datetime.date.today().isoformat(), _HUELLA_VISTAS, q.alcance_actual(),
+            ejecutivo._RUTA_METAS.stat().st_mtime_ns)
 
 
 def _contexto_seccion(request, seccion):
@@ -1538,7 +1543,7 @@ def _pct_texto(valor, signo=False):
     if valor is None:
         return "—"
     valor = 0.0 if abs(valor) < 0.05 else valor
-    return f"{'+' if signo and valor > 0 else ''}{valor:,.1f}%"
+    return f"{'+' if signo and valor > 0 else ''}{valor:z,.1f}%"
 
 
 def _kpis_zona(zona, c):
@@ -1559,7 +1564,7 @@ def _kpis_zona(zona, c):
         kpis = [
             kpi(pct(cumpl), f"Cumplimiento del plan de abastecimiento · {q.formato_mes_anio(pl['mes'])}",
                 "" if cumpl is None else "ok" if cumpl >= 95 else "alerta" if cumpl < 80 else ""),
-            kpi(f"{pl['total_real']:,.0f} T", f"Ingresos físicos (báscula) de {pl['total_plan']:,.0f} T planificadas"),
+            kpi(f"{pl['total_real']:z,.0f} T", f"Ingresos físicos (báscula) de {pl['total_plan']:z,.0f} T planificadas"),
         ]
         if len(cm) > 1:
             kpis.append(kpi(pct(cm[-2]["cumplimiento_pct"]), f"Mes anterior con plan · {q.formato_mes_anio(cm[-2]['mes'])}"))
@@ -1601,18 +1606,18 @@ def _kpis_zona(zona, c):
             kpis.append(kpi(charts.soles_corto(pm["resumen"]["neto"]), f"Premios − castigos por calidad ({periodo})"))
             kpis.append(kpi(pct(pm["resumen"]["pct_sobre_base"], True), "Sobre el precio base de contrato"))
         if en and en.get("resumen"):
-            kpis.append(kpi(f"S/ {en['resumen']['costo_gcal']:,.1f}", "Costo de los carbones por Gcal"))
+            kpis.append(kpi(f"S/ {en['resumen']['costo_gcal']:z,.1f}", "Costo de los carbones por Gcal"))
     elif zona == "transporte":
         tr = c.get("logistica_transporte")
         if tr and not tr.get("vacio"):
             r, ti, ag = tr["resumen"], tr["tiempo"], tr["agua"]
-            kpis.append(kpi(f"{r['viajes']:,}", f"Viajes recibidos · {tr['mes_texto']} ({r['toneladas']:,.0f} T)"))
-            kpis.append(kpi(f"{r['t_viaje']:,.1f} T", "Carga promedio por viaje"))
+            kpis.append(kpi(f"{r['viajes']:,}", f"Viajes recibidos · {tr['mes_texto']} ({r['toneladas']:z,.0f} T)"))
+            kpis.append(kpi(f"{r['t_viaje']:z,.1f} T", "Carga promedio por viaje"))
             if ti["mediana"] is not None:
                 kpis.append(kpi(_minutos_texto(ti["mediana"]), "Tiempo en planta (mediana)",
                                 {"bien": "ok", "mal": "alerta"}.get(_clase_tiempo(ti["mediana"]), "")))
             if ag["pct"] is not None:
-                kpis.append(kpi(f"{ag['pct']:,.1f}%", "Agua transportada (húmedo − seco)"))
+                kpis.append(kpi(f"{ag['pct']:z,.1f}%", "Agua transportada (húmedo − seco)"))
     return kpis
 
 
@@ -1674,12 +1679,12 @@ def _panel_traslados(panel, vacio, tope, pl, centro, hoy_mes):
         total_plan += plan_mat
         total_real += real
         v = real / plan_mat * 100
-        detalle = (f"{nombre(material)} · {mes_txt}\nPlan para {centro(q.CENTRO_CONDORCOCHA)} {plan_mat:,.0f} T · "
-                   f"trasladado desde {origen} {real:,.0f} T ({carros:,} carros) · {v:,.1f}%")
+        detalle = (f"{nombre(material)} · {mes_txt}\nPlan para {centro(q.CENTRO_CONDORCOCHA)} {plan_mat:z,.0f} T · "
+                   f"trasladado desde {origen} {real:z,.0f} T ({carros:,} carros) · {v:z,.1f}%")
         for r in del_material[del_material["origen"] != origen].itertuples():
-            detalle += f"\nAdemás llegó directo desde {r.origen} {r.toneladas:,.0f} T"
+            detalle += f"\nAdemás llegó directo desde {r.origen} {r.toneladas:z,.0f} T"
         filas.append({
-            "nombre": nombre(material), "sub": f"{carros:,} carros", "valor": v, "texto": f"{v:,.1f}%",
+            "nombre": nombre(material), "sub": f"{carros:,} carros", "valor": v, "texto": f"{v:z,.1f}%",
             "clase": "bien" if v >= _CUMPLIMIENTO_BIEN else "mal" if v < _CUMPLIMIENTO_MAL else "regular",
             "detalle": detalle,
         })
@@ -1691,11 +1696,11 @@ def _panel_traslados(panel, vacio, tope, pl, centro, hoy_mes):
     nota = "Tickets de báscula de Condorcocha con origen Atocongo (ZMM056 Tipo 5) ÷ su plan de abastecimiento."
     if not otros.empty:
         nota += " También llegó de Atocongo: " + ", ".join(
-            f"{nombre(r.material_codigo)} {r.toneladas:,.0f} T" for r in otros.itertuples()) + " (su plan mezcla compras directas)."
+            f"{nombre(r.material_codigo)} {r.toneladas:z,.0f} T" for r in otros.itertuples()) + " (su plan mezcla compras directas)."
     cumpl = total_real / total_plan * 100
     tono, estado = (("ok", "En meta") if cumpl >= _CUMPLIMIENTO_BIEN else
                     ("alerta", "Crítico") if cumpl < _CUMPLIMIENTO_MAL else ("aviso", "Bajo la meta"))
-    sub = f"{mes_txt} · {total_real:,.0f} de {total_plan:,.0f} T planificadas para Condorcocha"
+    sub = f"{mes_txt} · {total_real:z,.0f} de {total_plan:z,.0f} T planificadas para Condorcocha"
     if mes == hoy_mes:
         sub += " · mes en curso"
     panel("cumplimiento", titulo, _pct_texto(cumpl), sub, "escala",
@@ -1718,10 +1723,10 @@ def _panel_cumplimiento_material(panel, vacio, tope, pl, base, centro, mes_txt):
         v = r.cantidad_real / r.cantidad_plan * 100
         filas.append({
             "nombre": _nombre_material(r.texto_breve or r.material_codigo), "sub": centro(r.centro).title(),
-            "valor": v, "texto": f"{v:,.1f}%",
+            "valor": v, "texto": f"{v:z,.1f}%",
             "clase": "bien" if v >= _CUMPLIMIENTO_BIEN else "mal" if v < _CUMPLIMIENTO_MAL else "regular",
-            "detalle": f"{r.texto_breve} ({centro(r.centro)}) · {mes_txt}\nPlan {r.cantidad_plan:,.0f} T · "
-                       f"Real {r.cantidad_real:,.0f} T · diferencia {_signo(r.cantidad_real - r.cantidad_plan, 0)} T",
+            "detalle": f"{r.texto_breve} ({centro(r.centro)}) · {mes_txt}\nPlan {r.cantidad_plan:z,.0f} T · "
+                       f"Real {r.cantidad_real:z,.0f} T · diferencia {_signo(r.cantidad_real - r.cantidad_plan, 0)} T",
         })
     en_meta = sum(f["clase"] == "bien" for f in filas)
     tono, estado = (("ok", "Todos en meta") if en_meta == len(filas) else
@@ -1766,9 +1771,9 @@ def _panel_ritmo(panel, vacio, pl, centro, hoy_mes):
         for f in filas[:ultimo]:
             pct = f["acumulado_real"] / plan_mes * 100
             puntos.append((f["dia"], pct,
-                           f"{centro(cod)} · {f['fecha']:%d/%m}\nReal acumulado {f['acumulado_real']:,.0f} T "
-                           f"({pct:,.1f}% del plan del mes)\nPlan a la fecha {f['acumulado_plan']:,.0f} T "
-                           f"({f['dia'] / dias * 100:,.1f}%)\nIngresó ese día {f['real_diario']:,.0f} T · {f['carros']:,} carros"))
+                           f"{centro(cod)} · {f['fecha']:%d/%m}\nReal acumulado {f['acumulado_real']:z,.0f} T "
+                           f"({pct:z,.1f}% del plan del mes)\nPlan a la fecha {f['acumulado_plan']:z,.0f} T "
+                           f"({f['dia'] / dias * 100:z,.1f}%)\nIngresó ese día {f['real_diario']:z,.0f} T · {f['carros']:,} carros"))
         corte = filas[ultimo - 1]
         brecha = (corte["acumulado_real"] - corte["acumulado_plan"]) / corte["plan_diario"]
         brechas.append((cod, brecha))
@@ -1780,7 +1785,7 @@ def _panel_ritmo(panel, vacio, pl, centro, hoy_mes):
                    "puntos": [(0, 0.0, "Plan lineal: 0% al empezar el mes"),
                               (dias, 100.0, f"Plan lineal: 100% el día {dias}")]})
     maximo = max(v for s in series for _, v, _ in s["puntos"])
-    g = charts.lineas_indice(series, [str(d) if d else "" for d in range(dias + 1)], lambda v: f"{v:,.0f}%",
+    g = charts.lineas_indice(series, [str(d) if d else "" for d in range(dias + 1)], lambda v: f"{v:z,.0f}%",
                              piso=0.0, techo=max(110.0, maximo * 1.06), ancho=1040, alto=240, pad_izq=44,
                              pad_der=64, max_etiquetas_eje=16)
     total = (suma_real - suma_plan) / suma_diario
@@ -1833,10 +1838,10 @@ def _panel_precision_consumo(panel, vacio, co, centro):
         sesgo = (a["real"] - a["plan"]) / a["plan"] * 100
         nombre, desvio = a["peor"]
         filas.append({
-            "nombre": centro(cod).title(), "sub": f"sesgo {_signo(sesgo)}%", "valor": precision, "texto": f"{precision:,.1f}%",
+            "nombre": centro(cod).title(), "sub": f"sesgo {_signo(sesgo)}%", "valor": precision, "texto": f"{precision:z,.1f}%",
             "clase": "bien" if precision >= _PRECISION_BUENA else "regular" if precision >= _PRECISION_REGULAR else "mal",
-            "detalle": f"{centro(cod)} · {mes_txt} · {a['n']} materiales\nPrecisión {precision:,.1f}% · error ponderado "
-                       f"{error:,.1f}%\nSesgo {_signo(sesgo)}% ({'se consumió más' if sesgo > 0 else 'se consumió menos'} "
+            "detalle": f"{centro(cod)} · {mes_txt} · {a['n']} materiales\nPrecisión {precision:z,.1f}% · error ponderado "
+                       f"{error:z,.1f}%\nSesgo {_signo(sesgo)}% ({'se consumió más' if sesgo > 0 else 'se consumió menos'} "
                        f"de lo planificado)\nMayor desvío: {_nombre_material(nombre)} {_signo(desvio, 0)} T",
         })
     if not filas:
@@ -1848,7 +1853,7 @@ def _panel_precision_consumo(panel, vacio, co, centro):
     precision_t = max(0.0, 100 - error_t)
     tono, estado = (("ok", "Precisa") if precision_t >= _PRECISION_BUENA else
                     ("aviso", "Mejorable") if precision_t >= _PRECISION_REGULAR else ("alerta", "Imprecisa"))
-    sub = (f"{mes_txt} · error ponderado {error_t:,.1f}% · sesgo {_signo(sesgo_t)}% "
+    sub = (f"{mes_txt} · error ponderado {error_t:z,.1f}% · sesgo {_signo(sesgo_t)}% "
            f"({'se consumió más' if sesgo_t > 0 else 'se consumió menos'} de lo planificado)")
     if en_curso:
         sub += " · plan a la fecha"
@@ -1892,7 +1897,7 @@ def _panel_salud_inventario(panel, vacio, cob, centro):
         n = sum(len(v) for v in a["estados"].values())
         dias = a["stock"] / a["diario"] if a["diario"] > 0 else None
         filas.append({
-            "nombre": centro(cod).title(), "sub": f"{n} materiales", "texto": f"{dias:,.0f} d" if dias is not None else "—",
+            "nombre": centro(cod).title(), "sub": f"{n} materiales", "texto": f"{dias:z,.0f} d" if dias is not None else "—",
             "segmentos": [{
                 "valor": len(a["estados"][e]), "clase": f"col-{e}",
                 "detalle": f"{centro(cod)} · {t}: {len(a['estados'][e])} de {n} materiales\n"
@@ -1902,7 +1907,7 @@ def _panel_salud_inventario(panel, vacio, cob, centro):
     conteo = {e: sum(len(a["estados"][e]) for a in por_centro.values()) for e, _ in estados}
     con_parametro = sum(conteo.values()) - conteo["sin_parametro"]
     stock_t, diario_t = sum(a["stock"] for a in por_centro.values()), sum(a["diario"] for a in por_centro.values())
-    cobertura_t = f" · cobertura {stock_t / diario_t:,.0f} días" if diario_t > 0 else ""
+    cobertura_t = f" · cobertura {stock_t / diario_t:z,.0f} días" if diario_t > 0 else ""
     if con_parametro:
         en_rango = conteo["en_rango"] / con_parametro * 100
         cifra = _pct_texto(en_rango)
@@ -1910,7 +1915,7 @@ def _panel_salud_inventario(panel, vacio, cob, centro):
                         ("aviso", "Revisar") if en_rango >= _SALUD_REGULAR else ("alerta", "Desbalanceado"))
         sub = f"Materiales entre su mínimo y máximo · stock al {fecha:%d/%m/%Y}{cobertura_t}"
     else:
-        cifra, tono, estado = (f"{stock_t / diario_t:,.0f} d" if diario_t > 0 else "—"), "", "Sin mín/máx"
+        cifra, tono, estado = (f"{stock_t / diario_t:z,.0f} d" if diario_t > 0 else "—"), "", "Sin mín/máx"
         sub = f"Cobertura ponderada · stock al {fecha:%d/%m/%Y} (sin mínimos/máximos S&OP para ese mes)"
     panel("inventario", titulo, cifra, sub, "pilas", charts.pilas_horizontales(filas), tono, estado,
           leyenda=[(f"col-{e}", t) for e, t in estados if conteo[e] or e in ("bajo_minimo", "en_rango", "sobre_maximo")],
@@ -2045,9 +2050,9 @@ def _paneles_indicadores(request, c, mes=None, zonas=None, por_material=False):
         for cod, r in por_centro[por_centro["plan"] > 0].sort_values("plan", ascending=False).iterrows():
             v, n = r.real / r.plan * 100, int(r.materiales)
             filas.append({
-                "nombre": centro(cod).title(), "sub": f"{n} materiales", "valor": v, "texto": f"{v:,.1f}%",
+                "nombre": centro(cod).title(), "sub": f"{n} materiales", "valor": v, "texto": f"{v:z,.1f}%",
                 "clase": "bien" if v >= _CUMPLIMIENTO_BIEN else "mal" if v < _CUMPLIMIENTO_MAL else "regular",
-                "detalle": f"{centro(cod)} · {mes_txt}\nPlan {r.plan:,.0f} T · Real {r.real:,.0f} T · {v:,.1f}%\n"
+                "detalle": f"{centro(cod)} · {mes_txt}\nPlan {r.plan:z,.0f} T · Real {r.real:z,.0f} T · {v:z,.1f}%\n"
                            f"{n} materiales con plan",
             })
         if not filas:
@@ -2058,7 +2063,7 @@ def _paneles_indicadores(request, c, mes=None, zonas=None, por_material=False):
             if cumpl is not None:
                 tono, estado = (("ok", "En meta") if cumpl >= _CUMPLIMIENTO_BIEN else
                                 ("alerta", "Crítico") if cumpl < _CUMPLIMIENTO_MAL else ("aviso", "Bajo la meta"))
-            sub = f"{mes_txt} · {pl['total_real']:,.0f} de {pl['total_plan']:,.0f} T planificadas"
+            sub = f"{mes_txt} · {pl['total_real']:z,.0f} de {pl['total_plan']:z,.0f} T planificadas"
             if pl["mes"] == hoy_mes:
                 sub += " · mes en curso: el plan es del mes completo"
             panel("cumplimiento", titulo, _pct_texto(cumpl), sub, "escala",
@@ -2094,10 +2099,10 @@ def _paneles_indicadores(request, c, mes=None, zonas=None, por_material=False):
                 continue
             v = a["real"] / a["plan"] * 100
             filas.append({
-                "nombre": centro(cod).title(), "sub": f"{a['materiales']} materiales", "valor": v, "texto": f"{v:,.1f}%",
+                "nombre": centro(cod).title(), "sub": f"{a['materiales']} materiales", "valor": v, "texto": f"{v:z,.1f}%",
                 "clase": "bien" if abs(v - 100) <= tol else "regular" if v > 100 else "mal",
                 "detalle": f"{centro(cod)} · {q.formato_mes_anio(co['mes_sel'])}\n"
-                           f"Plan{' a la fecha' if en_curso else ''} {a['plan']:,.0f} T · Consumo real {a['real']:,.0f} T · {v:,.1f}%\n"
+                           f"Plan{' a la fecha' if en_curso else ''} {a['plan']:z,.0f} T · Consumo real {a['real']:z,.0f} T · {v:z,.1f}%\n"
                            f"{a['materiales']} materiales con plan",
             })
     if not filas:
@@ -2109,7 +2114,7 @@ def _paneles_indicadores(request, c, mes=None, zonas=None, por_material=False):
             tono, estado = (("ok", "En línea") if abs(total - 100) <= tol else
                             ("aviso", "Sobre el plan") if total > 100 else ("alerta", "Bajo el plan"))
         plan_total = co["total_plan_fecha"] if en_curso else co["total_plan"]
-        sub = f"{q.formato_mes_anio(co['mes_sel'])} · {co['total_real']:,.0f} de {plan_total:,.0f} T"
+        sub = f"{q.formato_mes_anio(co['mes_sel'])} · {co['total_real']:z,.0f} de {plan_total:z,.0f} T"
         if en_curso and co["fraccion_pct"] < 99.5:
             sub += f" (plan al {co['fecha_corte']:%d/%m})"
         panel("consumo", titulo, _pct_texto(total), sub, "escala",
@@ -2129,11 +2134,11 @@ def _paneles_indicadores(request, c, mes=None, zonas=None, por_material=False):
     else:
         filas = [{
             "nombre": _nombre_material(f["texto_breve"]), "sub": f"{centro(f['centro'])} · {f['producto_texto'].lower()}",
-            "valor": f["var_3_vs_12"], "texto": f"{f['var_3_vs_12']:+,.0f}%",
+            "valor": f["var_3_vs_12"], "texto": f"{f['var_3_vs_12']:+z,.0f}%",
             "clase": {"alto": "regular", "bajo": "mal", "normal": "bien"}.get(f["estado"], "neutra"),
             "detalle": f"{f['texto_breve']} ({centro(f['centro'])}) ·kg por T de {f['producto_texto'].lower()}\n"
-                       f"Últimos 3 meses {f['factor_3']:,.0f} kg/T · {fa['meses_factor']} meses {f['factor_12']:,.0f} kg/T "
-                       f"({f['var_3_vs_12']:+,.1f}%)",
+                       f"Últimos 3 meses {f['factor_3']:z,.0f} kg/T · {fa['meses_factor']} meses {f['factor_12']:z,.0f} kg/T "
+                       f"({f['var_3_vs_12']:+z,.1f}%)",
         } for f in con_var[:_PANEL_FILAS + 2]]
         tol = fa["tolerancia"]
         limite = min(max(40, max(abs(f["valor"]) for f in filas) * 1.1), 100)
@@ -2155,10 +2160,10 @@ def _paneles_indicadores(request, c, mes=None, zonas=None, por_material=False):
     else:
         filas = [{
             "nombre": _nombre_material(f["texto_breve"]), "sub": centro(f["centro"]), "valor": f["cobertura_dias"],
-            "texto": f"{f['cobertura_dias']:,.0f} d",
+            "texto": f"{f['cobertura_dias']:z,.0f} d",
             "clase": "mal" if f["cobertura_dias"] < _COBERTURA_RIESGO else "regular" if f["cobertura_dias"] < _COBERTURA_AJUSTADA else "neutra",
-            "detalle": f"{f['texto_breve']} ({centro(f['centro'])})\nStock {f['stock_cierre']:,.0f} T · consumo {f['consumo_mensual']:,.0f} T/mes\n"
-                       f"Cobertura {f['cobertura_dias']:,.0f} días ({f['cobertura_meses']:,.1f} meses)",
+            "detalle": f"{f['texto_breve']} ({centro(f['centro'])})\nStock {f['stock_cierre']:z,.0f} T · consumo {f['consumo_mensual']:z,.0f} T/mes\n"
+                       f"Cobertura {f['cobertura_dias']:z,.0f} días ({f['cobertura_meses']:z,.1f} meses)",
         } for f in con_dias[:_PANEL_FILAS]]
         panel("inventario", titulo, str(cob["en_riesgo"]),
               f"Materiales con menos de {_COBERTURA_RIESGO} días · stock al {cob['fecha_stock']:%d/%m/%Y}" if cob["fecha_stock"] else
@@ -2195,7 +2200,7 @@ def _paneles_indicadores(request, c, mes=None, zonas=None, por_material=False):
         panel("inventario", titulo, str(p["con_quiebre"]),
               f"Materiales con quiebre proyectado · S&OP {q.formato_mes_anio(p['snapshot'])} · "
               f"{p['n_bajo_minimo']} caen bajo su mínimo · {p['n_sobrecubiertos']} sobre su máximo", "columnas",
-              charts.columnas([m["corto"] for m in p["meses"]], pilas, lambda v: f"{v:,.0f}", ancho=1040, alto=230),
+              charts.columnas([m["corto"] for m in p["meses"]], pilas, lambda v: f"{v:z,.0f}", ancho=1040, alto=230),
               tono, estado, leyenda=[(f"col-{e}", t) for e, t in estados],
               nota="Stock final proyectado de cada material frente a su mínimo y máximo.", ancho=True)
 
@@ -2239,7 +2244,7 @@ def _paneles_indicadores(request, c, mes=None, zonas=None, por_material=False):
             sub = f"{a['anio']}, acumulado a {a['hasta']} vs {a['anio_base']} · bolsa {charts.soles_corto(a['bolsa'])}"
             tono, estado = ("alerta", "Sube") if a["pct"] > 0.05 else ("ok", "Baja") if a["pct"] < -0.05 else ("", "Estable")
         panel("precios", titulo, cifra, sub, "columnas",
-              charts.columnas(etiquetas, pilas, lambda v: f"{v:+,.0f}%" if v else "0%", linea=linea, ancho=1040, alto=240),
+              charts.columnas(etiquetas, pilas, lambda v: f"{v:+z,.0f}%" if v else "0%", linea=linea, ancho=1040, alto=240),
               tono, estado,
               leyenda=[("col-sube", "Precio sube vs el mismo mes del año anterior"), ("col-baja", "Precio baja"),
                        ("linea-ipu", "IPU acumulado del año")],
@@ -2344,7 +2349,7 @@ def _con_barra(filas, campo="neto_por_t"):
     su barra divergente de premio (+) / castigo (−)."""
     mayor = max((abs(f[campo]) for f in filas), default=0) or 1
     for f in filas:
-        f["barra_pct"] = f"{abs(f[campo]) / mayor * 50:.1f}"
+        f["barra_pct"] = f"{abs(f[campo]) / mayor * 50:z.1f}"
         f["barra_sentido"] = "premio" if f[campo] > 0 else ("castigo" if f[campo] < 0 else "")
     return filas
 
@@ -2526,7 +2531,7 @@ def _contexto_energia(request):
     for filas in (por_material, por_proveedor):
         mayor = max((abs(f["dif_pct"]) for f in filas), default=0) or 1
         for f in filas:
-            f["barra_pct"] = f"{abs(f['dif_pct']) / mayor * 50:.1f}"
+            f["barra_pct"] = f"{abs(f['dif_pct']) / mayor * 50:z.1f}"
             f["barra_sentido"] = "barato" if f["dif_pct"] < -0.05 else ("caro" if f["dif_pct"] > 0.05 else "")
     contexto["por_material"] = por_material if not un_material else []
     contexto["por_proveedor"] = por_proveedor
@@ -2717,7 +2722,7 @@ def _contexto_calidad(request):
             graficos.append({
                 "etiqueta": etiqueta, "unidad": unidad,
                 "promedio": fmt(resumen["promedio"]), "minimo": fmt(resumen["minimo"]), "maximo": fmt(resumen["maximo"]),
-                "desviacion": fmt(resumen["desviacion"]) if decimales else f"{resumen['desviacion']:,.1f}",
+                "desviacion": fmt(resumen["desviacion"]) if decimales else f"{resumen['desviacion']:z,.1f}",
                 "muestras": resumen["muestras"],
                 "referencia": fmt(referencia) if referencia is not None else None, "diferencia": diferencia,
                 "grafico": charts.evolucion_calidad(serie, resumen["promedio"], fmt, _fecha_corta, referencia=referencia),
@@ -2983,7 +2988,7 @@ def _matriz_tco(historia, df):
             if r is None and c["mes"] in referencia:
                 vigente = (c["mes"], referencia[c["mes"]])
                 celdas.append({"precio": vigente[1], "repetido": True,
-                               "titulo": f"{c['texto']}: sin compra, precio de referencia S/ {vigente[1]:,.2f} por T (base del IPU)"})
+                               "titulo": f"{c['texto']}: sin compra, precio de referencia S/ {vigente[1]:z,.2f} por T (base del IPU)"})
                 continue
             if r is None:
                 celdas.append({"precio": vigente[1], "repetido": True,
@@ -2994,10 +2999,10 @@ def _matriz_tco(historia, df):
             celdas.append({"precio": r.importe_tco / r.toneladas,
                            "atipico": not propio and not (
                                1 / q._RAZON_ATIPICA <= r.importe_tco / r.importe_mb51 <= q._RAZON_ATIPICA),
-                           "titulo": f"{c['texto']}: {r.toneladas:,.0f} T · "
-                                     + (f"traslado S/ {r.importe_mb51:,.0f} + liquidación de la orden y diferencias del centro de origen S/ {r.ajuste:,.0f}"
-                                        if propio else f"MB51 S/ {r.importe_mb51:,.0f} + ajustes S/ {r.ajuste:,.0f}")
-                                     + f" = S/ {r.importe_tco:,.0f}"
+                           "titulo": f"{c['texto']}: {r.toneladas:z,.0f} T · "
+                                     + (f"traslado S/ {r.importe_mb51:z,.0f} + liquidación de la orden y diferencias del centro de origen S/ {r.ajuste:z,.0f}"
+                                        if propio else f"MB51 S/ {r.importe_mb51:z,.0f} + ajustes S/ {r.ajuste:z,.0f}")
+                                     + f" = S/ {r.importe_tco:z,.0f}"
                                      + (f" · embarque {de_barco[(material, centro, c['mes'])]}"
                                         if (material, centro, c["mes"]) in de_barco else "")})
         filas.append({"material": material, "texto": g["texto_breve"].iloc[0],
@@ -3169,11 +3174,11 @@ def _contexto_inflacion(request, sufijo="inflacion"):
         # sigue la variación). La fila Selección no tiene precio (sumar
         # precios de materiales distintos no tiene sentido): muestra el %.
         if en_precio and precio is not None:
-            texto, subtexto = f"{precio:,.2f}", f"{pct:+.1f}%"
+            texto, subtexto = f"{precio:z,.2f}", f"{pct:+z.1f}%"
         else:
-            texto, subtexto = (charts.soles_corto(bolsa) if en_soles else f"{pct:+.1f}%"), ""
+            texto, subtexto = (charts.soles_corto(bolsa) if en_soles else f"{pct:+z.1f}%"), ""
         return {
-            "pct": pct, "bolsa": bolsa, "sube": valor > 0, "intensidad": f"{min(intensidad, 1):.2f}",
+            "pct": pct, "bolsa": bolsa, "sube": valor > 0, "intensidad": f"{min(intensidad, 1):z.2f}",
             "texto": texto, "subtexto": subtexto, **extra,
         }
 
@@ -3183,11 +3188,11 @@ def _contexto_inflacion(request, sufijo="inflacion"):
         if nota:
             base_txt += f" ({nota})"
         signo = "+" if r["bolsa"] >= 0 else "−"
-        texto = (f"{r['texto_breve']} ({q.nombre_centro(r['centro'])}) · {_mes_corto(r['mes'])}: {r['variacion'] * 100:+.1f}%\n"
-                 f"{_mes_corto(r['mes'])}: S/ {r['precio']:,.2f} por T\n"
-                 f"vs {base_txt}: S/ {r['precio_base']:,.2f} por T\n"
-                 f"Bolsa: (S/ {r['precio']:,.2f} − S/ {r['precio_base']:,.2f}) × {r['toneladas']:,.0f} T = "
-                 f"{signo}S/ {abs(r['bolsa']):,.0f}")
+        texto = (f"{r['texto_breve']} ({q.nombre_centro(r['centro'])}) · {_mes_corto(r['mes'])}: {r['variacion'] * 100:+z.1f}%\n"
+                 f"{_mes_corto(r['mes'])}: S/ {r['precio']:z,.2f} por T\n"
+                 f"vs {base_txt}: S/ {r['precio_base']:z,.2f} por T\n"
+                 f"Bolsa: (S/ {r['precio']:z,.2f} − S/ {r['precio_base']:z,.2f}) × {r['toneladas']:z,.0f} T = "
+                 f"{signo}S/ {abs(r['bolsa']):z,.0f}")
         if r["atipica"]:
             texto += "\nATÍPICA: el precio más que se duplica o cae a menos de la mitad (dato a revisar en MB51 o en los ajustes de la FBL3N); no suma en la bolsa ni en la selección."
         return texto
@@ -3198,13 +3203,13 @@ def _contexto_inflacion(request, sufijo="inflacion"):
         tramo = f"{_mes_corto(inicio)}–{_mes_corto(mes)}" if inicio != mes else _mes_corto(mes)
         signo = "+" if datos["bolsa_acumulada"] >= 0 else "−"
         if evaluacion["desfase"] == 12:
-            texto = (f"{nombre}IPU acumulado {tramo} vs el mismo tramo del año anterior: {datos['acumulado'] * 100:+.1f}%\n"
-                     f"Pagado: S/ {datos['importe_acumulado']:,.0f} · al precio del año anterior: "
-                     f"S/ {datos['base_acumulada']:,.0f}\n")
+            texto = (f"{nombre}IPU acumulado {tramo} vs el mismo tramo del año anterior: {datos['acumulado'] * 100:+z.1f}%\n"
+                     f"Pagado: S/ {datos['importe_acumulado']:z,.0f} · al precio del año anterior: "
+                     f"S/ {datos['base_acumulada']:z,.0f}\n")
         else:
-            texto = f"{nombre}IPU acumulado {tramo} (variaciones de cada mes encadenadas): {datos['acumulado'] * 100:+.1f}%\n"
-        return texto + (f"Bolsa acumulada: {signo}S/ {abs(datos['bolsa_acumulada']):,.0f} "
-                        f"({datos['toneladas_acumuladas']:,.0f} T)")
+            texto = f"{nombre}IPU acumulado {tramo} (variaciones de cada mes encadenadas): {datos['acumulado'] * 100:+z.1f}%\n"
+        return texto + (f"Bolsa acumulada: {signo}S/ {abs(datos['bolsa_acumulada']):z,.0f} "
+                        f"({datos['toneladas_acumuladas']:z,.0f} T)")
 
     filas = []
     for (material, centro), g in inflacion.groupby(["material_codigo", "centro"]):
@@ -3251,10 +3256,10 @@ def _contexto_inflacion(request, sufijo="inflacion"):
         c = q.inflacion_canasta(inflacion[inflacion["mes"] == m])
         c["variacion"] = c["variacion"] or 0.0  # mes con solo comparaciones atípicas
         signo = "+" if c["bolsa"] >= 0 else "−"
-        detalle = (f"{_mes_corto(m)} vs {base_txt}: {c['variacion'] * 100:+.1f}%\n"
-                   f"Bolsa: {signo}S/ {abs(c['bolsa']):,.0f}\n"
+        detalle = (f"{_mes_corto(m)} vs {base_txt}: {c['variacion'] * 100:+z.1f}%\n"
+                   f"Bolsa: {signo}S/ {abs(c['bolsa']):z,.0f}\n"
                    f"{c['materiales']} material{'es' if c['materiales'] != 1 else ''} comprado{'s' if c['materiales'] != 1 else ''}"
-                   f" · {c['toneladas']:,.0f} T · S/ {c['importe']:,.0f}")
+                   f" · {c['toneladas']:z,.0f} T · S/ {c['importe']:z,.0f}")
         canasta.append(celda(c["variacion"] * 100, c["bolsa"], {"detalle": detalle}))
         d = ipu.get(m)
         if d is None:
@@ -3289,7 +3294,7 @@ def _contexto_inflacion(request, sufijo="inflacion"):
         # del precio base contra el que se compara (punteada).
         "grafico_precio": charts.evolucion_precio(
             [(r.mes, float(r.precio), float(r.toneladas)) for r in inflacion.itertuples()], _mes_corto,
-            base=[(r.mes, float(r.precio_base)) for r in inflacion.itertuples()], ancho=960, alto=320,
+            base=[(r.mes, float(r.precio_base)) for r in inflacion.itertuples()], ancho_minimo=960,
         ) if en_precio and len(filas) == 1 else None,
         "resumen": {
             "ultimo_mes": _mes_corto(meses[-1]), "ultima_pct": canasta[-1]["pct"], "ultima_bolsa": canasta[-1]["bolsa"],
@@ -3473,7 +3478,7 @@ _PRODUCTOS_TEXTO = {"clinker": "Clinker", "cemento": "Cemento"}
 
 
 def _kg_por_t(factor):
-    return f"{factor * 1000:,.0f} kg/T"
+    return f"{factor * 1000:z,.0f} kg/T"
 
 
 def _contexto_consumo_especifico(request):
@@ -3589,12 +3594,12 @@ def _contexto_consumo_especifico(request):
                 "nombre": f"{q.nombre_centro(centro)} · kg por T de {producto}", "clase": f"serie-{i}",
                 "puntos": [(r.mes, r.factor * 1000,
                             f"{_mes_corto(r.mes)} · {q.nombre_centro(centro)}: {_kg_por_t(r.factor)} de {producto}\n"
-                            f"Consumo {r.consumo:,.0f} T · Producción de {producto} {r.produccion:,.0f} T")
+                            f"Consumo {r.consumo:z,.0f} T · Producción de {producto} {r.produccion:z,.0f} T")
                            for r in g.itertuples()],
             })
-        referencias = [{"valor": f["factor_12"], "texto": f"Prom. 12 meses {q.nombre_centro(f['centro'])}: {f['factor_12']:,.0f} kg/T",
+        referencias = [{"valor": f["factor_12"], "texto": f"Prom. 12 meses {q.nombre_centro(f['centro'])}: {f['factor_12']:z,.0f} kg/T",
                         "clase": f"serie-{i}"} for i, f in enumerate(filas) if f["factor_12"]]
-        grafico = charts.lineas_mensuales(series, _mes_corto, lambda v: f"{v:,.0f}", referencias=referencias)
+        grafico = charts.lineas_mensuales(series, _mes_corto, lambda v: f"{v:z,.0f}", referencias=referencias)
         titulo_grafico = "Consumo por tonelada producida, mes a mes (kg por T)"
     else:
         series = []
@@ -3606,7 +3611,7 @@ def _contexto_consumo_especifico(request):
             series.append({
                 "nombre": f"{_PRODUCTOS_TEXTO[producto]} producido", "clase": f"serie-{i}",
                 "puntos": [(m, float(v), f"{_mes_corto(m)} · {_PRODUCTOS_TEXTO[producto]} producido "
-                                         f"({' + '.join(map(q.nombre_centro, centros_sel))}): {v:,.0f} T") for m, v in serie.items()],
+                                         f"({' + '.join(map(q.nombre_centro, centros_sel))}): {v:z,.0f} T") for m, v in serie.items()],
             })
         grafico = charts.lineas_mensuales(series, _mes_corto, charts._toneladas_corto, desde_cero=True)
         titulo_grafico = f"Producción mensual de clinker y cemento · {' + '.join(map(q.nombre_centro, centros_sel))} (T)"
@@ -3744,7 +3749,7 @@ def _contexto_proyeccion_sop(request):
     # varios, cuántos quedan bajo el mínimo o sobre el máximo. Pedido por el
     # usuario.
     def toneladas(valor):
-        return f"{valor:,.0f} T"
+        return f"{valor:z,.0f} T"
 
     detalles = [
         f"Stock de partida{f' (cierre {fecha_inicial:%d/%m/%Y})' if fecha_inicial else ''}: "
@@ -3889,19 +3894,19 @@ def _zonas_categoria(categoria, tiene_inventario):
 def _soles_mm(valor):
     """Soles abreviados para las cifras de los paneles: S/ 12.3 MM, S/ 450 K."""
     if abs(valor) >= 1e6:
-        return f"S/ {valor / 1e6:,.1f} MM"
+        return f"S/ {valor / 1e6:z,.1f} MM"
     if abs(valor) >= 1e3:
-        return f"S/ {valor / 1e3:,.0f} K"
-    return f"S/ {valor:,.0f}"
+        return f"S/ {valor / 1e3:z,.0f} K"
+    return f"S/ {valor:z,.0f}"
 
 
 def _soles_eje(valor):
     """Soles abreviados para la grilla de un gráfico: 12.3M, 450K."""
     if abs(valor) >= 1e6:
-        return f"{valor / 1e6:,.1f}M"
+        return f"{valor / 1e6:z,.1f}M"
     if abs(valor) >= 1e3:
-        return f"{valor / 1e3:,.0f}K"
-    return f"{valor:,.0f}"
+        return f"{valor / 1e3:z,.0f}K"
+    return f"{valor:z,.0f}"
 
 
 def _cat_compras(request, categoria, tiene_inventario):
@@ -3961,7 +3966,7 @@ def _cat_compras(request, categoria, tiene_inventario):
                     [_mes_corto(m) for m, _ in ultimos],
                     [[{"valor": v,
                        "clase": "col-compras" if rango["fecha_ini"] <= m <= rango["fecha_fin"] else "col-compras-fuera",
-                       "detalle": f"{q.formato_mes_anio(m)}\nCompras: S/ {v:,.0f}",
+                       "detalle": f"{q.formato_mes_anio(m)}\nCompras: S/ {v:z,.0f}",
                        "filtrar": desglose.filtro(f_mes=desglose.mes_param(m))}] for m, v in ultimos],
                     _soles_eje,
                 ),
@@ -4208,13 +4213,13 @@ def _cat_precios(request, categoria, tiene_inventario):
         tramo = f"{_mes_corto(inicio)}–{_mes_corto(m)}" if inicio != m else _mes_corto(m)
         puntos.append({
             "mes": m, "individual": d["individual"], "acumulado": d["acumulado"],
-            "detalle_individual": (f"{_mes_corto(m)} vs {evaluacion['base_titulo']}: {d['individual'] * 100:+.1f}%\n"
-                                   f"Bolsa: {'+' if d['bolsa'] >= 0 else '−'}S/ {abs(d['bolsa']):,.0f}\n"
+            "detalle_individual": (f"{_mes_corto(m)} vs {evaluacion['base_titulo']}: {d['individual'] * 100:+z.1f}%\n"
+                                   f"Bolsa: {'+' if d['bolsa'] >= 0 else '−'}S/ {abs(d['bolsa']):z,.0f}\n"
                                    f"{c['materiales']} material{'es' if c['materiales'] != 1 else ''} comprado"
-                                   f"{'s' if c['materiales'] != 1 else ''} · S/ {c['importe']:,.0f}"),
-            "detalle_acumulado": (f"IPU acumulado {tramo}: {d['acumulado'] * 100:+.1f}%\n"
-                                  f"Pagado: S/ {d['importe_acumulado']:,.0f} · al precio base: S/ {d['base_acumulada']:,.0f}\n"
-                                  f"Bolsa acumulada: {'+' if d['bolsa_acumulada'] >= 0 else '−'}S/ {abs(d['bolsa_acumulada']):,.0f}"),
+                                   f"{'s' if c['materiales'] != 1 else ''} · S/ {c['importe']:z,.0f}"),
+            "detalle_acumulado": (f"IPU acumulado {tramo}: {d['acumulado'] * 100:+z.1f}%\n"
+                                  f"Pagado: S/ {d['importe_acumulado']:z,.0f} · al precio base: S/ {d['base_acumulada']:z,.0f}\n"
+                                  f"Bolsa acumulada: {'+' if d['bolsa_acumulada'] >= 0 else '−'}S/ {abs(d['bolsa_acumulada']):z,.0f}"),
         })
     pr["puntos"] = puntos
     pr["grafico"] = charts.evolucion_ipu(puntos, _mes_corto)
@@ -4268,7 +4273,7 @@ def _cat_precios(request, categoria, tiene_inventario):
         pr["un_material"] = f"{r0['texto_breve']} ({q.nombre_centro(r0['centro'])}) · S/ por {umb.get(r0['material_codigo'], 'UMB')}"
         pr["grafico_precio"] = charts.evolucion_precio(
             [(r.mes, float(r.precio), float(r.toneladas)) for r in inflacion.itertuples()], _mes_corto,
-            base=[(r.mes, float(r.precio_base)) for r in inflacion.itertuples()], ancho=960, alto=300,
+            base=[(r.mes, float(r.precio_base)) for r in inflacion.itertuples()], ancho_minimo=960,
         )
         pr["detalle"] = [
             {"mes": _mes_corto(r["mes"]), "cantidad": r["toneladas"], "precio": r["precio"],
@@ -4328,7 +4333,7 @@ def _cat_cuentas(request, categoria, tiene_inventario):
     serie = q.pmp_mensual(categoria)
     cx["pmp_serie"] = [(r.mes, float(r.pmp)) for r in serie.itertuples()]
     cx["pmp_grafico"] = charts.serie_area([(_mes_abrev_guion(m), v) for m, v in cx["pmp_serie"]],
-                                          formato_valor=lambda v: f"{v:.0f}")
+                                          formato_valor=lambda v: f"{v:z.0f}")
 
     df = q.compras_por_categoria_y_condicion_pago_rango(rango["fecha_ini"], rango["fecha_fin"])
     df = df[df["categoria"] == categoria].copy()
@@ -4381,8 +4386,8 @@ def _cat_cuentas(request, categoria, tiene_inventario):
         referencia = cx["pmp_anio"]
         cx["dispersion"] = charts.dispersion_pago(
             [{"nombre": _nombre_corto(p["proveedor"]), "monto": p["valor"], "dias": p["pmp"],
-              "detalle": (f"{p['proveedor']}\nCompras: S/ {p['valor']:,.0f} ({p['participacion']:.1f}% de la categoría)\n"
-                          f"Días de pago: {p['pmp']:.0f} (PMP de la categoría: {referencia:.0f})\n"
+              "detalle": (f"{p['proveedor']}\nCompras: S/ {p['valor']:z,.0f} ({p['participacion']:z.1f}% de la categoría)\n"
+                          f"Días de pago: {p['pmp']:z.0f} (PMP de la categoría: {referencia:z.0f})\n"
                           f"Condición principal: {p['condicion']} · {p['pedidos']:,} pedidos"),
               "filtrar": desglose.filtro(f_proveedor=p["proveedor"])}
              for p in cx["proveedores"]],
@@ -4398,10 +4403,10 @@ def _cat_cuentas(request, categoria, tiene_inventario):
 def _soles_marca(valor):
     """Marcas del eje de montos en escala logarítmica: S/ 10K, S/ 1M."""
     if valor >= 1e6:
-        return f"S/ {valor / 1e6:,.0f}M"
+        return f"S/ {valor / 1e6:z,.0f}M"
     if valor >= 1e3:
-        return f"S/ {valor / 1e3:,.0f}K"
-    return f"S/ {valor:,.0f}"
+        return f"S/ {valor / 1e3:z,.0f}K"
+    return f"S/ {valor:z,.0f}"
 
 
 # Paneles de la pestaña Indicadores de cada categoría, en orden. Por defecto
@@ -4478,8 +4483,8 @@ def _cat_indicadores(request, categoria, tiene_inventario):
         actual = sum(v for m, v in por_mes if m.year == anio)
         previo = sum(v for m, v in por_mes if m.year == anio - 1 and m.month <= ultimo_mes.month)
         fila_anio = next((f for f in co["compras"] if f["anio"] == anio), None)
-        contrato = f" · {fila_anio['pct_contrato']:.1f}% bajo contrato" if fila_anio else ""
-        estado = f"{(actual / previo - 1) * 100:+.1f}% vs {anio - 1}" if previo else ""
+        contrato = f" · {fila_anio['pct_contrato']:z.1f}% bajo contrato" if fila_anio else ""
+        estado = f"{(actual / previo - 1) * 100:+z.1f}% vs {anio - 1}" if previo else ""
         panel("compras", "compras", titulo, _soles_mm(actual),
               f"Ene–{_MESES_ABREV_GUION[ultimo_mes.month]} {anio}{contrato}"
               + (f" · mismo tramo de {anio - 1}: {_soles_mm(previo)}" if previo else ""),
@@ -4499,18 +4504,18 @@ def _cat_indicadores(request, categoria, tiene_inventario):
                         ("aviso", "Concentrada") if pct >= 60 else ("ok", "Diversificada"))
         extras = []
         if co["lead_time"]:
-            extras.append(f"lead time {co['lead_time']['lead_time_promedio']:.0f} días")
+            extras.append(f"lead time {co['lead_time']['lead_time_promedio']:z.0f} días")
         if co["fill_rate"] and co["fill_rate"].get("fill_rate_pct") is not None:
-            extras.append(f"fill rate {co['fill_rate']['fill_rate_pct']:.1f}%")
+            extras.append(f"fill rate {co['fill_rate']['fill_rate_pct']:z.1f}%")
         if co["otif"]:
-            extras.append(f"OTIF {co['otif']['otif']:.0f}%")
+            extras.append(f"OTIF {co['otif']['otif']:z.0f}%")
         top = pareto["top_proveedores"]
         tope = max(float(p["pct"]) for p in top) * 1.1 or 100
         filas = [{"nombre": _nombre_corto(str(p["proveedor"])), "sub": "", "valor": float(p["pct"]),
-                  "texto": f"{float(p['pct']):.1f}%", "clase": "mal",
-                  "detalle": f"{p['proveedor']}\nS/ {float(p['valor']):,.0f} · {float(p['pct']):.1f}% de las compras"}
+                  "texto": f"{float(p['pct']):z.1f}%", "clase": "mal",
+                  "detalle": f"{p['proveedor']}\nS/ {float(p['valor']):z,.0f} · {float(p['pct']):z.1f}% de las compras"}
                  for p in top]
-        panel("proveedores", "compras", titulo, f"{pct:.1f}%",
+        panel("proveedores", "compras", titulo, f"{pct:z.1f}%",
               f"De las compras de {co['sc']['texto']} en los {co['sc']['top']} proveedores más grandes"
               + (" · " + " · ".join(extras) if extras else ""),
               "escala", charts.barras_escala(filas, 0, tope), tono, estado)
@@ -4532,15 +4537,15 @@ def _cat_indicadores(request, categoria, tiene_inventario):
             partes = [f"Al {valores[-1][0]:%d/%m/%Y}"]
             # Con el panel del IRI (12 meses) no se repite la rotación de 6 meses: serían dos cifras distintas.
             if rot["rotacion_anual"] is not None and "iri" not in claves:
-                partes.append(f"rotación {rot['rotacion_anual']:.2f} veces al año")
+                partes.append(f"rotación {rot['rotacion_anual']:z.2f} veces al año")
             if rot["dias_inventario"] is not None and "iri" not in claves:
-                partes.append(f"{rot['dias_inventario']:,.0f} días de inventario")
-            estado = (f"{(valores[-1][1] / valores[-2][1] - 1) * 100:+.1f}% vs mes anterior"
+                partes.append(f"{rot['dias_inventario']:z,.0f} días de inventario")
+            estado = (f"{(valores[-1][1] / valores[-2][1] - 1) * 100:+z.1f}% vs mes anterior"
                       if len(valores) > 1 and valores[-2][1] else "")
             panel("inventario", "inventario", titulo, _soles_mm(valores[-1][1]), " · ".join(partes), "lineas",
                   charts.lineas_mensuales(
                       [{"nombre": "Valor", "clase": "serie-0",
-                        "puntos": [(f.replace(day=1), v, f"Al {f:%d/%m/%Y}\nS/ {v:,.0f}") for f, v in valores]}],
+                        "puntos": [(f.replace(day=1), v, f"Al {f:%d/%m/%Y}\nS/ {v:z,.0f}") for f, v in valores]}],
                       _mes_corto, _soles_eje, max_etiquetas_eje=7),
                   "neutro", estado, nota="Valor del inventario (MB5B) al cierre de cada mes, últimos 13 meses "
                                          "(el mes en curso, a su último corte).")
@@ -4555,18 +4560,18 @@ def _cat_indicadores(request, categoria, tiene_inventario):
         else:
             ultimo, serie = iri[-1], iri[-_IRI_MESES:]
             hace_un_anio = next((f for f in iri if f["mes"] == q._sumar_meses(ultimo["mes"], -12)), None)
-            estado = f"{ultimo['iri'] - hace_un_anio['iri']:+.2f} vs {_mes_corto(hace_un_anio['mes'])}" if hace_un_anio else ""
-            panel("iri", "inventario", titulo, f"{ultimo['iri']:.2f} veces",
+            estado = f"{ultimo['iri'] - hace_un_anio['iri']:+z.2f} vs {_mes_corto(hace_un_anio['mes'])}" if hace_un_anio else ""
+            panel("iri", "inventario", titulo, f"{ultimo['iri']:z.2f} veces",
                   f"{_mes_corto(ultimo['desde'])}–{_mes_corto(ultimo['mes'])} · consumo {_soles_mm(ultimo['consumo'])} ÷ "
                   f"inventario promedio {_soles_mm(ultimo['inventario'])}"
-                  + (f" · {ultimo['dias']:,.0f} días de inventario" if ultimo["dias"] else ""),
+                  + (f" · {ultimo['dias']:z,.0f} días de inventario" if ultimo["dias"] else ""),
                   "lineas", charts.lineas_mensuales(
                       [{"nombre": "IRI", "clase": "serie-0",
                         "puntos": [(f["mes"], f["iri"],
-                                    f"{_mes_corto(f['desde'])}–{_mes_corto(f['mes'])}\nIRI {f['iri']:.2f} veces"
-                                    f"\nConsumo S/ {f['consumo']:,.0f} ÷ inventario promedio S/ {f['inventario']:,.0f}")
+                                    f"{_mes_corto(f['desde'])}–{_mes_corto(f['mes'])}\nIRI {f['iri']:z.2f} veces"
+                                    f"\nConsumo S/ {f['consumo']:z,.0f} ÷ inventario promedio S/ {f['inventario']:z,.0f}")
                                    for f in serie]}],
-                      _mes_corto, lambda v: f"{v:.2f}", desde_cero=True, max_etiquetas_eje=7),
+                      _mes_corto, lambda v: f"{v:z.2f}", desde_cero=True, max_etiquetas_eje=7),
                   "neutro", estado,
                   nota="Consumo valorizado (MB51) de los 12 meses que terminan en cada mes ÷ valor promedio del "
                        "inventario (MB5B) al cierre de esos 12 meses. Más alto = el inventario rota más rápido.")
@@ -4588,18 +4593,18 @@ def _cat_indicadores(request, categoria, tiene_inventario):
             g = charts.pilas_horizontales([
                 {"nombre": "Valor", "sub": "", "texto": "",
                  "segmentos": [{"valor": float(c["valor"]), "clase": f"col-abc-{c['clase'].lower()}",
-                                "detalle": f"Clase {c['clase']}: S/ {float(c['valor']):,.0f} "
-                                           f"({float(c['valor']) / total_valor * 100:.1f}% del valor)"}
+                                "detalle": f"Clase {c['clase']}: S/ {float(c['valor']):z,.0f} "
+                                           f"({float(c['valor']) / total_valor * 100:z.1f}% del valor)"}
                                for c in abc["clases"]]},
                 {"nombre": "Materiales", "sub": "", "texto": "",
                  "segmentos": [{"valor": int(c["materiales"]), "clase": f"col-abc-{c['clase'].lower()}",
                                 "detalle": f"Clase {c['clase']}: {int(c['materiales']):,} materiales "
-                                           f"({int(c['materiales']) / total_mat * 100:.1f}%)"}
+                                           f"({int(c['materiales']) / total_mat * 100:z.1f}%)"}
                                for c in abc["clases"]]},
             ])
             # En la barra de valor, el texto de cada segmento es su % del valor (no los soles).
             for s in g["filas"][0]["segmentos"]:
-                s["texto"] = f"{s['valor'] / total_valor * 100:.0f}%" if s["texto"] else ""
+                s["texto"] = f"{s['valor'] / total_valor * 100:z.0f}%" if s["texto"] else ""
         leyenda_abc = [("col-abc-a", "Clase A"), ("col-abc-b", "Clase B"), ("col-abc-c", "Clase C")]
         nota_abc = "Barras: clasificación ABC del inventario (A = 80% del valor, B = hasta 95%, C = el resto)."
         if criticos:
@@ -4623,15 +4628,15 @@ def _cat_indicadores(request, categoria, tiene_inventario):
             panel("abastecimiento", "abastecimiento", titulo, "—", "", "", None, vacio="Sin plan ni ingresos del último mes cerrado.")
         else:
             pct = ab["cumplimiento_pct"]
-            filas = [{"nombre": q.nombre_centro(f["centro"]).title(), "sub": f"{f['real']:,.0f} de {f['plan']:,.0f} T",
-                      "valor": f["pct"] or 0.0, "texto": f"{f['pct']:.0f}%" if f["pct"] is not None else "—",
+            filas = [{"nombre": q.nombre_centro(f["centro"]).title(), "sub": f"{f['real']:z,.0f} de {f['plan']:z,.0f} T",
+                      "valor": f["pct"] or 0.0, "texto": f"{f['pct']:z.0f}%" if f["pct"] is not None else "—",
                       "clase": "bien" if (f["pct"] or 0) >= 100 else "regular" if (f["pct"] or 0) >= 80 else "mal",
-                      "detalle": f"{q.nombre_centro(f['centro'])}: {f['real']:,.0f} T ingresadas de {f['plan']:,.0f} T planificadas"}
+                      "detalle": f"{q.nombre_centro(f['centro'])}: {f['real']:z,.0f} T ingresadas de {f['plan']:z,.0f} T planificadas"}
                      for f in ab["centros"]]
             tope = min(max(120, max(f["valor"] for f in filas) * 1.08), 200)
             tono, estado = (("ok", "Cumplido") if pct >= 100 else ("aviso", "Por debajo") if pct >= 80 else ("alerta", "Bajo el plan"))
-            panel("abastecimiento", "abastecimiento", titulo, f"{pct:.1f}%",
-                  f"{q.formato_mes_anio(ab['mes'])} · {ab['total_real']:,.0f} T ingresadas de {ab['total_plan']:,.0f} T planificadas",
+            panel("abastecimiento", "abastecimiento", titulo, f"{pct:z.1f}%",
+                  f"{q.formato_mes_anio(ab['mes'])} · {ab['total_real']:z,.0f} T ingresadas de {ab['total_plan']:z,.0f} T planificadas",
                   "escala", charts.barras_escala(filas, 0, tope, referencias=[(100, "100%")]), tono, estado)
 
     # 6. Precios e IPU: acumulado del año (interanual) y cada mes.
@@ -4650,13 +4655,13 @@ def _cat_indicadores(request, categoria, tiene_inventario):
             [_mes_corto(p["mes"]) for p in puntos],
             [[{"valor": p["individual"] * 100, "clase": "col-sube" if p["individual"] > 0 else "col-baja",
                "detalle": p["detalle_individual"]}] for p in puntos],
-            lambda v: f"{v:+.0f}%",
+            lambda v: f"{v:+z.0f}%",
             linea={"valores": [p["acumulado"] * 100 for p in puntos], "cortes": cortes, "clase": "",
                    "detalles": [p["detalle_acumulado"] for p in puntos],
-                   "etiqueta_final": f"{puntos[-1]['acumulado'] * 100:+.1f}%"},
+                   "etiqueta_final": f"{puntos[-1]['acumulado'] * 100:+z.1f}%"},
             ancho=480, alto=200,  # panel de media página: menos etiquetas de mes, sin que se pisen
         )
-        panel("ipu", "precios", titulo, f"{a['pct']:+.1f}%",
+        panel("ipu", "precios", titulo, f"{a['pct']:+z.1f}%",
               f"{a['anio']} acumulado a {a['hasta']} vs el mismo tramo de {a['anio'] - 1} · bolsa "
               f"{'+' if a['bolsa'] >= 0 else '−'}{_soles_mm(abs(a['bolsa']))} · {pr['resumen']['materiales']:,} materiales",
               "columnas", g, tono, estado,
@@ -4672,16 +4677,16 @@ def _cat_indicadores(request, categoria, tiene_inventario):
         panel("pmp", "cuentas", titulo, "—", "", "", None, vacio="Sin compras registradas en esta categoría.")
     else:
         ultimo = cx["pmp_anios"][-1]
-        estado = f"{ultimo['diferencia']:+.0f} días vs {ultimo['anio'] - 1}" if ultimo["diferencia"] is not None else ""
+        estado = f"{ultimo['diferencia']:+z.0f} días vs {ultimo['anio'] - 1}" if ultimo["diferencia"] is not None else ""
         serie = cx["pmp_serie"][-_COMPRAS_MESES:]
-        panel("pmp", "cuentas", titulo, f"{ultimo['pmp']:.0f} días",
+        panel("pmp", "cuentas", titulo, f"{ultimo['pmp']:z.0f} días",
               f"Compras de {ultimo['periodo']}, mismos meses que el año anterior"
-              + (f" · {cx['pct_60']:.0f}% del valor a 60 días o más" if cx.get("pct_60") is not None else "")
+              + (f" · {cx['pct_60']:z.0f}% del valor a 60 días o más" if cx.get("pct_60") is not None else "")
               + (f" · cada día más de plazo = {_soles_mm(cx['caja_por_dia'])} de caja" if cx.get("caja_por_dia") else ""),
               "lineas", charts.lineas_mensuales(
                   [{"nombre": "PMP", "clase": "serie-0",
-                    "puntos": [(m, v, f"{q.formato_mes_anio(m)}\nPMP: {v:.0f} días") for m, v in serie]}],
-                  _mes_corto, lambda v: f"{v:.0f} d", desde_cero=True, max_etiquetas_eje=8),
+                    "puntos": [(m, v, f"{q.formato_mes_anio(m)}\nPMP: {v:z.0f} días") for m, v in serie]}],
+                  _mes_corto, lambda v: f"{v:z.0f} d", desde_cero=True, max_etiquetas_eje=8),
               "neutro", estado, nota="Días de pago pactados en las órdenes de compra, ponderados por valor (mes a mes).")
 
     paneles = [por_clave[c] for c in claves if c in por_clave]

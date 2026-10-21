@@ -23,11 +23,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-# En Azure, define DJANGO_SECRET_KEY como app setting; en local usa el valor por defecto.
-SECRET_KEY = os.environ.get(
-    'DJANGO_SECRET_KEY',
-    'django-insecure-9n-r(hey$snzp97_^27l)c!fu88=76fvbs7vs8h6xxhf3#njv3',
-)
+# En Azure, define DJANGO_SECRET_KEY como app setting. En local se toma de
+# secretos/django_secret_key.txt (excluido de git) y, si no existe, se genera
+# una al azar y se guarda ahí. Antes iba escrita aquí, y el repositorio es
+# público: con ella se pueden falsificar sesiones firmadas.
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', '').strip()
+if not SECRET_KEY:
+    _ARCHIVO_CLAVE_DJANGO = BASE_DIR / 'secretos' / 'django_secret_key.txt'
+    if not _ARCHIVO_CLAVE_DJANGO.exists():
+        import secrets
+        _ARCHIVO_CLAVE_DJANGO.parent.mkdir(exist_ok=True)
+        _ARCHIVO_CLAVE_DJANGO.write_text(secrets.token_urlsafe(64), encoding='utf-8')
+    SECRET_KEY = _ARCHIVO_CLAVE_DJANGO.read_text(encoding='utf-8').strip()
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
@@ -195,7 +202,7 @@ ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '').strip()
 _ARCHIVO_CLAVE_ASISTENTE = BASE_DIR / 'secretos' / 'anthropic_api_key.txt'
 if not ANTHROPIC_API_KEY and _ARCHIVO_CLAVE_ASISTENTE.exists():
     ANTHROPIC_API_KEY = _ARCHIVO_CLAVE_ASISTENTE.read_text(encoding='utf-8').strip()
-ASISTENTE_MODELO = os.environ.get('ASISTENTE_MODELO', 'claude-sonnet-5')
+ASISTENTE_MODELO = os.environ.get('ASISTENTE_MODELO', 'claude-sonnet-5-5')
 # Máximo de consultas a los datos (herramientas) por pregunta, para acotar
 # tiempo y costo.
 ASISTENTE_MAX_PASOS = int(os.environ.get('ASISTENTE_MAX_PASOS', '8'))

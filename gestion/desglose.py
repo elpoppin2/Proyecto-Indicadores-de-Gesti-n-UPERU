@@ -74,7 +74,7 @@ def _texto_pct(valor, decimales=1):
 
 
 def _soles(valor):
-    return f"S/ {valor:,.0f}"
+    return f"S/ {valor:z,.0f}"
 
 
 def _pmp(df):
@@ -88,7 +88,7 @@ def _resumen_compras(df):
     pmp = _pmp(df)
     return [("Líneas", f"{len(df):,}"), ("Pedidos", f"{df['pedido'].nunique():,}"),
             ("Valor de compras", _soles(valor)), ("Bajo contrato", _texto_pct(_pct(contrato, valor))),
-            ("PMP", "—" if pmp is None else f"{pmp:,.0f} días")]
+            ("PMP", "—" if pmp is None else f"{pmp:z,.0f} días")]
 
 
 def _resumen_cuentas(df):
@@ -97,7 +97,7 @@ def _resumen_cuentas(df):
     a_60 = float(df.loc[df["dias"] >= 60, "valor"].sum()) if not df.empty else 0.0
     return [("Líneas", f"{len(df):,}"), ("Valor de compras", _soles(valor)),
             ("Σ días × valor", _soles(_suma(df, "peso"))),
-            ("PMP = Σ días × valor ÷ Σ valor", "—" if pmp is None else f"{pmp:,.0f} días"),
+            ("PMP = Σ días × valor ÷ Σ valor", "—" if pmp is None else f"{pmp:z,.0f} días"),
             ("A 60 días o más", _texto_pct(_pct(a_60, valor)))]
 
 
@@ -112,8 +112,8 @@ def _resumen_leadtime(df):
     validas = df[df["estado"] == "Válida"]
     if validas.empty:
         return [("Líneas", f"{len(df):,}")]
-    return [("Líneas válidas", f"{len(validas):,}"), ("Lead Time promedio", f"{validas['dias'].mean():,.1f} días"),
-            ("Mediana", f"{validas['dias'].median():,.1f} días"),
+    return [("Líneas válidas", f"{len(validas):,}"), ("Lead Time promedio", f"{validas['dias'].mean():z,.1f} días"),
+            ("Mediana", f"{validas['dias'].median():z,.1f} días"),
             ("Excluidas", f"{len(df) - len(validas):,}")]
 
 
@@ -156,7 +156,7 @@ def _resumen_consumo(df):
 def _resumen_criticos(df):
     con = df[df["estado"] != "Sin consumo"]
     return [("Críticos con cobertura", f"{len(con):,}"),
-            ("Cobertura promedio", "—" if con.empty else f"{con['cobertura_meses'].mean():,.2f} meses"),
+            ("Cobertura promedio", "—" if con.empty else f"{con['cobertura_meses'].mean():z,.2f} meses"),
             ("En riesgo (< 1 mes)", f"{int((df['estado'] == 'En riesgo').sum()):,}"),
             ("Sin consumo (no entran al promedio)", f"{len(df) - len(con):,}")]
 
@@ -185,12 +185,12 @@ def _resumen_entradas(df):
 
 def _resumen_abastecimiento(df):
     plan, real = _suma(df, "cantidad_plan"), _suma(df, "cantidad_real")
-    return [("Materiales", f"{len(df):,}"), ("Plan", f"{plan:,.0f} T"), ("Real", f"{real:,.0f} T"),
+    return [("Materiales", f"{len(df):,}"), ("Plan", f"{plan:z,.0f} T"), ("Real", f"{real:z,.0f} T"),
             ("Cumplimiento", _texto_pct(_pct(real, plan)))]
 
 
 def _resumen_ingresos(df):
-    return [("Tickets", f"{len(df):,}"), ("Toneladas", f"{_suma(df, 'toneladas'):,.0f} T"),
+    return [("Tickets", f"{len(df):,}"), ("Toneladas", f"{_suma(df, 'toneladas'):z,.0f} T"),
             ("Proveedores u orígenes", f"{df['proveedor'].nunique():,}")]
 
 
@@ -487,16 +487,16 @@ def _formato(valor, tipo):
     if tipo == "fecha":
         return valor.strftime("%d/%m/%Y") if hasattr(valor, "strftime") else str(valor)[:10]
     if tipo == "soles":
-        return f"S/ {float(valor):,.2f}"
+        return f"S/ {float(valor):z,.2f}"
     if tipo == "numero":
-        return f"{float(valor):,.2f}"
+        return f"{float(valor):z,.2f}"
     if tipo == "cantidad":
-        texto = f"{float(valor):,.3f}".rstrip("0").rstrip(".")
+        texto = f"{float(valor):z,.3f}".rstrip("0").rstrip(".")
         return texto if texto not in ("", "-0") else "0"
     if tipo in ("entero", "dias"):
-        return f"{float(valor):,.0f}"
+        return f"{float(valor):z,.0f}"
     if tipo == "pct":
-        return f"{float(valor):,.1f}%"
+        return f"{float(valor):z,.1f}%"
     if tipo == "centro":
         return q.nombre_centro(valor)
     return str(valor)

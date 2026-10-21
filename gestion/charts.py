@@ -16,7 +16,7 @@ def serie_area(puntos, ancho=640, alto=220, pad_x=8, pad_y=24, formato_valor=Non
     por defecto son millones de soles (uso original: Evolución de Inventario).
     Para otras unidades (p.ej. PMP en días) se pasa un formateador distinto."""
     if formato_valor is None:
-        formato_valor = lambda v: f"{v / 1_000_000:,.1f}"  # noqa: E731
+        formato_valor = lambda v: f"{v / 1_000_000:z,.1f}"  # noqa: E731
     if len(puntos) < 2:
         return None
 
@@ -32,8 +32,8 @@ def serie_area(puntos, ancho=640, alto=220, pad_x=8, pad_y=24, formato_valor=Non
         y = pad_y + (alto - 2 * pad_y) * (1 - (valor - minimo) / rango)
         crudos.append((x, y, etiqueta, valor))
 
-    linea = " ".join(f"{'M' if i == 0 else 'L'}{x:.1f} {y:.1f}" for i, (x, y, _, _) in enumerate(crudos))
-    area = linea + f" L{crudos[-1][0]:.1f} {base_y:.1f} L{crudos[0][0]:.1f} {base_y:.1f} Z"
+    linea = " ".join(f"{'M' if i == 0 else 'L'}{x:z.1f} {y:z.1f}" for i, (x, y, _, _) in enumerate(crudos))
+    area = linea + f" L{crudos[-1][0]:z.1f} {base_y:z.1f} L{crudos[0][0]:z.1f} {base_y:z.1f} Z"
 
     # Etiquetas del eje: como mucho ~7 para que no se amontonen.
     paso_etiqueta = max(1, len(crudos) // 7)
@@ -41,13 +41,13 @@ def serie_area(puntos, ancho=640, alto=220, pad_x=8, pad_y=24, formato_valor=Non
     for i, (x, y, etiqueta, valor) in enumerate(crudos):
         puntos_out.append({
             # Coordenadas en unidades del viewBox: para los <circle>/<path> del SVG.
-            "x": f"{x:.1f}", "y": f"{y:.1f}",
+            "x": f"{x:z.1f}", "y": f"{y:z.1f}",
             # Las mismas coordenadas como % del contenedor: para las etiquetas de
             # texto en HTML superpuesto (ver nota de módulo). Un <text> dentro del
             # SVG se escala junto con el gráfico y se ve más grande de lo previsto
             # cuando el SVG se estira más que su viewBox; en HTML normal, la
             # tipografía siempre respeta el tamaño real definido en el CSS.
-            "x_pct": f"{x / ancho * 100:.2f}", "y_pct": f"{y / alto * 100:.2f}",
+            "x_pct": f"{x / ancho * 100:z.2f}", "y_pct": f"{y / alto * 100:z.2f}",
             "etiqueta": etiqueta,
             "etiqueta_valor": formato_valor(valor),
             "mostrar_etiqueta": (i % paso_etiqueta == 0) or (i == len(crudos) - 1),
@@ -70,7 +70,7 @@ def curva_doble(puntos_a, puntos_b, ancho=640, alto=220, pad_x=8, pad_y=24, form
     serie solo se muestra cada tantos puntos (mismo paso que la etiqueta de
     eje X) más el último punto de cada línea, no en los 30 — se amontonarían."""
     if formato_valor is None:
-        formato_valor = lambda v: f"{v:,.0f}"  # noqa: E731
+        formato_valor = lambda v: f"{v:z,.0f}"  # noqa: E731
     if len(puntos_a) < 2 or not puntos_b or len(puntos_b) > len(puntos_a):
         return None
 
@@ -89,8 +89,8 @@ def curva_doble(puntos_a, puntos_b, ancho=640, alto=220, pad_x=8, pad_y=24, form
         return crudos
 
     coords_a, coords_b = _coords(puntos_a), _coords(puntos_b)
-    linea_a = " ".join(f"{'M' if i == 0 else 'L'}{x:.1f} {y:.1f}" for i, (x, y) in enumerate(coords_a))
-    linea_b = " ".join(f"{'M' if i == 0 else 'L'}{x:.1f} {y:.1f}" for i, (x, y) in enumerate(coords_b))
+    linea_a = " ".join(f"{'M' if i == 0 else 'L'}{x:z.1f} {y:z.1f}" for i, (x, y) in enumerate(coords_a))
+    linea_b = " ".join(f"{'M' if i == 0 else 'L'}{x:z.1f} {y:z.1f}" for i, (x, y) in enumerate(coords_b))
 
     # Qué puntos llevan etiqueta de valor: un paso fijo (cada 1/6) dejaba dos
     # etiquetas de LA MISMA línea pegadas cuando un punto obligatorio (fin de
@@ -116,12 +116,12 @@ def curva_doble(puntos_a, puntos_b, ancho=640, alto=220, pad_x=8, pad_y=24, form
         xa, ya = coords_a[i]
         mostrar = i in mostrar_idx
         entrada = {
-            "x_pct": f"{x / ancho * 100:.2f}",
+            "x_pct": f"{x / ancho * 100:z.2f}",
             "etiqueta": etiqueta,
             "mostrar": mostrar,
             "a": {
-                "x": f"{xa:.1f}", "y": f"{ya:.1f}",
-                "x_pct": f"{xa / ancho * 100:.2f}", "y_pct": f"{ya / alto * 100:.2f}",
+                "x": f"{xa:z.1f}", "y": f"{ya:z.1f}",
+                "x_pct": f"{xa / ancho * 100:z.2f}", "y_pct": f"{ya / alto * 100:z.2f}",
                 "valor": formato_valor(valor_a),
                 "pos": "arriba",
             },
@@ -139,8 +139,8 @@ def curva_doble(puntos_a, puntos_b, ancho=640, alto=220, pad_x=8, pad_y=24, form
             # abajo — así siempre quedan a los dos lados, nunca superpuestas,
             # incluso cuando los dos puntos casi coinciden. Pedido por el usuario.
             entrada["b"] = {
-                "x": f"{xb:.1f}", "y": f"{yb:.1f}",
-                "x_pct": f"{xb / ancho * 100:.2f}", "y_pct": f"{yb / alto * 100:.2f}",
+                "x": f"{xb:z.1f}", "y": f"{yb:z.1f}",
+                "x_pct": f"{xb / ancho * 100:z.2f}", "y_pct": f"{yb / alto * 100:z.2f}",
                 "valor": formato_valor(puntos_b[i][1]),
                 "pos": "abajo",
             }
@@ -155,8 +155,8 @@ def curva_doble(puntos_a, puntos_b, ancho=640, alto=220, pad_x=8, pad_y=24, form
     return {
         "ancho": ancho, "alto": alto, "linea_a": linea_a, "linea_b": linea_b,
         "etiquetas": etiquetas,
-        "ultimo_a": {"x": f"{ultimo_x_a:.1f}", "y": f"{ultimo_y_a:.1f}", "valor": formato_valor(puntos_a[-1][1])},
-        "ultimo_b": {"x": f"{ultimo_x_b:.1f}", "y": f"{ultimo_y_b:.1f}", "valor": formato_valor(puntos_b[-1][1])},
+        "ultimo_a": {"x": f"{ultimo_x_a:z.1f}", "y": f"{ultimo_y_a:z.1f}", "valor": formato_valor(puntos_a[-1][1])},
+        "ultimo_b": {"x": f"{ultimo_x_b:z.1f}", "y": f"{ultimo_y_b:z.1f}", "valor": formato_valor(puntos_b[-1][1])},
     }
 
 
@@ -169,7 +169,7 @@ def barras_mensuales(puntos, ancho=640, alto=240, pad_x=10, pad_y=28, meta=100, 
     encima/cerca/por debajo de la meta (verde/ámbar/rojo), calculada acá
     porque una plantilla no puede hacer ese condicional con umbrales."""
     if formato_valor is None:
-        formato_valor = lambda v: f"{v:.1f}%"  # noqa: E731
+        formato_valor = lambda v: f"{v:z.1f}%"  # noqa: E731
     if not puntos:
         return None
 
@@ -192,7 +192,7 @@ def barras_mensuales(puntos, ancho=640, alto=240, pad_x=10, pad_y=28, meta=100, 
     for i, (etiqueta, valor) in enumerate(puntos):
         cx = pad_x + paso * i + paso / 2
         entrada = {
-            "x_pct": f"{cx / ancho * 100:.2f}",
+            "x_pct": f"{cx / ancho * 100:z.2f}",
             "etiqueta": etiqueta,
             "mostrar_etiqueta": (i % paso_etiqueta == 0) or (i == n - 1),
             "valor": None,
@@ -207,17 +207,17 @@ def barras_mensuales(puntos, ancho=640, alto=240, pad_x=10, pad_y=28, meta=100, 
             else:
                 clase = "barra-regular"
             entrada["valor"] = {
-                "x": f"{cx - ancho_barra / 2:.1f}", "y": f"{y:.1f}",
-                "ancho": f"{ancho_barra:.1f}", "alto": f"{alto_barra:.1f}",
+                "x": f"{cx - ancho_barra / 2:z.1f}", "y": f"{y:z.1f}",
+                "ancho": f"{ancho_barra:z.1f}", "alto": f"{alto_barra:z.1f}",
                 "clase": clase,
-                "x_pct": entrada["x_pct"], "y_pct": f"{y / alto * 100:.2f}",
+                "x_pct": entrada["x_pct"], "y_pct": f"{y / alto * 100:z.2f}",
                 "etiqueta_valor": formato_valor(valor),
             }
         barras_out.append(entrada)
 
     return {
         "ancho": ancho, "alto": alto, "barras": barras_out,
-        "y_meta": f"{y_meta:.1f}", "meta_texto": f"{meta:.0f}%",
+        "y_meta": f"{y_meta:z.1f}", "meta_texto": f"{meta:z.0f}%",
     }
 
 
@@ -238,7 +238,7 @@ def evolucion_ipu(puntos, etiqueta_mes, formato=None, ancho=960, alto=300, pad_x
     detalle_individual y detalle_acumulado (texto del recuadro al pasar el
     mouse). `formato`: valor -> texto (por defecto, fracción como %)."""
     if formato is None:
-        formato = lambda v: f"{v * 100:+.1f}%"  # noqa: E731
+        formato = lambda v: f"{v * 100:+z.1f}%"  # noqa: E731
     if not puntos:
         return None
     meses = _meses_continuos(puntos[0]["mes"], puntos[-1]["mes"])
@@ -269,27 +269,27 @@ def evolucion_ipu(puntos, etiqueta_mes, formato=None, ancho=960, alto=300, pad_x
         juntos = abs(y_acum - y_ind) < 6  # enero: acumulado = individual
         acumulado_arriba = y_acum <= y_ind
         linea.append({
-            "x": f"{x:.1f}", "y": f"{y_acum:.1f}", "x_pct": f"{x / ancho * 100:.2f}", "y_pct": f"{y_acum / alto * 100:.2f}",
+            "x": f"{x:z.1f}", "y": f"{y_acum:z.1f}", "x_pct": f"{x / ancho * 100:z.2f}", "y_pct": f"{y_acum / alto * 100:z.2f}",
             "etiqueta": formato(p["acumulado"]), "pos": "arriba" if acumulado_arriba else "abajo",
             "detalle": p["detalle_acumulado"],
         })
         marcas.append({
-            "x": f"{x:.1f}", "y": f"{y_ind:.1f}", "x_pct": f"{x / ancho * 100:.2f}", "y_pct": f"{y_ind / alto * 100:.2f}",
+            "x": f"{x:z.1f}", "y": f"{y_ind:z.1f}", "x_pct": f"{x / ancho * 100:z.2f}", "y_pct": f"{y_ind / alto * 100:z.2f}",
             "etiqueta": "" if juntos else formato(p["individual"]), "pos": "abajo" if acumulado_arriba else "arriba",
             "sube": p["individual"] > 0, "detalle": p["detalle_individual"],
         })
-    trazos = [" ".join(f"{'M' if i == 0 else 'L'}{x:.1f} {y:.1f}" for i, (x, y) in enumerate(s)) for s in segmentos]
+    trazos = [" ".join(f"{'M' if i == 0 else 'L'}{x:z.1f} {y:z.1f}" for i, (x, y) in enumerate(s)) for s in segmentos]
     # Separador y rótulo de cada año (en el primer mes de cada año del eje).
     anios = []
     for m in meses:
         if m == meses[0] or m.month == 1:
             x = x_de(m) - (paso / 2 if m != meses[0] else 0)
-            anios.append({"x": f"{x:.1f}", "x_pct": f"{max(x, 0) / ancho * 100:.2f}", "texto": str(m.year),
+            anios.append({"x": f"{x:z.1f}", "x_pct": f"{max(x, 0) / ancho * 100:z.2f}", "texto": str(m.year),
                           "separador": m != meses[0]})
     return {
         "ancho": ancho, "alto": alto, "trazos": trazos, "linea": linea, "marcas": marcas, "anios": anios,
-        "y_cero": f"{y_de(0.0):.1f}", "tope": f"{tope - 18:.1f}", "base": f"{base:.1f}",
-        "eje": [{"x_pct": f"{x_de(m) / ancho * 100:.2f}", "texto": etiqueta_mes(m)} for m in meses],
+        "y_cero": f"{y_de(0.0):z.1f}", "tope": f"{tope - 18:z.1f}", "base": f"{base:z.1f}",
+        "eje": [{"x_pct": f"{x_de(m) / ancho * 100:z.2f}", "texto": etiqueta_mes(m)} for m in meses],
     }
 
 
@@ -302,7 +302,7 @@ def barras(items, campo_valor="valor"):
     if not items:
         return []
     maximo = max(i[campo_valor] for i in items) or 1
-    return [{**i, "pct": f"{i[campo_valor] / maximo * 100:.1f}"} for i in items]
+    return [{**i, "pct": f"{i[campo_valor] / maximo * 100:z.1f}"} for i in items]
 
 
 def _toneladas_corto(valor):
@@ -311,15 +311,15 @@ def _toneladas_corto(valor):
     se pisaba con el del mes vecino."""
     absoluto = abs(valor)
     if absoluto >= 1_000_000:
-        texto = f"{absoluto / 1_000_000:.2f}M"
+        texto = f"{absoluto / 1_000_000:z.2f}M"
     elif absoluto >= 10_000:
-        texto = f"{absoluto / 1_000:.0f}K"
+        texto = f"{absoluto / 1_000:z.0f}K"
     elif absoluto >= 1_000:
         # Con un decimal por debajo de 10 mil: en materiales de poco volumen
         # (p.ej. carbón), 4,662 y 5,333 se verían los dos como "5K".
-        texto = f"{absoluto / 1_000:.1f}K"
+        texto = f"{absoluto / 1_000:z.1f}K"
     else:
-        texto = f"{absoluto:.0f}"
+        texto = f"{absoluto:z.0f}"
     return f"-{texto}" if valor < 0 else texto
 
 
@@ -365,20 +365,20 @@ def evolucion_stock(puntos, barras=None, banda=None, detalles=None, ancho=640, a
         return arriba + (base - arriba) * (1 - (valor - minimo) / rango)
 
     crudos = [(izq + (i + 0.5) * paso, y_de(v), etiqueta, v) for i, (etiqueta, v) in enumerate(puntos)]
-    linea = " ".join(f"{'M' if i == 0 else 'L'}{x:.1f} {y:.1f}" for i, (x, y, _, _) in enumerate(crudos))
+    linea = " ".join(f"{'M' if i == 0 else 'L'}{x:z.1f} {y:z.1f}" for i, (x, y, _, _) in enumerate(crudos))
     y_cero = y_de(0.0)
-    area = linea + f" L{crudos[-1][0]:.1f} {y_cero:.1f} L{crudos[0][0]:.1f} {y_cero:.1f} Z"
+    area = linea + f" L{crudos[-1][0]:z.1f} {y_cero:z.1f} L{crudos[0][0]:z.1f} {y_cero:z.1f} Z"
     base_barras = y_cero
 
     puntos_out = []
     for i, (x, y, etiqueta, valor) in enumerate(crudos):
         puntos_out.append({
-            "x": f"{x:.1f}", "y": f"{y:.1f}",
-            "x_pct": f"{x / ancho * 100:.2f}", "y_pct": f"{y / alto * 100:.2f}",
+            "x": f"{x:z.1f}", "y": f"{y:z.1f}",
+            "x_pct": f"{x / ancho * 100:z.2f}", "y_pct": f"{y / alto * 100:z.2f}",
             "etiqueta": etiqueta,
             "etiqueta_valor": _toneladas_corto(valor),
             "negativo": valor < 0,
-            "detalle": detalles[i] if detalles else f"{etiqueta}: {valor:,.0f} T",
+            "detalle": detalles[i] if detalles else f"{etiqueta}: {valor:z,.0f} T",
         })
 
     barras_out = []
@@ -399,13 +399,13 @@ def evolucion_stock(puntos, barras=None, banda=None, detalles=None, ancho=640, a
                 # recuadro del mouse y en el Detalle mensual).
                 dentro = alto_barra >= 30
                 barras_out.append({
-                    "x": f"{x_barra:.1f}", "y": f"{base_barras - alto_barra:.1f}",
-                    "ancho": f"{ancho_barra:.1f}", "alto": f"{alto_barra:.1f}", "clase": clase,
-                    "titulo": f"{nombre} {etiqueta}: {valor:,.0f} T",
+                    "x": f"{x_barra:z.1f}", "y": f"{base_barras - alto_barra:z.1f}",
+                    "ancho": f"{ancho_barra:z.1f}", "alto": f"{alto_barra:z.1f}", "clase": clase,
+                    "titulo": f"{nombre} {etiqueta}: {valor:z,.0f} T",
                     "etiqueta": _toneladas_corto(valor) if valor > 0 and dentro else "",
                     "etiqueta_dentro": dentro,
-                    "x_pct": f"{(x_barra + ancho_barra / 2) / ancho * 100:.2f}",
-                    "y_pct": f"{(base_barras - alto_barra / 2) / alto * 100:.2f}",
+                    "x_pct": f"{(x_barra + ancho_barra / 2) / ancho * 100:z.2f}",
+                    "y_pct": f"{(base_barras - alto_barra / 2) / alto * 100:z.2f}",
                 })
     # Banda mínimo–máximo: escalonada (el valor vale para todo el mes, no se
     # interpola entre meses), como polígono + sus dos bordes punteados.
@@ -421,8 +421,8 @@ def evolucion_stock(puntos, barras=None, banda=None, detalles=None, ancho=640, a
             tramos_max += [(x0, y_de(par[1])), (x1, y_de(par[1]))]
         if tramos_min:
             def trazo(puntos_linea):
-                return " ".join(f"{'M' if i == 0 else 'L'}{x:.1f} {y:.1f}" for i, (x, y) in enumerate(puntos_linea))
-            poligono = trazo(tramos_max) + " " + " ".join(f"L{x:.1f} {y:.1f}" for x, y in reversed(tramos_min)) + " Z"
+                return " ".join(f"{'M' if i == 0 else 'L'}{x:z.1f} {y:z.1f}" for i, (x, y) in enumerate(puntos_linea))
+            poligono = trazo(tramos_max) + " " + " ".join(f"L{x:z.1f} {y:z.1f}" for x, y in reversed(tramos_min)) + " Z"
             ultimo = next(par for par in reversed(banda) if par and par[0] is not None and par[1] is not None)
             banda_out = {
                 "area": poligono, "linea_min": trazo(tramos_min), "linea_max": trazo(tramos_max),
@@ -430,14 +430,14 @@ def evolucion_stock(puntos, barras=None, banda=None, detalles=None, ancho=640, a
             }
     return {
         "ancho": ancho, "alto": alto, "linea": linea, "area": area, "puntos": puntos_out,
-        "y_cero": f"{y_cero:.1f}", "hay_negativos": any(v < 0 for v in valores),
+        "y_cero": f"{y_cero:z.1f}", "hay_negativos": any(v < 0 for v in valores),
         "barras": barras_out, "banda": banda_out,
         # Ejes y grilla: eje Y a la izquierda con sus marcas en toneladas, eje
         # X abajo (en el mínimo de la escala; si hay negativos, el 0 va aparte
         # como línea punteada).
-        "izq": f"{izq:.1f}", "der": f"{der:.1f}", "arriba": f"{arriba:.1f}", "base": f"{base:.1f}",
-        "izq_pct": f"{izq / ancho * 100:.2f}",
-        "grilla": [{"y": f"{y_de(v):.1f}", "y_pct": f"{y_de(v) / alto * 100:.2f}", "texto": _toneladas_corto(v)}
+        "izq": f"{izq:z.1f}", "der": f"{der:z.1f}", "arriba": f"{arriba:z.1f}", "base": f"{base:z.1f}",
+        "izq_pct": f"{izq / ancho * 100:z.2f}",
+        "grilla": [{"y": f"{y_de(v):z.1f}", "y_pct": f"{y_de(v) / alto * 100:z.2f}", "texto": _toneladas_corto(v)}
                    for v in marcas],
     }
 
@@ -503,21 +503,21 @@ def evolucion_precio(serie, etiqueta_mes, base=None, ancho_minimo=640, izq=58, d
         return arriba + (base_linea - arriba) * (1 - (valor - piso) / (techo - piso))
 
     def pct_x(x):
-        return f"{x / ancho * 100:.2f}"
+        return f"{x / ancho * 100:z.2f}"
 
     def pct_y(y):
-        return f"{y / alto * 100:.2f}"
+        return f"{y / alto * 100:z.2f}"
 
     crudos = [(x0 + indice[m] * paso, y_de(p), m, p, t) for m, p, t in serie]
-    linea = " ".join(f"{'M' if i == 0 else 'L'}{x:.1f} {y:.1f}" for i, (x, y, _, _, _) in enumerate(crudos))
+    linea = " ".join(f"{'M' if i == 0 else 'L'}{x:z.1f} {y:z.1f}" for i, (x, y, _, _, _) in enumerate(crudos))
     lineas = [[(x, y) for x, y, *_ in crudos]]
     if base:
         lineas.append([(x0 + indice[m] * paso, y_de(p)) for m, p in base])
-    tops = _ubicar_etiquetas([(x, y, f"{p:,.1f}") for x, y, _, p, _ in crudos], lineas, techo_zona=tope_barras - 14)
+    tops = _ubicar_etiquetas([(x, y, f"{p:z,.1f}") for x, y, _, p, _ in crudos], lineas, techo_zona=tope_barras - 14)
     puntos = [{
-        "x": f"{x:.1f}", "y": f"{y:.1f}", "x_pct": pct_x(x), "y_pct": pct_y(y),
-        "titulo": f"{etiqueta_mes(m)}: S/ {p:,.2f} por T · {t:,.0f} T",
-        "etiqueta": f"{p:,.1f}", "top_pct": pct_y(top),
+        "x": f"{x:z.1f}", "y": f"{y:z.1f}", "x_pct": pct_x(x), "y_pct": pct_y(y),
+        "titulo": f"{etiqueta_mes(m)}: S/ {p:z,.2f} por T · {t:z,.0f} T",
+        "etiqueta": f"{p:z,.1f}", "top_pct": pct_y(top),
     } for (x, y, m, p, t), top in zip(crudos, tops)]
 
     mayor = max(t for _, _, t in serie) or 1.0
@@ -527,25 +527,25 @@ def evolucion_precio(serie, etiqueta_mes, base=None, ancho_minimo=640, izq=58, d
         alto_barra = max(t, 0.0) / mayor * (base_barras - tope_barras)
         y_barra = base_barras - alto_barra
         barras.append({
-            "x": f"{x - ancho_barra / 2:.1f}", "y": f"{y_barra:.1f}",
-            "ancho": f"{ancho_barra:.1f}", "alto": f"{alto_barra:.1f}",
-            "titulo": f"{etiqueta_mes(m)}: {t:,.0f} T compradas",
+            "x": f"{x - ancho_barra / 2:z.1f}", "y": f"{y_barra:z.1f}",
+            "ancho": f"{ancho_barra:z.1f}", "alto": f"{alto_barra:z.1f}",
+            "titulo": f"{etiqueta_mes(m)}: {t:z,.0f} T compradas",
             "etiqueta": _toneladas_corto(t), "x_pct": pct_x(x), "y_pct": pct_y(y_barra),
         })
     eje = [{"x_pct": pct_x(x0 + i * paso), "texto": etiqueta_mes(m)} for i, m in enumerate(meses)]
     linea_base = " ".join(
-        f"{'M' if i == 0 else 'L'}{x0 + indice[m] * paso:.1f} {y_de(p):.1f}" for i, (m, p) in enumerate(base or [])
+        f"{'M' if i == 0 else 'L'}{x0 + indice[m] * paso:z.1f} {y_de(p):z.1f}" for i, (m, p) in enumerate(base or [])
     )
-    grilla = [{"y": f"{y_de(v):.1f}", "y_pct": pct_y(y_de(v)), "texto": f"{v:,.0f}" if _paso_marca(marcas) >= 1 else f"{v:,.1f}"}
+    grilla = [{"y": f"{y_de(v):z.1f}", "y_pct": pct_y(y_de(v)), "texto": f"{v:z,.0f}" if _paso_marca(marcas) >= 1 else f"{v:z,.1f}"}
               for v in marcas]
-    grilla_t = [{"y": f"{base_barras:.1f}", "y_pct": pct_y(base_barras), "texto": "0 T"},
-                {"y": f"{tope_barras:.1f}", "y_pct": pct_y(tope_barras), "texto": f"{_toneladas_corto(mayor)} T"}]
+    grilla_t = [{"y": f"{base_barras:z.1f}", "y_pct": pct_y(base_barras), "texto": "0 T"},
+                {"y": f"{tope_barras:z.1f}", "y_pct": pct_y(tope_barras), "texto": f"{_toneladas_corto(mayor)} T"}]
     return {
         "ancho": ancho, "alto": alto, "linea": linea, "puntos": puntos, "barras": barras, "eje": eje,
         "girado": girado, "eje_top_pct": pct_y(base_barras + 6),
-        "izq": f"{izq:.1f}", "der": f"{ancho - der:.1f}", "arriba": f"{arriba - 10:.1f}", "izq_pct": pct_x(izq),
-        "grilla": grilla, "grilla_t": grilla_t, "tope_barras": f"{tope_barras:.1f}",
-        "base_barras": f"{base_barras:.1f}", "tonelaje_maximo": _toneladas_corto(mayor), "linea_base": linea_base,
+        "izq": f"{izq:z.1f}", "der": f"{ancho - der:z.1f}", "arriba": f"{arriba - 10:z.1f}", "izq_pct": pct_x(izq),
+        "grilla": grilla, "grilla_t": grilla_t, "tope_barras": f"{tope_barras:z.1f}",
+        "base_barras": f"{base_barras:z.1f}", "tonelaje_maximo": _toneladas_corto(mayor), "linea_base": linea_base,
     }
 
 
@@ -634,8 +634,8 @@ def minigrafico_precio(serie, ancho=180, alto=46, pad=5):
         crudos = [(pad, crudos[0][1]), (ancho - pad, crudos[0][1])]
     return {
         "ancho": ancho, "alto": alto,
-        "linea": " ".join(f"{'M' if i == 0 else 'L'}{x:.1f} {y:.1f}" for i, (x, y) in enumerate(crudos)),
-        "fin_x": f"{crudos[-1][0]:.1f}", "fin_y": f"{crudos[-1][1]:.1f}",
+        "linea": " ".join(f"{'M' if i == 0 else 'L'}{x:z.1f} {y:z.1f}" for i, (x, y) in enumerate(crudos)),
+        "fin_x": f"{crudos[-1][0]:z.1f}", "fin_y": f"{crudos[-1][1]:z.1f}",
     }
 
 
@@ -677,19 +677,19 @@ def evolucion_calidad(serie, promedio, formato, etiqueta_fecha, referencia=None,
     y_promedio = y_de(promedio)
     return {
         "ancho": ancho, "alto": alto,
-        "linea": " ".join(f"{'M' if i == 0 else 'L'}{x:.1f} {y:.1f}" for i, (x, y, _, _) in enumerate(crudos)),
-        "y_promedio": f"{y_promedio:.1f}", "y_promedio_pct": f"{y_promedio / alto * 100:.2f}",
-        "y_referencia": f"{y_de(referencia):.1f}" if referencia is not None else None,
+        "linea": " ".join(f"{'M' if i == 0 else 'L'}{x:z.1f} {y:z.1f}" for i, (x, y, _, _) in enumerate(crudos)),
+        "y_promedio": f"{y_promedio:z.1f}", "y_promedio_pct": f"{y_promedio / alto * 100:z.2f}",
+        "y_referencia": f"{y_de(referencia):z.1f}" if referencia is not None else None,
         # "alineacion": las etiquetas del primer y último punto (y las fechas
         # del eje) se alinean hacia adentro, si no quedaban cortadas en el
         # borde del gráfico.
         "puntos": [{
-            "x": f"{x:.1f}", "y": f"{y:.1f}", "x_pct": f"{x / ancho * 100:.2f}", "y_pct": f"{y / alto * 100:.2f}",
+            "x": f"{x:z.1f}", "y": f"{y:z.1f}", "x_pct": f"{x / ancho * 100:z.2f}", "y_pct": f"{y / alto * 100:z.2f}",
             "titulo": f"Semana del {etiqueta_fecha(f)}: {formato(v)}",
             "etiqueta": formato(v) if i in con_etiqueta else "",
             "alineacion": "inicio" if i == 0 and len(crudos) > 1 else ("fin" if i == len(crudos) - 1 and len(crudos) > 1 else ""),
         } for i, (x, y, f, v) in enumerate(crudos)],
-        "eje": [{"x_pct": f"{x_de(f) / ancho * 100:.2f}", "texto": etiqueta_fecha(f),
+        "eje": [{"x_pct": f"{x_de(f) / ancho * 100:z.2f}", "texto": etiqueta_fecha(f),
                  "alineacion": ("inicio" if f == primero else "fin") if len(serie) > 1 else ""}
                 for f in ([primero, ultimo] if len(serie) > 1 else [primero])],
     }
@@ -726,23 +726,23 @@ def evolucion_consumo(real, plan, etiqueta_mes, mes_parcial=None, ancho=960, alt
         alto_barra = base - y
         dentro = alto_barra >= 30
         parcial = mes == mes_parcial
-        texto_plan = f" · plan {plan_por_mes[mes]:,.0f} T ({valor / plan_por_mes[mes] * 100:.0f}%)" if plan_por_mes.get(mes) else ""
+        texto_plan = f" · plan {plan_por_mes[mes]:z,.0f} T ({valor / plan_por_mes[mes] * 100:z.0f}%)" if plan_por_mes.get(mes) else ""
         barras.append({
-            "x": f"{x - ancho_barra / 2:.1f}", "y": f"{y:.1f}", "ancho": f"{ancho_barra:.1f}", "alto": f"{alto_barra:.1f}",
-            "parcial": parcial, "x_pct": f"{x / ancho * 100:.2f}",
-            "y_pct": f"{(y + alto_barra / 2 if dentro else y - 2) / alto * 100:.2f}", "dentro": dentro,
+            "x": f"{x - ancho_barra / 2:z.1f}", "y": f"{y:z.1f}", "ancho": f"{ancho_barra:z.1f}", "alto": f"{alto_barra:z.1f}",
+            "parcial": parcial, "x_pct": f"{x / ancho * 100:z.2f}",
+            "y_pct": f"{(y + alto_barra / 2 if dentro else y - 2) / alto * 100:z.2f}", "dentro": dentro,
             "etiqueta": _toneladas_corto(valor) if valor > 0 else "",
-            "detalle": f"{etiqueta_mes(mes)}: consumo real {valor:,.0f} T{' (mes en curso, parcial)' if parcial else ''}{texto_plan}",
+            "detalle": f"{etiqueta_mes(mes)}: consumo real {valor:z,.0f} T{' (mes en curso, parcial)' if parcial else ''}{texto_plan}",
         })
     puntos = [{
-        "x": f"{x_de(m):.1f}", "y": f"{y_de(v):.1f}", "x_pct": f"{x_de(m) / ancho * 100:.2f}", "y_pct": f"{y_de(v) / alto * 100:.2f}",
-        "etiqueta": _toneladas_corto(v), "detalle": f"{etiqueta_mes(m)}: plan de consumo S&OP {v:,.0f} T",
+        "x": f"{x_de(m):z.1f}", "y": f"{y_de(v):z.1f}", "x_pct": f"{x_de(m) / ancho * 100:z.2f}", "y_pct": f"{y_de(v) / alto * 100:z.2f}",
+        "etiqueta": _toneladas_corto(v), "detalle": f"{etiqueta_mes(m)}: plan de consumo S&OP {v:z,.0f} T",
     } for m, v in sorted(plan)]
     linea = " ".join(f"{'M' if i == 0 else 'L'}{p['x']} {p['y']}" for i, p in enumerate(puntos))
     paso_eje = max(1, math.ceil(len(meses) / 20))
     return {
-        "ancho": ancho, "alto": alto, "base": f"{base:.1f}", "barras": barras, "puntos": puntos, "linea": linea,
-        "eje": [{"x_pct": f"{x_de(m) / ancho * 100:.2f}", "texto": etiqueta_mes(m)}
+        "ancho": ancho, "alto": alto, "base": f"{base:z.1f}", "barras": barras, "puntos": puntos, "linea": linea,
+        "eje": [{"x_pct": f"{x_de(m) / ancho * 100:z.2f}", "texto": etiqueta_mes(m)}
                 for i, m in enumerate(meses) if i % paso_eje == 0 or i == len(meses) - 1],
     }
 
@@ -809,7 +809,7 @@ def lineas_indice(series, etiquetas, formato, referencias=None, desde_cero=False
             if previo is not None and posicion - previo > 1 and not s.get("continua"):
                 tramos.append(actual)
                 actual = []
-            actual.append(f"{'M' if not actual else 'L'}{x_de(posicion):.1f} {y_de(valor):.1f}")
+            actual.append(f"{'M' if not actual else 'L'}{x_de(posicion):z.1f} {y_de(valor):z.1f}")
             previo = posicion
         tramos.append(actual)
         n = len(s["puntos"])
@@ -823,8 +823,8 @@ def lineas_indice(series, etiquetas, formato, referencias=None, desde_cero=False
             "nombre": s["nombre"], "clase": s["clase"],
             "tramos": [" ".join(t) for t in tramos if len(t) > 1],
             "puntos": [{
-                "x": f"{x_de(m):.1f}", "y": f"{y_de(v):.1f}",
-                "x_pct": f"{x_de(m) / ancho * 100:.2f}", "y_pct": f"{(y_de(v) - 12) / alto * 100:.2f}",
+                "x": f"{x_de(m):z.1f}", "y": f"{y_de(v):z.1f}",
+                "x_pct": f"{x_de(m) / ancho * 100:z.2f}", "y_pct": f"{(y_de(v) - 12) / alto * 100:z.2f}",
                 "detalle": d, "etiqueta": formato(v) if i in con_etiqueta else "",
             } for i, (m, v, d) in enumerate(s["puntos"])],
         })
@@ -838,18 +838,18 @@ def lineas_indice(series, etiquetas, formato, referencias=None, desde_cero=False
             y = float(p["y"])
             if previo is not None and y - previo < 13:
                 y = previo + 13
-            p["y_pct"] = f"{y / alto * 100:.2f}"
+            p["y_pct"] = f"{y / alto * 100:z.2f}"
             p["derecha"] = True
             previo = y
     marcas = [v for v in _marcas_eje(piso, techo, 4) if piso <= v <= techo]
     paso_eje = max(1, math.ceil(len(etiquetas) / max_etiquetas_eje))
     return {
-        "ancho": ancho, "alto": alto, "base": f"{base:.1f}", "x0": pad_izq, "x1": ancho - pad_der,
+        "ancho": ancho, "alto": alto, "base": f"{base:z.1f}", "x0": pad_izq, "x1": ancho - pad_der,
         "series": salida,
-        "grilla": [{"y": f"{y_de(v):.1f}", "y_pct": f"{y_de(v) / alto * 100:.2f}", "texto": formato(v)} for v in marcas],
-        "referencias": [{"y": f"{y_de(r['valor']):.1f}", "y_pct": f"{(y_de(r['valor']) - 12) / alto * 100:.2f}",
+        "grilla": [{"y": f"{y_de(v):z.1f}", "y_pct": f"{y_de(v) / alto * 100:z.2f}", "texto": formato(v)} for v in marcas],
+        "referencias": [{"y": f"{y_de(r['valor']):z.1f}", "y_pct": f"{(y_de(r['valor']) - 12) / alto * 100:z.2f}",
                          "texto": r["texto"], "clase": r.get("clase", "")} for r in referencias],
-        "eje": [{"x_pct": f"{x_de(i) / ancho * 100:.2f}", "texto": e}
+        "eje": [{"x_pct": f"{x_de(i) / ancho * 100:z.2f}", "texto": e}
                 for i, e in enumerate(etiquetas) if i % paso_eje == 0 or i == len(etiquetas) - 1],
     }
 
@@ -865,8 +865,8 @@ def pilas_horizontales(filas):
     salida = []
     for f in filas:
         total = sum(s["valor"] for s in f["segmentos"]) or 1
-        segmentos = [{**s, "ancho": f"{s['valor'] / total * 100:.2f}",
-                      "texto": f"{s['valor']:,.0f}" if s["valor"] / total >= 0.07 else ""}
+        segmentos = [{**s, "ancho": f"{s['valor'] / total * 100:z.2f}",
+                      "texto": f"{s['valor']:z,.0f}" if s["valor"] / total >= 0.07 else ""}
                      for s in f["segmentos"] if s["valor"] > 0]
         salida.append({**f, "segmentos": segmentos})
     return {"filas": salida}
@@ -892,12 +892,12 @@ def barras_escala(filas, minimo, maximo, referencias=(), banda=None):
     salida = []
     for f in filas:
         x = pos(f["valor"])
-        salida.append({**f, "izq": f"{min(cero, x):.2f}", "ancho": f"{abs(x - cero):.2f}",
+        salida.append({**f, "izq": f"{min(cero, x):z.2f}", "ancho": f"{abs(x - cero):z.2f}",
                        "negativa": f["valor"] < 0, "recortada": not minimo <= f["valor"] <= maximo})
     return {
         "filas": salida,
-        "referencias": [{"pos": f"{pos(v):.2f}", "texto": t} for v, t in referencias],
-        "banda": {"izq": f"{pos(banda[0]):.2f}", "ancho": f"{pos(banda[1]) - pos(banda[0]):.2f}"} if banda else None,
+        "referencias": [{"pos": f"{pos(v):z.2f}", "texto": t} for v, t in referencias],
+        "banda": {"izq": f"{pos(banda[0]):z.2f}", "ancho": f"{pos(banda[1]) - pos(banda[0]):z.2f}"} if banda else None,
     }
 
 
@@ -950,16 +950,16 @@ def columnas(etiquetas, pilas, formato, linea=None, textos=None, ancho=960, alto
             else:
                 y0, y1 = y_de(baja), y_de(baja + s["valor"])
                 baja += s["valor"]
-            segmentos.append({"x": f"{x - ancho_col / 2:.1f}", "y": f"{y0:.1f}", "ancho": f"{ancho_col:.1f}",
-                              "alto": f"{max(y1 - y0, 0.8):.1f}", "clase": s["clase"]})
+            segmentos.append({"x": f"{x - ancho_col / 2:z.1f}", "y": f"{y0:z.1f}", "ancho": f"{ancho_col:z.1f}",
+                              "alto": f"{max(y1 - y0, 0.8):z.1f}", "clase": s["clase"]})
         texto = (textos[i] if textos else "") or ""
         negativa = sube == 0 and baja < 0
         columnas_out.append({
             "segmentos": segmentos, "detalle": pila[0].get("detalle", "") if pila else "",
             "filtrar": pila[0].get("filtrar", "") if pila else "",
-            "zona_x": f"{x - paso / 2:.1f}", "zona_ancho": f"{paso:.1f}",
-            "texto": texto, "texto_abajo": negativa, "x_pct": f"{x / ancho * 100:.2f}",
-            "y_pct": f"{(y_de(baja) if negativa else y_de(sube)) / alto * 100:.2f}",
+            "zona_x": f"{x - paso / 2:z.1f}", "zona_ancho": f"{paso:z.1f}",
+            "texto": texto, "texto_abajo": negativa, "x_pct": f"{x / ancho * 100:z.2f}",
+            "y_pct": f"{(y_de(baja) if negativa else y_de(sube)) / alto * 100:z.2f}",
         })
 
     linea_out = None
@@ -974,8 +974,8 @@ def columnas(etiquetas, pilas, formato, linea=None, textos=None, ancho=960, alto
                 actual = []
             if v is None:
                 continue
-            actual.append(f"{'M' if not actual else 'L'}{x_de(i):.1f} {y_de(v):.1f}")
-            puntos.append({"x": f"{x_de(i):.1f}", "y": f"{y_de(v):.1f}",
+            actual.append(f"{'M' if not actual else 'L'}{x_de(i):z.1f} {y_de(v):z.1f}")
+            puntos.append({"x": f"{x_de(i):z.1f}", "y": f"{y_de(v):z.1f}",
                            "detalle": (linea.get("detalles") or [""] * n)[i]})
         if len(actual) > 1:
             tramos.append(" ".join(actual))
@@ -983,8 +983,8 @@ def columnas(etiquetas, pilas, formato, linea=None, textos=None, ancho=960, alto
         linea_out = {
             "clase": linea.get("clase", ""), "tramos": tramos, "puntos": puntos,
             "etiqueta_final": linea.get("etiqueta_final", ""),
-            "x_pct": f"{x_de(ultimo) / ancho * 100:.2f}",
-            "y_pct": f"{y_de(linea['valores'][ultimo]) / alto * 100:.2f}",
+            "x_pct": f"{x_de(ultimo) / ancho * 100:z.2f}",
+            "y_pct": f"{y_de(linea['valores'][ultimo]) / alto * 100:z.2f}",
         }
 
     marcas = [v for v in _marcas_eje(piso, techo, 4) if piso <= v <= techo]
@@ -992,10 +992,10 @@ def columnas(etiquetas, pilas, formato, linea=None, textos=None, ancho=960, alto
     # por etiqueta de mes), siempre la última.
     paso_eje = max(1, math.ceil(52 / paso))
     return {
-        "ancho": ancho, "alto": alto, "x0": pad_izq, "x1": ancho - pad_der, "y_cero": f"{y_de(0.0):.1f}",
-        "columnas": columnas_out, "linea": linea_out, "arriba": f"{pad_arr:.1f}", "alto_util": f"{base - pad_arr:.1f}",
-        "grilla": [{"y": f"{y_de(v):.1f}", "y_pct": f"{y_de(v) / alto * 100:.2f}", "texto": formato(v)} for v in marcas],
-        "eje": [{"x_pct": f"{x_de(i) / ancho * 100:.2f}", "texto": e}
+        "ancho": ancho, "alto": alto, "x0": pad_izq, "x1": ancho - pad_der, "y_cero": f"{y_de(0.0):z.1f}",
+        "columnas": columnas_out, "linea": linea_out, "arriba": f"{pad_arr:z.1f}", "alto_util": f"{base - pad_arr:z.1f}",
+        "grilla": [{"y": f"{y_de(v):z.1f}", "y_pct": f"{y_de(v) / alto * 100:z.2f}", "texto": formato(v)} for v in marcas],
+        "eje": [{"x_pct": f"{x_de(i) / ancho * 100:z.2f}", "texto": e}
                 for i, e in enumerate(etiquetas) if (n - 1 - i) % paso_eje == 0],
     }
 
@@ -1060,7 +1060,7 @@ def dispersion_pago(puntos, referencia, formato_x, ancho=960, alto=380, pad_izq=
     for p in sorted(puntos, key=lambda p: p["monto"]):
         x, y = x_de(p["monto"]), y_de(p["dias"])
         sentido = "antes" if p["dias"] < referencia - 0.5 else ("despues" if p["dias"] > referencia + 0.5 else "igual")
-        marca = {"x": f"{x:.1f}", "y": f"{y:.1f}", "sentido": sentido, "detalle": p["detalle"],
+        marca = {"x": f"{x:z.1f}", "y": f"{y:z.1f}", "sentido": sentido, "detalle": p["detalle"],
                  "grande": id(p) in mas_grandes, "filtrar": p.get("filtrar", "")}
         marcas.append(marca)
         if marca["grande"]:
@@ -1073,16 +1073,16 @@ def dispersion_pago(puntos, referencia, formato_x, ancho=960, alto=380, pad_izq=
         e = m.pop("_etiqueta", None)
         if e:
             m.update({"nombre": e["texto"], "alineacion": e["alineacion"],
-                      "x_pct": f"{e['x'] / ancho * 100:.2f}", "y_pct": f"{e['y_final'] / alto * 100:.2f}"})
+                      "x_pct": f"{e['x'] / ancho * 100:z.2f}", "y_pct": f"{e['y_final'] / alto * 100:z.2f}"})
     return {
         "ancho": ancho, "alto": alto, "marcas": marcas,
-        "referencia": {"y": f"{y_de(referencia):.1f}", "y_pct": f"{y_de(referencia) / alto * 100:.2f}"},
-        "grilla_y": [{"y": f"{y_de(v):.1f}", "y_pct": f"{y_de(v) / alto * 100:.2f}", "texto": f"{v:,.0f} d"}
+        "referencia": {"y": f"{y_de(referencia):z.1f}", "y_pct": f"{y_de(referencia) / alto * 100:z.2f}"},
+        "grilla_y": [{"y": f"{y_de(v):z.1f}", "y_pct": f"{y_de(v) / alto * 100:z.2f}", "texto": f"{v:z,.0f} d"}
                      for v in _marcas_eje(0, y_hi) if v <= y_hi],
-        "grilla_x": [{"x": f"{x_de(10 ** k):.1f}", "x_pct": f"{x_de(10 ** k) / ancho * 100:.2f}", "texto": formato_x(10 ** k)}
+        "grilla_x": [{"x": f"{x_de(10 ** k):z.1f}", "x_pct": f"{x_de(10 ** k) / ancho * 100:z.2f}", "texto": formato_x(10 ** k)}
                      for k in range(x_lo, x_hi + 1)],
-        "base": f"{abj:.1f}", "arriba": f"{arr:.1f}", "izq": f"{izq:.1f}", "der": f"{der:.1f}",
-        "izq_pct": f"{izq / ancho * 100:.2f}",
+        "base": f"{abj:z.1f}", "arriba": f"{arr:z.1f}", "izq": f"{izq:z.1f}", "der": f"{der:z.1f}",
+        "izq_pct": f"{izq / ancho * 100:z.2f}",
     }
 
 
@@ -1112,7 +1112,7 @@ def dispersion_energia(puntos, costo_referencia, ancho=960, alto=360, pad_izq=48
 
     # Tramo visible de la línea de costo igual al promedio (se recorta al área
     # del gráfico con un clipPath en la plantilla).
-    linea = f"M{x_de(x_lo):.1f} {y_de(costo_referencia * x_lo / 1000):.1f} L{x_de(x_hi):.1f} {y_de(costo_referencia * x_hi / 1000):.1f}"
+    linea = f"M{x_de(x_lo):z.1f} {y_de(costo_referencia * x_lo / 1000):z.1f} L{x_de(x_hi):z.1f} {y_de(costo_referencia * x_hi / 1000):z.1f}"
     mayor = max(p["toneladas"] for p in puntos) or 1.0
     burbujas = []
     for p in sorted(puntos, key=lambda p: -p["toneladas"]):
@@ -1123,24 +1123,24 @@ def dispersion_energia(puntos, costo_referencia, ancho=960, alto=360, pad_izq=48
         # burbuja, si no se salía del gráfico.
         alineacion = "fin" if x > izq + (der - izq) * 0.7 else ""
         burbujas.append({
-            "x": f"{x:.1f}", "y": f"{y:.1f}", "r": f"{radio:.1f}",
-            "x_pct": f"{x / ancho * 100:.2f}", "desplazamiento": f"{radio * 1.2 + 3:.0f}",
+            "x": f"{x:z.1f}", "y": f"{y:z.1f}", "r": f"{radio:z.1f}",
+            "x_pct": f"{x / ancho * 100:z.2f}", "desplazamiento": f"{radio * 1.2 + 3:z.0f}",
             "sentido": "barato" if diferencia < -0.005 else ("caro" if diferencia > 0.005 else "igual"),
             "nombre": p["nombre"], "alineacion": alineacion,
-            "titulo": (f"{p['nombre']}: PCS {p['pcs']:,.0f} kcal/kg · S/ {p['precio']:,.2f} por T · "
-                       f"S/ {p['costo_gcal']:,.2f} por Gcal ({diferencia * 100:+.1f}% vs promedio) · {p['toneladas']:,.0f} T"),
+            "titulo": (f"{p['nombre']}: PCS {p['pcs']:z,.0f} kcal/kg · S/ {p['precio']:z,.2f} por T · "
+                       f"S/ {p['costo_gcal']:z,.2f} por Gcal ({diferencia * 100:+z.1f}% vs promedio) · {p['toneladas']:z,.0f} T"),
             "_etiqueta": {"x": x - radio - 3 if alineacion else x + radio + 3, "y": y,
                           "texto": p["nombre"], "alineacion": alineacion},
         })
     _separar_etiquetas([b["_etiqueta"] for b in burbujas])
     for b in burbujas:
-        b["y_pct"] = f"{b.pop('_etiqueta')['y_final'] / alto * 100:.2f}"
+        b["y_pct"] = f"{b.pop('_etiqueta')['y_final'] / alto * 100:z.2f}"
     return {
         "ancho": ancho, "alto": alto, "linea": linea, "burbujas": burbujas,
         "area": {"x": izq, "y": arr, "ancho": der - izq, "alto": abj - arr},
-        "grilla_y": [{"y": f"{y_de(v):.1f}", "y_pct": f"{y_de(v) / alto * 100:.2f}", "texto": f"{v:,.0f}"}
+        "grilla_y": [{"y": f"{y_de(v):z.1f}", "y_pct": f"{y_de(v) / alto * 100:z.2f}", "texto": f"{v:z,.0f}"}
                      for v in _marcas_eje(y_lo, y_hi)],
-        "grilla_x": [{"x": f"{x_de(v):.1f}", "x_pct": f"{x_de(v) / ancho * 100:.2f}", "texto": f"{v:,.0f}"}
+        "grilla_x": [{"x": f"{x_de(v):z.1f}", "x_pct": f"{x_de(v) / ancho * 100:z.2f}", "texto": f"{v:z,.0f}"}
                      for v in _marcas_eje(x_lo, x_hi, 6)],
-        "base": f"{abj:.1f}", "izq": f"{izq:.1f}", "izq_pct": f"{izq / ancho * 100:.2f}",
+        "base": f"{abj:z.1f}", "izq": f"{izq:z.1f}", "izq_pct": f"{izq / ancho * 100:z.2f}",
     }
