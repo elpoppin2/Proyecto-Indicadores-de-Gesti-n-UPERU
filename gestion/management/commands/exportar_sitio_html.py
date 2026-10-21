@@ -16,6 +16,13 @@ _GESTION = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 ESTATICOS = os.path.join(_GESTION, "static")
 DESCARGAS = "Descargas"
 INICIO = "/portada/"
+# Cada archivo de la copia muestra solo su página en la barra de navegación y
+# no enlaza a las demás (pedido del usuario, 2026-10-21: cada HTML se comparte
+# con su área). Excepción: Planificación navega también a Logística de
+# Materias Primas; esa Logística va en un archivo propio del grupo
+# ("Planificacion - Logistica de Materias Primas.html") con la barra de las
+# dos, y el "Logistica de Materias Primas.html" suelto solo se ve a sí mismo.
+GRUPOS = {"/planificacion/": ["/planificacion/", "/logistica-materias-primas/"]}
 
 # Lo que en la copia no puede funcionar (necesita el servidor): los filtros
 # quedan en su valor por defecto y deshabilitados, y se ocultan la sesión, el
@@ -26,6 +33,7 @@ _CSS_ESTATICO = """
 form.filtros select:disabled, form.filtros input:disabled, .filtro-multi-boton:disabled,
 [data-buscar-servidor]:disabled { cursor: not-allowed; opacity: .7; }
 a[data-solo-localhost] { pointer-events: none; color: inherit; text-decoration: none; }
+a[data-descarga-localhost] { display: none !important; }
 .aviso-copia { margin: 0 0 14px; padding: 8px 12px; border-radius: 6px; font-size: 13px;
   background: var(--superficie-2, rgba(127,127,127,.08)); color: var(--texto-2, inherit); }
 """
@@ -68,16 +76,16 @@ def _sin_tildes(texto):
 
 class Command(BaseCommand):
     help = (
-        "Genera una copia estática de todo el dashboard (cada página con todas sus pestañas, "
-        "vista por defecto) en una carpeta, para compartirla sin servidor ni login. Cada "
-        "archivo es autocontenido (estilos, scripts y logo incrustados) y los enlaces entre "
-        "páginas apuntan a los demás archivos de la carpeta."
+        "Genera una copia estática del dashboard (cada página con todas sus pestañas, vista "
+        "por defecto) en una carpeta, para compartirla sin servidor ni login. Cada archivo es "
+        "autocontenido (estilos, scripts y logo incrustados) y solo muestra su página (ver "
+        "GRUPOS). Sin los Excel/PDF de los botones de descarga, salvo --con-descargas."
     )
 
     def add_arguments(self, parser):
         parser.add_argument("carpeta", help="Carpeta destino (se sobrescriben los archivos de la copia)")
-        parser.add_argument("--sin-descargas", action="store_true",
-                            help="No generar los Excel/PDF de los botones de descarga")
+        parser.add_argument("--con-descargas", action="store_true",
+                            help="Generar también los Excel/PDF de los botones de descarga (carpeta Descargas)")
 
     def handle(self, *args, **options):
         carpeta = options["carpeta"]
@@ -96,29 +104,41 @@ class Command(BaseCommand):
         nav = re.findall(r'<a href="(/[^"]*)" class="nav-link[^"]*"[^>]*>([^<]+)</a>', portada)
         if not nav:
             raise CommandError("No se encontró la barra de navegación en la portada")
-        self.archivos = {}  # ruta del localhost -> archivo de la copia
+        archivos = {}  # ruta del localhost -> archivo suelto de la copia
         for ruta, nombre in nav:
             nombre = _sin_tildes(nombre.strip())
-            self.archivos[ruta] = "Inicio - Indicadores Supply Chain.html" if ruta == INICIO else f"{nombre}.html"
-        self.archivos["/"] = self.archivos[INICIO]
-        self.archivos["/informe-mensual/"] = "Informe mensual.html"
+            archivos[ruta] = "Inicio - Indicadores Supply Chain.html" if ruta == INICIO else f"{nombre}.html"
+        archivos["/informe-mensual/"] = "Informe mensual.html"
+
+        # Qué se escribe: cada página suelta (solo se enlaza a sí misma) y, por
+        # grupo, sus otras páginas en un archivo del grupo que enlaza a todas.
+        salidas = []  # (ruta, archivo, {ruta permitida: archivo})
+        for ruta, archivo in archivos.items():
+            grupo = GRUPOS.get(ruta, [ruta])
+            mapa = {r: archivo if r == ruta else self._archivo_grupo(archivos[ruta], archivos[r]) for r in grupo if r in archivos}
+            salidas.append((ruta, archivo, mapa))
+        for cabeza, grupo in GRUPOS.items():
+            if cabeza not in archivos:
+                continue
+            mapa = {r: archivos[cabeza] if r == cabeza else self._archivo_grupo(archivos[cabeza], archivos[r])
+                    for r in grupo if r in archivos}
+            salidas += [(r, mapa[r], mapa) for r in grupo if r != cabeza and r in mapa]
 
         self.descargas = {}  # ruta de descarga del localhost -> archivo en Descargas/
-        if not options["sin_descargas"]:
+        if options["con_descargas"]:
             self._preparar_descargas()
 
-        escritos = []
-        for ruta, archivo in self.archivos.items():
-            if ruta == "/":
-                continue
+        escritos, paginas = [], {}
+        for ruta, archivo, mapa in salidas:
             t = time.monotonic()
-            html = portada if ruta == INICIO else self._get(ruta)
-            html = self._con_zonas(ruta, html)
-            html = self._autocontenido(html)
-            html = self._enlaces(html)
+            if ruta not in paginas:
+                html = portada if ruta == INICIO else self._get(ruta)
+                paginas[ruta] = self._autocontenido(self._con_zonas(ruta, html))
+            html = self._enlaces(self._solo_permitidas(paginas[ruta], mapa), mapa)
             self._escribir(os.path.join(carpeta, archivo), html.encode("utf-8"))
             escritos.append(archivo)
             self.stdout.write(f"  {archivo}: {len(html) // 1024:,} KB ({time.monotonic() - t:.1f} s)")
+        self.archivos = archivos
 
         if self.descargas:
             os.makedirs(os.path.join(carpeta, DESCARGAS), exist_ok=True)
@@ -127,8 +147,8 @@ class Command(BaseCommand):
                 self.stdout.write(f"  {DESCARGAS}/{archivo}: {len(contenido) // 1024:,} KB")
 
         self.stdout.write(self.style.SUCCESS(
-            f"Copia lista en {carpeta}: {len(escritos)} páginas y {len(self.descargas)} descargas "
-            f"en {time.monotonic() - inicio:.0f} s. Abrir: {self.archivos[INICIO]}"
+            f"Copia lista en {carpeta}: {len(escritos)} archivos y {len(self.descargas)} descargas "
+            f"en {time.monotonic() - inicio:.0f} s."
         ))
 
     # --- Pedidos al dashboard ------------------------------------------------
@@ -207,18 +227,36 @@ class Command(BaseCommand):
         html = re.sub(r"(<body[^>]*>)", lambda m: m.group(1) + f"\n<script>{_JS_ESTATICO}</script>", html, count=1)
         return html.replace("</body>", "".join(diferidos) + "\n</body>", 1)
 
-    def _enlaces(self, html):
-        """Enlaces del localhost -> archivos de la copia (con su #pestaña). Los
-        que no tienen copia quedan como texto."""
+    @staticmethod
+    def _archivo_grupo(archivo_cabeza, archivo):
+        """Archivo de una página dentro del grupo de otra:
+        'Planificacion - Logistica de Materias Primas.html'."""
+        return f"{archivo_cabeza[:-len('.html')]} - {archivo}"
+
+    @staticmethod
+    def _solo_permitidas(html, mapa):
+        """Saca de la barra de navegación las páginas que este archivo no muestra."""
+        def nav(m):
+            ruta = m.group(1)
+            return m.group(0) if (ruta == "/" and INICIO in mapa) or ruta in mapa else ""
+        return re.sub(r'<a href="(/[^"]*)" class="nav-link[^"]*"[^>]*>[^<]*</a>\s*', nav, html)
+
+    def _enlaces(self, html, mapa):
+        """Enlaces del localhost -> archivos permitidos de la copia (`mapa`, con
+        su #pestaña). Los botones de descarga sin archivo generado se ocultan;
+        los demás enlaces (otras páginas, detalle) quedan como texto."""
         def cambiar(m):
             partes = urlsplit(m.group(1).replace("&amp;", "&"))
+            ruta = INICIO if partes.path == "/" else partes.path
             clave = self._clave_descarga(partes.path, partes.query)
             if clave in self.descargas:
                 destino = f"{DESCARGAS}/{quote(self.descargas[clave][0])}"
-            elif partes.path in self.archivos:
-                destino = quote(self.archivos[partes.path])
+            elif ruta in mapa:
+                destino = quote(mapa[ruta])
+            elif partes.path.endswith("/exportar/") or "pdf=1" in partes.query:
+                return 'data-descarga-localhost'
             else:
-                return 'data-solo-localhost title="Disponible en el localhost"'
+                return 'data-solo-localhost'
             return f'href="{destino}{"#" + partes.fragment if partes.fragment else ""}"'
         return re.sub(r'href="(/[^"]*)"', cambiar, html)
 
