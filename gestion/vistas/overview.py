@@ -128,25 +128,25 @@ def overview(request):
     # unidad común a todos los materiales, igual que el indicador clásico de
     # rotación (Costo de Ventas $ ÷ Inventario $).
     stock_valor_cat = inv.groupby("categoria")["valor_total"].sum()
-    consumo_val = q.consumo_valorizado_6_meses_por_material(mes)
+    consumo_val = q.consumo_valorizado_ventana_por_material(mes)
     catalogo = q.catalogo_materiales()
     consumo_val = _por_familia_centro(consumo_val.merge(
         catalogo[["material_codigo", "categoria", "familia", "centro"]], on="material_codigo", how="left"
     ), si)
-    consumo_valor_cat = consumo_val.groupby("categoria")["consumo_valor_6meses"].sum()
+    consumo_valor_cat = consumo_val.groupby("categoria")["consumo_valor_ventana"].sum()
 
     rotacion_filas = []
     for cat in categorias:
         valor_stock = float(stock_valor_cat.get(cat, 0) or 0)
-        valor_consumo_6m = float(consumo_valor_cat.get(cat, 0) or 0)
+        valor_consumo_ventana = float(consumo_valor_cat.get(cat, 0) or 0)
         if valor_stock <= 0:
             continue
-        consumo_prom_mensual = valor_consumo_6m / 6
+        consumo_prom_mensual = valor_consumo_ventana / q.MESES_CONSUMO_COBERTURA
         cobertura_meses = round(valor_stock / consumo_prom_mensual, 2) if consumo_prom_mensual else None
         rotacion_filas.append({
             "categoria": cat,
             "valor_stock": valor_stock,
-            "consumo_valor_6meses": valor_consumo_6m,
+            "consumo_valor_ventana": valor_consumo_ventana,
             "indice_rotacion_anual": round(consumo_prom_mensual / valor_stock * 12, 2),
             "cobertura_meses": cobertura_meses,
             # Días de Inventario (DOH): la misma cobertura, en días en vez de

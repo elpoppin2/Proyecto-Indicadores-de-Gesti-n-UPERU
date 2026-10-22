@@ -73,7 +73,7 @@ def movimientos_consumo_detalle(fecha_inicio, fecha_fin, categoria):
     """Movimientos de consumo de MB51 (FILTRO_CLASE_MOVIMIENTO_CONSUMO, sin
     los lotes USADO de Repuestos) entre las fechas, de los materiales de
     `categoria` (categoría del maestro, la misma de Rotación): las filas de
-    consumo_valorizado_6_meses_por_material. `consumo` e `importe` con el
+    consumo_valorizado_ventana_por_material. `consumo` e `importe` con el
     signo del consumo (positivo = salida de almacén). Los filtros de consumo
     van sin alias: clase_movimiento, lote y material_codigo solo existen en
     MB51 (mm), no en el maestro (m) ni en categorías (c)."""

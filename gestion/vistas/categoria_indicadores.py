@@ -138,7 +138,7 @@ def _cat_indicadores(request, categoria, tiene_inventario):
         else:
             rot = inv["rotacion"]
             partes = [f"Al {valores[-1][0]:%d/%m/%Y}"]
-            # Con el panel del IRI (12 meses) no se repite la rotación de 6 meses: serían dos cifras distintas.
+            # Con el panel del IRI (12 meses) no se repite la rotación por consumo de 12 meses ÷ stock del corte: serían dos cifras distintas.
             if rot["rotacion_anual"] is not None and "iri" not in claves:
                 partes.append(f"rotación {rot['rotacion_anual']:z.2f} veces al año")
             if rot["dias_inventario"] is not None and "iri" not in claves:

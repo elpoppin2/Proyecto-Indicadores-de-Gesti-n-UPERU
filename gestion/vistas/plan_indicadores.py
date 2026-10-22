@@ -379,7 +379,7 @@ def _panel_salud_inventario(panel, vacio, cob, centro):
     panel("inventario", titulo, cifra, sub, "pilas", charts.pilas_horizontales(filas), tono, estado,
           leyenda=[(f"col-{e}", t) for e, t in estados if conteo[e] or e in ("bajo_minimo", "en_rango", "sobre_maximo")],
           nota="Materiales por estado de su stock de cierre (MB5B) frente al mínimo/máximo S&OP del mes. A la derecha, "
-               "cobertura ponderada: stock total ÷ consumo diario total de los últimos 6 meses.")
+               "cobertura ponderada: stock total ÷ consumo diario total de los últimos 12 meses.")
 
 
 def _panel_primer_quiebre(panel, vacio, p, centro):

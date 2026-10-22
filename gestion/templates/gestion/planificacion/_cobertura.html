@@ -2,11 +2,11 @@
 <section class="bloque" id="sec-cobertura">
   <h2>Cobertura de stock</h2>
   <p class="nota">
-    Cuántos días alcanza el stock de cada material del S&amp;OP al ritmo de consumo de los últimos 6 meses.
+    Cuántos días alcanza el stock de cada material del S&amp;OP al ritmo de consumo de los últimos 12 meses.
     {% if planificacion_cobertura.fecha_stock %}Inventario al {{ planificacion_cobertura.fecha_stock|date:"d/m/Y" }}.{% endif %}
   </p>
   <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
-    <p><strong>Cobertura (días)</strong> = stock de cierre del mes elegido ÷ consumo diario promedio de los 6 meses que terminan en ese mes.</p>
+    <p><strong>Cobertura (días)</strong> = stock de cierre del mes elegido ÷ consumo diario promedio de los 12 meses que terminan en ese mes.</p>
     <p>El consumo sale de MB51: salidas del material al proceso (clases 2xx de costo, orden de producción y red, más Z01/Z04/353).
     Solo entran los materiales del Plan de Abastecimiento S&amp;OP.</p>
   </div></details>

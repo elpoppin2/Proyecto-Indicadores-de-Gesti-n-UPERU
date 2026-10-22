@@ -331,22 +331,29 @@ FILTRO_EXCLUYE_LOTE_USADO_REPUESTOS = (
 )
 
 
-def _ventana_6_meses(fecha_objetivo):
-    """Rango de fechas (inicio, fin) de los 6 meses calendario que terminan en el
-    mes de `fecha_objetivo` (inclusive)."""
+# Meses de consumo con los que se calcula toda cobertura y rotación (cobertura
+# de stock de Planificación; rotación, cobertura y críticos de cada categoría;
+# días de inventario): el promedio mensual de los últimos 12 meses calendario.
+# Eran 6; el usuario pidió 12 para todas las categorías (2026-10-21).
+MESES_CONSUMO_COBERTURA = 12
+
+
+def _ventana_consumo(fecha_objetivo):
+    """Rango de fechas (inicio, fin) de los MESES_CONSUMO_COBERTURA meses
+    calendario que terminan en el mes de `fecha_objetivo` (inclusive)."""
     anio, mes = fecha_objetivo.year, fecha_objetivo.month
     fecha_fin = datetime.date(anio, mes, calendar.monthrange(anio, mes)[1])
-    total_meses = (anio * 12 + (mes - 1)) - 5
+    total_meses = (anio * 12 + (mes - 1)) - (MESES_CONSUMO_COBERTURA - 1)
     inicio_anio, inicio_mes = divmod(total_meses, 12)
     fecha_inicio = datetime.date(inicio_anio, inicio_mes + 1, 1)
     return fecha_inicio, fecha_fin
 
 
-def consumo_6_meses_por_material(fecha):
-    """Consumo (MB51) por material en los 6 meses calendario que terminan en `fecha`.
+def consumo_ventana_por_material(fecha):
+    """Consumo (MB51) por material en los MESES_CONSUMO_COBERTURA meses calendario que terminan en `fecha`.
     Solo lee columnas del índice de cobertura idx_mov_consumo_rotacion, por eso no
     trae descripción ni UMB (esas salen del maestro de materiales)."""
-    fecha_inicio, fecha_fin = _ventana_6_meses(fecha)
+    fecha_inicio, fecha_fin = _ventana_consumo(fecha)
     return _query(f"""
         SELECT material_codigo AS material_codigo,
                -SUM(cantidad) AS consumo_total
@@ -361,7 +368,7 @@ def consumo_6_meses_por_material(fecha):
 
 def _ventana_anios(fecha_objetivo, anios):
     """Rango de fechas (inicio, fin) de los últimos `anios` años exactos (día a
-    día, no por mes calendario como _ventana_6_meses) que terminan en
+    día, no por mes calendario como _ventana_consumo) que terminan en
     `fecha_objetivo` (inclusive). Si esa historia todavía no está cargada (los
     datos de MB51 arrancan en 2024), la ventana simplemente no encuentra
     movimientos en la parte que falta — no hace falta ningún caso especial:
@@ -377,7 +384,7 @@ def _ventana_anios(fecha_objetivo, anios):
 
 def consumo_periodo_por_material(fecha_inicio, fecha_fin):
     """Consumo (MB51) por material entre `fecha_inicio` y `fecha_fin` (ambas
-    inclusive). Generalización de consumo_6_meses_por_material para ventanas
+    inclusive). Generalización de consumo_ventana_por_material para ventanas
     de cualquier tamaño (p.ej. los 3 años de Materiales sin Movimiento)."""
     return _query(f"""
         SELECT material_codigo AS material_codigo,
@@ -391,17 +398,17 @@ def consumo_periodo_por_material(fecha_inicio, fecha_fin):
     """, [fecha_inicio, fecha_fin])
 
 
-def consumo_valorizado_6_meses_por_material(fecha):
-    """Igual que consumo_6_meses_por_material, pero en valor (S/., campo
+def consumo_valorizado_ventana_por_material(fecha):
+    """Igual que consumo_ventana_por_material, pero en valor (S/., campo
     'Importe en moneda local' de MB51, mismo signo que cantidad: negativo en
     salidas H, positivo en sus anulativos S) en vez de cantidad. Sirve para
     agregar consumo entre materiales con distinta unidad de medida (p.ej. la
     rotación de inventario a nivel de categoría en el OVERVIEW, donde sumar
     cantidades de materiales en KG, UND, M, etc. no sería válido)."""
-    fecha_inicio, fecha_fin = _ventana_6_meses(fecha)
+    fecha_inicio, fecha_fin = _ventana_consumo(fecha)
     return _query(f"""
         SELECT material_codigo AS material_codigo,
-               -SUM(importe_moneda_local) AS consumo_valor_6meses
+               -SUM(importe_moneda_local) AS consumo_valor_ventana
         FROM gestion_movimientomaterial
         WHERE {FILTRO_CLASE_MOVIMIENTO_CONSUMO}
               AND fecha_contabilizacion BETWEEN %s AND %s
@@ -413,7 +420,7 @@ def consumo_valorizado_6_meses_por_material(fecha):
 
 @_cacheado
 def consumo_valorizado_mensual_por_categoria():
-    """Consumo en valor (S/, mismas reglas que consumo_valorizado_6_meses_por_material)
+    """Consumo en valor (S/, mismas reglas que consumo_valorizado_ventana_por_material)
     por categoría y mes: insumo del IRI de 12 meses (pestaña Indicadores de las
     categorías). Columnas: categoria, mes (date, día 1), consumo_valor."""
     df = _query(f"""
@@ -438,7 +445,7 @@ def consumo_valorizado_mensual_por_categoria():
 @_cacheado
 def rotacion_inventario_por_material(fecha):
     """Índice de Rotación de Inventario por material (veces) = Consumo promedio (MB51,
-    6 últimos meses calendario que terminan en `fecha`) ÷ Inventario de cierre (MB5B,
+    MESES_CONSUMO_COBERTURA meses calendario que terminan en `fecha`) ÷ Inventario de cierre (MB5B,
     a `fecha`); y su inverso, Cobertura (meses) = Inventario de cierre ÷ Consumo
     promedio. Ambos en cantidad (unidades), no en valor. Incluye la categoría/familia
     de cada material para poder filtrar sin repetir la consulta.
@@ -446,7 +453,7 @@ def rotacion_inventario_por_material(fecha):
     El cruce inventario-consumo se hace en pandas: en SQL, unir ambas agregaciones
     como CTEs obligaba a SQLite a un join anidado sin índice (~20 s); así baja a ~1 s."""
     inv = inventario_por_material(fecha)
-    cons = consumo_6_meses_por_material(fecha)
+    cons = consumo_ventana_por_material(fecha)
     catalogo = catalogo_materiales()
 
     # Materiales con consumo pero sin stock: se completan desde el maestro.
@@ -462,7 +469,7 @@ def rotacion_inventario_por_material(fecha):
 
     df["stock_cierre"] = df["stock_cierre"].fillna(0.0).astype(float)
     df["valor_total"] = df["valor_total"].fillna(0.0).astype(float)
-    df["consumo_promedio"] = df["consumo_total"].fillna(0.0).astype(float) / 6.0
+    df["consumo_promedio"] = df["consumo_total"].fillna(0.0).astype(float) / MESES_CONSUMO_COBERTURA
     df["indice_rotacion"] = (df["consumo_promedio"] / df["stock_cierre"]).where(df["stock_cierre"] != 0)
     df["cobertura_meses"] = (df["stock_cierre"] / df["consumo_promedio"]).where(df["consumo_promedio"] != 0)
 

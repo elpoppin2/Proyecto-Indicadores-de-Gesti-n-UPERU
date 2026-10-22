@@ -135,17 +135,17 @@ def _cat_inventario(request, categoria, tiene_inventario):
     # --- Índice de Rotación: anual de la categoría en valor (en cantidad no
     # sería válido: distintas UMB) y detalle por material en cantidad ---
     valor_stock_cat = float(inv["valor_total"].sum())
-    consumo_val = q.consumo_valorizado_6_meses_por_material(mes)
+    consumo_val = q.consumo_valorizado_ventana_por_material(mes)
     catalogo = q.catalogo_materiales()
     consumo_val = consumo_val.merge(
         catalogo[["material_codigo", "categoria", "familia", "centro"]], on="material_codigo", how="left"
     )
     consumo_val = _por_familia_centro(consumo_val[consumo_val["categoria"] == categoria], si)
-    consumo_valor_cat = float(consumo_val["consumo_valor_6meses"].sum())
+    consumo_valor_cat = float(consumo_val["consumo_valor_ventana"].sum())
 
     rotacion_anual_cat = cobertura_cat = dias_inventario_cat = None
     if valor_stock_cat > 0:
-        consumo_prom_mensual_cat = consumo_valor_cat / 6
+        consumo_prom_mensual_cat = consumo_valor_cat / q.MESES_CONSUMO_COBERTURA
         rotacion_anual_cat = round(consumo_prom_mensual_cat / valor_stock_cat * 12, 2)
         cobertura_cat = round(valor_stock_cat / consumo_prom_mensual_cat, 2) if consumo_prom_mensual_cat else None
         # Días de Inventario (DOH): la misma cobertura, en días. Definido por el usuario.
@@ -159,7 +159,7 @@ def _cat_inventario(request, categoria, tiene_inventario):
         "mes": mes, "familia_sel": familia or "", "centro_sel": centro or "",
         "filas": rot_ordenado.iloc[:_ROTACION_PAGINA_TAM].to_dict("records"),
         "total": total_rot, "hay_mas": total_rot > _ROTACION_PAGINA_TAM,
-        "valor_stock": valor_stock_cat, "consumo_valor_6meses": consumo_valor_cat,
+        "valor_stock": valor_stock_cat, "consumo_valor_ventana": consumo_valor_cat,
         "rotacion_anual": rotacion_anual_cat, "cobertura_meses_categoria": cobertura_cat,
         "dias_inventario": dias_inventario_cat,
     }

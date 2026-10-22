@@ -125,7 +125,7 @@
   {% if not e.area or e.categorias|length > 1 %}
   <section class="bloque" id="{{ cuerpo_id }}-categorias">
     <h2>Resumen por categoría</h2>
-    <p class="nota">{{ e.tramo }}.{% if not e.area %} Elige una categoría para ver su detalle.{% endif %} Bajo contrato no aplica a CAPEX ni Empaques. Días de inventario = valor del inventario ÷ consumo valorizado promedio de 6 meses.</p>
+    <p class="nota">{{ e.tramo }}.{% if not e.area %} Elige una categoría para ver su detalle.{% endif %} Bajo contrato no aplica a CAPEX ni Empaques. Días de inventario = valor del inventario ÷ consumo valorizado promedio de 12 meses.</p>
     <div class="tabla-scroll">
       <table>
         <thead>

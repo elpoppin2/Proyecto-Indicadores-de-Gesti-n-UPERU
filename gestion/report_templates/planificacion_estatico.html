@@ -161,9 +161,9 @@
   <div class="franja-kpis" data-kpis-zona="inventario" hidden></div>
   <section class="bloque" id="sec-cobertura">
     <h2>Cobertura de stock</h2>
-    <p class="nota" id="cobertura-nota">Cuántos días alcanza el stock de cada material del S&amp;OP al ritmo de consumo de los últimos 6 meses.</p>
+    <p class="nota" id="cobertura-nota">Cuántos días alcanza el stock de cada material del S&amp;OP al ritmo de consumo de los últimos 12 meses.</p>
     <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
-      <p><strong>Cobertura (días)</strong> = stock de cierre del mes elegido ÷ consumo diario promedio de los 6 meses que terminan en ese mes.</p>
+      <p><strong>Cobertura (días)</strong> = stock de cierre del mes elegido ÷ consumo diario promedio de los 12 meses que terminan en ese mes.</p>
       <p>El consumo sale de MB51: salidas del material al proceso (clases 2xx de costo, orden de producción y red, más Z01/Z04/353). Solo entran los materiales del Plan de Abastecimiento S&amp;OP.</p>
     </div></details>
     <form class="filtros">
@@ -799,7 +799,7 @@ function renderSeccion3(){
 
   const fechaStock = DATA.meses_inventario[mes];
   document.getElementById("cobertura-nota").innerHTML =
-    `Cuántos días alcanza el stock de cada material del S&amp;OP al ritmo de consumo de los últimos 6 meses. Inventario al ` +
+    `Cuántos días alcanza el stock de cada material del S&amp;OP al ritmo de consumo de los últimos 12 meses. Inventario al ` +
     `${new Date(fechaStock+"T00:00:00").toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'})}.`;
 
   if(!filas.length){ cont.innerHTML = `<p class="aviso">Sin datos de stock/consumo para los filtros seleccionados.</p>`; return; }

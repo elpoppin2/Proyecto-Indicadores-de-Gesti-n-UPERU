@@ -208,7 +208,7 @@ def _desglose_sinmov(request, categoria):
 
 def _desglose_consumo(request, categoria):
     si = _segmentadores_inventario(request, categoria)
-    inicio, fin = q._ventana_6_meses(si["mes"])
+    inicio, fin = q._ventana_consumo(si["mes"])
     df = q.movimientos_consumo_detalle(inicio, fin, categoria)
     df = _fechas(_numericas(df, ["consumo", "importe"]), ["fecha"])
     if si["familia"] or si["centro"]:

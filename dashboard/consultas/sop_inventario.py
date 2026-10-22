@@ -6,7 +6,7 @@ import pandas as pd
 
 from .base import _cacheado, _lista_materiales, _query, _sumar_meses
 from .importados import CODIGOS_ANTERIORES
-from .inventario import _ventana_6_meses, catalogo_materiales, fechas_inventario_disponibles
+from .inventario import MESES_CONSUMO_COBERTURA, _ventana_consumo, catalogo_materiales, fechas_inventario_disponibles
 from .sop_base import (
     _FILTRO_CLASE_MOVIMIENTO_CONSUMO_SOP, _MATERIALES_CONSUMO_VIA_OTRO, materiales_planificados_sop,
     pares_planificados_sop,
@@ -17,7 +17,7 @@ from .sop_base import (
 #   planifica el que se traslada a Condorcocha);
 # - el stock y el consumo de un código antiguo (CODIGOS_ANTERIORES, p.ej.
 #   07-00000008 -> Pelets Chips Recuperados 07-00003147) se suman al nuevo;
-# - un material sin consumo en los 6 meses se muestra igual si el S&OP lo
+# - un material sin consumo en la ventana se muestra igual si el S&OP lo
 #   planifica en ese centro (p.ej. Puzolana Junín en Condorcocha, recién
 #   comprada): con su stock y sin cobertura.
 _COBERTURA_OCULTOS = {("14-00000037", "U001")}
@@ -56,8 +56,8 @@ def cobertura_stock_planificacion(fecha_stock=None, centro=None, material=None):
     """Cobertura de stock de los materiales del Plan de Abastecimiento SOP, por
     material y centro (Atocongo/Condorcocha), en dos esquemas a la vez (días y
     meses). Cobertura = Stock de cierre (a `fecha_stock`, o la más reciente
-    cargada si no se indica) ÷ Consumo promedio de los 6 meses calendario que
-    terminan en `fecha_stock` (ver _FILTRO_CLASE_MOVIMIENTO_CONSUMO_SOP)."""
+    cargada si no se indica) ÷ Consumo promedio de los MESES_CONSUMO_COBERTURA (12) meses
+    calendario que terminan en `fecha_stock` (ver _FILTRO_CLASE_MOVIMIENTO_CONSUMO_SOP)."""
     columnas = [
         "material_codigo", "texto_breve", "centro", "categoria", "familia",
         "stock_cierre", "consumo_diario", "consumo_mensual", "cobertura_dias", "cobertura_meses",
@@ -74,7 +74,7 @@ def cobertura_stock_planificacion(fecha_stock=None, centro=None, material=None):
         return pd.DataFrame(columns=columnas)
     ids = ",".join(f"'{m}'" for m in _con_anteriores(materiales_sop))
 
-    fecha_inicio, fecha_fin = _ventana_6_meses(
+    fecha_inicio, fecha_fin = _ventana_consumo(
         fecha_stock if isinstance(fecha_stock, datetime.date) else datetime.date.fromisoformat(str(fecha_stock)[:10])
     )
     dias_ventana = (fecha_fin - fecha_inicio).days + 1
@@ -128,9 +128,9 @@ def cobertura_stock_planificacion_por_mes(fechas_stock):
     fechas a la vez, devuelto como {fecha_stock: DataFrame}. Para el HTML
     estático (exportar_planificacion_html), que necesita la cobertura de todos
     los meses de inventario: llamando a la función de un mes por cada uno, cada
-    llamada volvía a recorrer 6 meses de MB51 (~33 meses x 6 = el mismo
-    movimiento leído hasta 6 veces, ~5 min). Acá el consumo se agrupa por mes
-    calendario en UNA consulta y cada ventana de 6 meses se suma en memoria —
+    llamada volvía a recorrer los meses de la ventana en MB51 (el mismo
+    movimiento leído hasta 12 veces). Acá el consumo se agrupa por mes
+    calendario en UNA consulta y cada ventana se suma en memoria —
     da el mismo resultado porque la ventana siempre abarca meses completos.
     Ver el comentario de "+centro" en cobertura_stock_planificacion."""
     fechas = sorted({
@@ -165,15 +165,15 @@ def cobertura_stock_planificacion_por_mes(fechas_stock):
               AND {_FILTRO_CLASE_MOVIMIENTO_CONSUMO_SOP}
               AND fecha_contabilizacion BETWEEN %s AND %s
         GROUP BY mes, material_codigo, centro
-    """, [_ventana_6_meses(fechas[0])[0], _ventana_6_meses(fechas[-1])[1]])
+    """, [_ventana_consumo(fechas[0])[0], _ventana_consumo(fechas[-1])[1]])
 
     resultado = {}
     for fecha_stock in fechas:
-        fecha_inicio, fecha_fin = _ventana_6_meses(fecha_stock)
+        fecha_inicio, fecha_fin = _ventana_consumo(fecha_stock)
         meses_ventana = {
             f"{(fecha_inicio.year * 12 + fecha_inicio.month - 1 + i) // 12:04d}-"
             f"{(fecha_inicio.month - 1 + i) % 12 + 1:02d}"
-            for i in range(6)
+            for i in range(MESES_CONSUMO_COBERTURA)
         }
         en_ventana = consumo_mes[consumo_mes["mes"].isin(meses_ventana)]
         consumo = (
@@ -231,9 +231,9 @@ def _armar_cobertura(stock, consumo, dias_ventana, catalogo):
     df["consumo_diario"] = df["consumo_total"] / dias_ventana
     df["cobertura_dias"] = (df["stock_cierre"] / df["consumo_diario"]).where(df["consumo_diario"] > 0)
     # Mismo cálculo en meses (igual criterio que rotacion_inventario_por_material:
-    # promedio de los 6 meses calendario), para tener las dos lecturas juntas
+    # promedio de los MESES_CONSUMO_COBERTURA meses calendario), para tener las dos lecturas juntas
     # en la tabla. Pedido por el usuario.
-    df["consumo_mensual"] = df["consumo_total"] / 6.0
+    df["consumo_mensual"] = df["consumo_total"] / MESES_CONSUMO_COBERTURA
     df["cobertura_meses"] = (df["stock_cierre"] / df["consumo_mensual"]).where(df["consumo_mensual"] > 0)
 
     df = df.merge(catalogo[["material_codigo", "texto_breve", "categoria", "familia"]], on="material_codigo", how="left")
@@ -249,7 +249,7 @@ def _armar_cobertura(stock, consumo, dias_ventana, catalogo):
     # como "nan" literal en la plantilla si no se limpia).
     df["familia"] = df["familia"].fillna("")
     df["texto_breve"] = df["texto_breve"].fillna("")
-    # Sin consumo en la ventana de 6 meses = sin señal real para calcular
+    # Sin consumo en la ventana = sin señal real para calcular
     # cobertura (aunque tenga stock): no interesa en esta tabla. Pedido por el
     # usuario (ej. Puzolana de Terceros/Escoria de Altos Hornos en U002). Salvo
     # que el S&OP lo planifique en ese centro (ver _COBERTURA_OCULTOS arriba).

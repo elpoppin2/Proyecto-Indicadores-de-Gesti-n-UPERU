@@ -142,13 +142,13 @@
         <div class="metrica"><span class="valor">{{ rotacion.cobertura_meses_categoria|numero:2|default:"—" }}</span><span class="etiqueta">Cobertura (meses)</span></div>
         <div class="metrica"><span class="valor">{{ rotacion.dias_inventario|numero:0|default:"—" }}</span><span class="etiqueta">Días de Inventario (DOH)</span></div>
         <div class="metrica"><span class="valor">{{ rotacion.valor_stock|soles }}</span><span class="etiqueta">Valor de stock</span></div>
-        <div class="metrica"><span class="valor">{{ rotacion.consumo_valor_6meses|soles }}</span><span class="etiqueta">Consumo valorizado (6m)</span></div>
+        <div class="metrica"><span class="valor">{{ rotacion.consumo_valor_ventana|soles }}</span><span class="etiqueta">Consumo valorizado (12m)</span></div>
       </div>
-      <p class="nota">Rotación en soles: consumo valorizado mensual de 6 meses ÷ valor del stock × 12.</p>
+      <p class="nota">Rotación en soles: consumo valorizado mensual de 12 meses ÷ valor del stock × 12.</p>
     {% endif %}
 
     <h2 class="subtitulo">Detalle por material (en cantidad)</h2>
-    <p class="nota">Consumo promedio de 6 meses ÷ stock del corte, en cantidad.</p>
+    <p class="nota">Stock del corte ÷ consumo promedio mensual de 12 meses, en cantidad (la rotación es lo inverso).</p>
     {% if rotacion.filas %}
       <div class="tabla-buscable">
         <div class="buscador">
@@ -180,7 +180,7 @@
               <tr>
                 <th>Material</th><th>Descripción</th><th>Centro</th><th>UMB</th>
                 <th class="num" data-columna="stock_cierre">Stock</th>
-                <th class="num" data-columna="consumo_promedio">Consumo prom. (6m)</th>
+                <th class="num" data-columna="consumo_promedio">Consumo prom. (12m)</th>
                 <th class="num" data-columna="indice_rotacion" data-orden="desc">Rotación (veces/mes)</th>
                 <th class="num" data-columna="cobertura_meses">Cobertura (meses)</th>
               </tr>
@@ -192,7 +192,7 @@
     {% else %}
       <p class="aviso">Sin datos de rotación con los filtros elegidos.</p>
     {% endif %}
-    {% include "gestion/_desglose.html" with clave="consumo" accion="Ver movimientos de consumo" fuente="Cada salida de almacén de los 6 meses (MB51): el consumo valorizado de la rotación" %}
+    {% include "gestion/_desglose.html" with clave="consumo" accion="Ver movimientos de consumo" fuente="Cada salida de almacén de los 12 meses (MB51): el consumo valorizado de la rotación" %}
   </section>
 
   <section class="bloque" id="sec-criticos">

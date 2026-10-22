@@ -240,7 +240,7 @@ def cobertura_stock(mes=None, centro=None, material=None, categoria=None):
     df, nota = _filtrar(q.cobertura_stock_planificacion(fecha_stock=meses_inv[mes]), material, centro, categoria)
     df = df.sort_values("cobertura_dias", na_position="last")
     salida = {
-        "fecha_stock": meses_inv[mes], "criterio": "Cobertura = stock de cierre ÷ consumo promedio de los 6 meses que terminan en ese mes (MB51, clases 2xx + Z01/Z04/353).",
+        "fecha_stock": meses_inv[mes], "criterio": "Cobertura = stock de cierre ÷ consumo promedio de los 12 meses que terminan en ese mes (MB51, clases 2xx + Z01/Z04/353).",
         "materiales": [{
             "material": r.material_codigo, "descripcion": r.texto_breve, "centro": r.centro,
             "stock_t": r.stock_cierre, "consumo_mensual_t": r.consumo_mensual,
@@ -667,7 +667,7 @@ FUENTES Y REGLAS DE NEGOCIO
 - Ingresos físicos reales: tickets de báscula ZMM056 (recepción de terceros tipo 1 y propia tipo 5, sin anulados). Es la fuente de verdad de lo que ingresó a planta.
 - Precios de compra: MB51, entradas 101/102 CON proveedor; precio = importe ÷ toneladas, en soles. Los importados (Carbón Importado, Escoria) se compran en el centro U004. Un 101 sin proveedor es un traslado u orden de producción (no es compra).
 - Centros: U001 = Atocongo, U002 = Condorcocha, U004 = importación.
-- Cobertura de stock = stock de cierre (MB5B) ÷ consumo promedio de los 6 meses que terminan en ese mes (MB51 clases 2xx + Z01/Z04/353). Carbón Terceros en Condorcocha se consume vía el material chancado 14-00001112.
+- Cobertura de stock = stock de cierre (MB5B) ÷ consumo promedio de los 12 meses que terminan en ese mes (MB51 clases 2xx + Z01/Z04/353). Carbón Terceros en Condorcocha se consume vía el material chancado 14-00001112.
 - Evolución de inventario: stock inicial = cierre del mes anterior (MB5B); cada mes + abastecimiento − consumo − traslados. Mínimo/máximo del archivo MinMax SOP. Lead time: 1 mes (Carbón Importado 3, Escoria 4); dentro del lead time la cuota ya está comprometida.
 - Inflación: mes T vs el mismo mes del año anterior (interanual) o vs el mes anterior (mensual). Si ese mes no tuvo compra, se compara contra el último precio registrado antes (base sustituida). En la interanual la base siempre es un precio del año anterior (si no lo hay hasta T−12, la primera compra de ese año); un material sin compra el año anterior no entra al IPU.
 - IPU (Índice de Precios Unacem): índice acumulado del año, se reinicia cada enero. Interanual: Ene..T de este año vs el mismo tramo del año anterior, ponderado con las toneladas del año reciente. Mensual: variaciones de cada mes encadenadas.

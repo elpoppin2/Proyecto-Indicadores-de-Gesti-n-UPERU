@@ -326,7 +326,7 @@ DESGLOSES = {
     },
     "consumo": {
         "titulo": "Movimientos de consumo (MB51)",
-        "nota": "Una fila por movimiento de consumo de los 6 meses que terminan en el corte: clases Z01, Z04, 353 y "
+        "nota": "Una fila por movimiento de consumo de los 12 meses que terminan en el corte: clases Z01, Z04, 353 y "
                 "200 a 299 (las anulaciones restan). Consumo e importe en positivo = salida de almacén. Es el "
                 "consumo valorizado de la Rotación.",
         "columnas": [
@@ -345,11 +345,11 @@ DESGLOSES = {
     "criticos": {
         "titulo": "Materiales críticos",
         "nota": "Materiales marcados como críticos en el maestro (ZMM060). Cobertura = stock del corte ÷ consumo promedio "
-                "de 6 meses, en cantidad. Los que no tuvieron consumo no tienen cobertura y no entran al promedio.",
+                "de 12 meses, en cantidad. Los que no tuvieron consumo no tienen cobertura y no entran al promedio.",
         "columnas": [
             _COL_MATERIAL, _COL_DESCRIPCION, _col("familia", "Familia"), _col("centro", "Centro", "centro"),
             _col("unidad_medida_base", "UMB"), _col("stock_cierre", "Stock", "cantidad"),
-            _col("consumo_promedio", "Consumo prom. (6m)", "cantidad"), _col("cobertura_meses", "Cobertura (meses)", "numero"),
+            _col("consumo_promedio", "Consumo prom. (12m)", "cantidad"), _col("cobertura_meses", "Cobertura (meses)", "numero"),
             _col("estado", "Estado", "texto", _tono_estado),
         ],
         "orden": ("cobertura_meses", "asc"),

@@ -437,10 +437,10 @@ def _calcular(mes, config, area=None):
         valor_inv = float(inv["valor_total"].sum())
         dic = next((c for c in reversed(cortes) if c.year == mes.year - 1 and c.month == 12), None)
         valor_dic = float(del_area(q.inventario_por_material(dic))["valor_total"].sum()) if dic else None
-        consumo = q.consumo_valorizado_6_meses_por_material(corte)
+        consumo = q.consumo_valorizado_ventana_por_material(corte)
         consumo = consumo[consumo["material_codigo"].isin(set(inv["material_codigo"]))]
         consumo = consumo.merge(q.catalogo_materiales()[["material_codigo", "categoria"]], on="material_codigo", how="left")
-        consumo_mes = float(consumo["consumo_valor_6meses"].sum()) / 6
+        consumo_mes = float(consumo["consumo_valor_ventana"].sum()) / q.MESES_CONSUMO_COBERTURA
         doh = valor_inv / consumo_mes * _DIAS_MES if consumo_mes > 0 else None
         var_inv = (valor_inv / valor_dic - 1) * 100 if valor_dic else None
         cfg = metas["inventario_var_pct"]
@@ -479,7 +479,7 @@ def _calcular(mes, config, area=None):
                     f"{soles(valor_obs)} de inventario ({_pct(obs_pct, decimales=0)}) no tiene consumo hace 3 años"
                     + ("." if una_categoria else f"; {soles(mayor['valor_obsoleto'])} es de {mayor['categoria'].title()}."))
         for cat, g in inv.groupby("categoria"):
-            c_mes = float(consumo.loc[consumo["categoria"] == cat, "consumo_valor_6meses"].sum()) / 6
+            c_mes = float(consumo.loc[consumo["categoria"] == cat, "consumo_valor_ventana"].sum()) / q.MESES_CONSUMO_COBERTURA
             resumen_categorias.setdefault(cat, {})["inventario"] = float(g["valor_total"].sum())
             resumen_categorias[cat]["doh"] = float(g["valor_total"].sum()) / c_mes * _DIAS_MES if c_mes > 0 else None
 

@@ -175,7 +175,7 @@ def _contexto_plan_detalle(request):
 
 def _contexto_cobertura(request):
     """Cobertura de stock: Mes/Categoría/Centro/Material propios. El Mes elige
-    QUÉ foto de inventario (y su ventana de consumo de 6 meses hacia atrás) se
+    QUÉ foto de inventario (y su ventana de consumo de 12 meses hacia atrás) se
     usa. Categoría -> Centro -> Material en cascada, mismo criterio que
     Detalle por material. Pedido por el usuario."""
     meses_inv = q.meses_inventario_disponibles()

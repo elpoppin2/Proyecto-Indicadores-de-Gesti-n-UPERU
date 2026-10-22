@@ -314,17 +314,17 @@
 
         <section class="bloque" id="sec-rotacion">
           <h2>Rotación del inventario por categoría</h2>
-          <p class="nota">Cuántas veces al año se renueva el inventario: consumo valorizado mensual de 6 meses ÷ valor del stock × 12. Se mide en soles porque las unidades de una categoría no se pueden sumar.</p>
+          <p class="nota">Cuántas veces al año se renueva el inventario: consumo valorizado mensual de 12 meses ÷ valor del stock × 12. Se mide en soles porque las unidades de una categoría no se pueden sumar.</p>
           {% if rotacion.filas %}
             <div class="tabla-scroll">
               <table>
-                <thead><tr><th>Categoría</th><th class="num">Valor de stock</th><th class="num">Consumo valorizado (6m)</th><th class="num">Rotación anual (veces/año)</th><th class="num">Cobertura (meses)</th><th class="num">Días de Inventario (DOH)</th></tr></thead>
+                <thead><tr><th>Categoría</th><th class="num">Valor de stock</th><th class="num">Consumo valorizado (12m)</th><th class="num">Rotación anual (veces/año)</th><th class="num">Cobertura (meses)</th><th class="num">Días de Inventario (DOH)</th></tr></thead>
                 <tbody>
                   {% for r in rotacion.filas %}
                     <tr>
                       <td>{{ r.categoria }}</td>
                       <td class="num">{{ r.valor_stock|soles }}</td>
-                      <td class="num">{{ r.consumo_valor_6meses|soles }}</td>
+                      <td class="num">{{ r.consumo_valor_ventana|soles }}</td>
                       <td class="num">{{ r.indice_rotacion_anual|numero:2 }}</td>
                       <td class="num">{{ r.cobertura_meses|numero:2|default:"—" }}</td>
                       <td class="num">{{ r.dias_inventario|numero:0|default:"—" }}</td>
