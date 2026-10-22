@@ -91,3 +91,14 @@ def materiales_planificados_sop():
     nunca se planifican). Pedido por el usuario."""
     df = _query(f"SELECT DISTINCT material_codigo FROM gestion_planabastecimientosop WHERE {_FILTRO_CON_CODIGO_SOP}")
     return sorted(df["material_codigo"].tolist())
+
+
+def pares_planificados_sop():
+    """(material, centro) que alguna vez trajo el Plan de Abastecimiento o el
+    de Consumos del S&OP, en cualquier emisión."""
+    df = _query(f"""
+        SELECT material_codigo, centro_destino AS centro FROM gestion_planabastecimientosop WHERE {_FILTRO_CON_CODIGO_SOP}
+        UNION
+        SELECT material_codigo, centro_destino AS centro FROM gestion_planconsumosop WHERE {_FILTRO_CON_CODIGO_SOP}
+    """)
+    return set(zip(df["material_codigo"], df["centro"]))

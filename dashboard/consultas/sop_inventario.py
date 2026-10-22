@@ -5,8 +5,36 @@ import datetime
 import pandas as pd
 
 from .base import _cacheado, _lista_materiales, _query, _sumar_meses
+from .importados import CODIGOS_ANTERIORES
 from .inventario import _ventana_6_meses, catalogo_materiales, fechas_inventario_disponibles
-from .sop_base import _FILTRO_CLASE_MOVIMIENTO_CONSUMO_SOP, _MATERIALES_CONSUMO_VIA_OTRO, materiales_planificados_sop
+from .sop_base import (
+    _FILTRO_CLASE_MOVIMIENTO_CONSUMO_SOP, _MATERIALES_CONSUMO_VIA_OTRO, materiales_planificados_sop,
+    pares_planificados_sop,
+)
+
+# Cobertura de stock (pedidos del usuario, 2026-10-21):
+# - el Clinker de Atocongo no se muestra (lo produce la planta; el S&OP solo
+#   planifica el que se traslada a Condorcocha);
+# - el stock y el consumo de un código antiguo (CODIGOS_ANTERIORES, p.ej.
+#   07-00000008 -> Pelets Chips Recuperados 07-00003147) se suman al nuevo;
+# - un material sin consumo en los 6 meses se muestra igual si el S&OP lo
+#   planifica en ese centro (p.ej. Puzolana Junín en Condorcocha, recién
+#   comprada): con su stock y sin cobertura.
+_COBERTURA_OCULTOS = {("14-00000037", "U001")}
+
+
+def _con_anteriores(materiales):
+    """`materiales` más sus códigos antiguos (CODIGOS_ANTERIORES)."""
+    nuevos = set(materiales)
+    return sorted(nuevos | {a for a, n in CODIGOS_ANTERIORES.items() if n in nuevos})
+
+
+def _a_codigo_vigente(df, columna):
+    """Pasa los códigos antiguos al nuevo y suma `columna` por material/centro."""
+    if df.empty or not df["material_codigo"].isin(list(CODIGOS_ANTERIORES)).any():
+        return df
+    df = df.assign(material_codigo=df["material_codigo"].replace(CODIGOS_ANTERIORES))
+    return df.groupby(["material_codigo", "centro"], as_index=False)[columna].sum()
 
 
 def meses_inventario_disponibles():
@@ -44,7 +72,7 @@ def cobertura_stock_planificacion(fecha_stock=None, centro=None, material=None):
     materiales_sop = materiales_planificados_sop()
     if not materiales_sop:
         return pd.DataFrame(columns=columnas)
-    ids = ",".join(f"'{m}'" for m in materiales_sop)
+    ids = ",".join(f"'{m}'" for m in _con_anteriores(materiales_sop))
 
     fecha_inicio, fecha_fin = _ventana_6_meses(
         fecha_stock if isinstance(fecha_stock, datetime.date) else datetime.date.fromisoformat(str(fecha_stock)[:10])
@@ -114,8 +142,8 @@ def cobertura_stock_planificacion_por_mes(fechas_stock):
     materiales_sop = materiales_planificados_sop()
     if not materiales_sop:
         return {}
-    sop = set(materiales_sop)
-    ids_sop = ",".join(f"'{m}'" for m in materiales_sop)
+    sop = set(_con_anteriores(materiales_sop))
+    ids_sop = ",".join(f"'{m}'" for m in sorted(sop))
     reales = {mat for mat, _centro in _MATERIALES_CONSUMO_VIA_OTRO.values()}
     ids_consumo = ",".join(f"'{m}'" for m in sorted(sop | reales))
 
@@ -191,7 +219,13 @@ def _armar_cobertura(stock, consumo, dias_ventana, catalogo):
         "material_codigo", "texto_breve", "centro", "categoria", "familia",
         "stock_cierre", "consumo_diario", "consumo_mensual", "cobertura_dias", "cobertura_meses",
     ]
+    stock = _a_codigo_vigente(stock, "stock_cierre")
+    consumo = _a_codigo_vigente(consumo, "consumo_total")
     df = stock.merge(consumo, on=["material_codigo", "centro"], how="outer")
+    claves = list(zip(df["material_codigo"], df["centro"]))
+    df = df[[k not in _COBERTURA_OCULTOS for k in claves]]
+    planificados = pares_planificados_sop()
+    df = df.assign(_planificado=[k in planificados for k in zip(df["material_codigo"], df["centro"])])
     df["stock_cierre"] = df["stock_cierre"].fillna(0.0).astype(float)
     df["consumo_total"] = df["consumo_total"].fillna(0.0).astype(float)
     df["consumo_diario"] = df["consumo_total"] / dias_ventana
@@ -217,8 +251,9 @@ def _armar_cobertura(stock, consumo, dias_ventana, catalogo):
     df["texto_breve"] = df["texto_breve"].fillna("")
     # Sin consumo en la ventana de 6 meses = sin señal real para calcular
     # cobertura (aunque tenga stock): no interesa en esta tabla. Pedido por el
-    # usuario (ej. Puzolana de Terceros/Escoria de Altos Hornos en U002).
-    df = df[df["consumo_total"] != 0]
+    # usuario (ej. Puzolana de Terceros/Escoria de Altos Hornos en U002). Salvo
+    # que el S&OP lo planifique en ese centro (ver _COBERTURA_OCULTOS arriba).
+    df = df[(df["consumo_total"] != 0) | (df["_planificado"] & (df["stock_cierre"] != 0))]
     return df[columnas].sort_values("cobertura_dias", ascending=True, na_position="last")
 
 
@@ -341,7 +376,7 @@ def proyeccion_inventario_sop(mes_snapshot):
         set(zip(abast["material_codigo"], abast["centro"])) | set(zip(cons["material_codigo"], cons["centro"]))
     )
     codigos_stock = {m for m, _ in claves} | {real[0] for real in fusiones}
-    ids = ",".join(f"'{m}'" for m in sorted(codigos_stock))
+    ids = ",".join(f"'{m}'" for m in _con_anteriores(codigos_stock))  # con los códigos antiguos (Pelets)
     fecha_inicial = fecha_inventario_inicial_sop(mes_snapshot)
     stock = {}
     if fecha_inicial:
@@ -352,6 +387,7 @@ def proyeccion_inventario_sop(mes_snapshot):
             WHERE fecha = %s AND material_codigo IN ({ids}) AND area_valoracion IN ('U001', 'U002')
             GROUP BY material_codigo, area_valoracion
         """, [fecha_inicial])
+        df_stock = _a_codigo_vigente(df_stock.fillna({"stock": 0.0}), "stock")
         stock = {(r.material_codigo, r.centro): float(r.stock or 0.0) for r in df_stock.itertuples()}
         for real, origen in fusiones.items():
             stock[origen] = stock.get(origen, 0.0) + stock.pop(real, 0.0)

@@ -200,11 +200,11 @@
       <span class="leyenda-item leyenda-nota">Sin color: sin mínimo/máximo definido</span>
     </div>
     <div class="tabla-scroll">
-      <table>
+      <table class="matriz-proyeccion">
         <thead>
           <tr>
-            <th>Material</th><th>Descripción</th><th>Centro</th>
-            <th class="num">Mín.</th><th class="num">Máx.</th>
+            <th class="col-fija fija-1">Material</th><th class="col-fija fija-2">Descripción</th><th class="col-fija fija-3">Centro</th>
+            <th class="num col-fija fija-4">Mín.</th><th class="num col-fija fija-5">Máx.</th>
             <th class="num">Inicial</th>
             {% for m in p.meses %}<th class="num">{{ m.corto }}</th>{% endfor %}
             <th>Quiebre</th>
@@ -213,14 +213,42 @@
         <tbody>
           {% for f in p.matriz %}
             <tr>
-              <td class="celda-codigo">{{ f.material_codigo }}</td>
-              <td>{{ f.texto_breve }}</td>
-              <td>{{ f.centro|centro }}</td>
-              <td class="num">{{ f.stock_minimo|numero:0|default:"—" }}</td>
-              <td class="num">{{ f.stock_maximo|numero:0|default:"—" }}</td>
+              <td class="celda-codigo col-fija fija-1">{{ f.material_codigo }}</td>
+              <td class="col-fija fija-2" title="{{ f.texto_breve }}">{{ f.texto_breve }}</td>
+              <td class="col-fija fija-3">{{ f.centro|centro }}</td>
+              <td class="num col-fija fija-4">{{ f.stock_minimo|numero:0|default:"—" }}</td>
+              <td class="num col-fija fija-5">{{ f.stock_maximo|numero:0|default:"—" }}</td>
               <td class="num">{{ f.stock_inicial|numero:0 }}</td>
               {% for c in f.celdas %}<td class="num estado-{{ c.estado }}">{{ c.valor|numero:0 }}</td>{% endfor %}
               <td class="{% if f.quiebre %}dato-negativo{% endif %}">{{ f.quiebre_corto|default:"—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="subtitulo">Cobertura proyectada por material (meses)</h3>
+    <p class="nota">Cuántos meses alcanza el stock final de cada mes al ritmo de las salidas planificadas (consumo más traslados a otro centro) de los {{ p.cobertura_meses_siguientes }} meses siguientes; un quiebre cubre 0 meses. Mismo color que la tabla en toneladas; mínimo y máximo en toneladas.</p>
+    <div class="tabla-scroll">
+      <table class="matriz-proyeccion">
+        <thead>
+          <tr>
+            <th class="col-fija fija-1">Material</th><th class="col-fija fija-2">Descripción</th><th class="col-fija fija-3">Centro</th>
+            <th class="num col-fija fija-4">Mín. (T)</th><th class="num col-fija fija-5">Máx. (T)</th>
+            <th class="num">Inicial</th>
+            {% for m in p.meses %}<th class="num">{{ m.corto }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in p.matriz %}
+            <tr>
+              <td class="celda-codigo col-fija fija-1">{{ f.material_codigo }}</td>
+              <td class="col-fija fija-2" title="{{ f.texto_breve }}">{{ f.texto_breve }}</td>
+              <td class="col-fija fija-3">{{ f.centro|centro }}</td>
+              <td class="num col-fija fija-4">{{ f.stock_minimo|numero:0|default:"—" }}</td>
+              <td class="num col-fija fija-5">{{ f.stock_maximo|numero:0|default:"—" }}</td>
+              <td class="num">{{ f.cobertura_inicial|numero:1|default:"—" }}</td>
+              {% for c in f.celdas %}<td class="num estado-{{ c.estado }}" title="Stock final {{ c.valor|numero:0 }} T">{{ c.cobertura|numero:1|default:"—" }}</td>{% endfor %}
             </tr>
           {% endfor %}
         </tbody>

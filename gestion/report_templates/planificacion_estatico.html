@@ -1058,15 +1058,33 @@ function renderSeccion5(){
   }
   const puntos = [[fechaIni ? mesCorto(fechaIni) : "Inicio", resumen[0].stock_inicial], ...resumen.map(r=>[mesCorto(r.mes), r.stock_final])];
 
+  // Cobertura (meses) = stock ÷ salidas planificadas (consumo + traslados)
+  // promedio de los COB_SIGUIENTES meses siguientes (replica
+  // views._contexto_proyeccion_sop / _cobertura_meses).
+  const COB_SIGUIENTES = 3;
+  const coberturaMeses = (stock, salidas) => {
+    const prom = salidas.length ? salidas.reduce((s,v)=>s+v,0) / salidas.length : 0;
+    return prom > 0 ? Math.max(stock, 0) / prom : null;  // un quiebre (stock negativo) cubre 0 meses
+  };
   const matriz = [...grupos.values()].map(g => {
     g.sort((a,b)=>a.mes.localeCompare(b.mes));
     const neg = g.find(f=>f.stock_final<0);
+    const salidas = g.map(f => f.consumo + f.traslado);
+    const siguientes = i => { const s = salidas.slice(i+1, i+1+COB_SIGUIENTES); return s.length ? s : salidas.slice(i, i+1); };
     return {material_codigo:g[0].material_codigo, texto_breve:g[0].texto_breve, centro:g[0].centro,
             stock_minimo:g[0].stock_minimo, stock_maximo:g[0].stock_maximo, stock_inicial:g[0].stock_inicial,
-            celdas:g.map(f=>({valor:f.stock_final, estado:f.estado})), quiebre: neg ? neg.mes : null};
+            cobertura_inicial: coberturaMeses(g[0].stock_inicial, salidas.slice(0, COB_SIGUIENTES)),
+            celdas:g.map((f,i)=>({valor:f.stock_final, estado:f.estado, cobertura: coberturaMeses(f.stock_final, siguientes(i))})),
+            quiebre: neg ? neg.mes : null};
   }).sort((a,b) => (a.quiebre===null) - (b.quiebre===null) || (a.quiebre||"").localeCompare(b.quiebre||"") ||
                    a.centro.localeCompare(b.centro) || a.material_codigo.localeCompare(b.material_codigo));
 
+  // Material, descripción, centro, mínimo y máximo fijos al desplazar los meses (.matriz-proyeccion en dashboard.css).
+  const fijasCabecera = (mi, ma) => `<th class="col-fija fija-1">Material</th><th class="col-fija fija-2">Descripción</th>` +
+    `<th class="col-fija fija-3">Centro</th><th class="num col-fija fija-4">${mi}</th><th class="num col-fija fija-5">${ma}</th>`;
+  const fijasFila = f => `<td class="celda-codigo col-fija fija-1">${f.material_codigo}</td>` +
+    `<td class="col-fija fija-2" title="${f.texto_breve}">${f.texto_breve}</td><td class="col-fija fija-3">${nombreCentro(f.centro)}</td>` +
+    `<td class="num col-fija fija-4">${numeroO(f.stock_minimo)}</td><td class="num col-fija fija-5">${numeroO(f.stock_maximo)}</td>`;
   const claves = new Set([...grupos.keys()]);
   const diag = DIAG.filter(d => d.snapshot === snapshot && claves.has(d.material_codigo+"|"+d.centro));
   const cuenta = k => diag.filter(d => k.includes(d.diagnostico)).length;
@@ -1155,13 +1173,22 @@ function renderSeccion5(){
       <span class="leyenda-item leyenda-nota">Sin color: sin mínimo/máximo definido</span>
     </div>
     <div class="tabla-scroll">
-      <table>
-        <thead><tr><th>Material</th><th>Descripción</th><th>Centro</th><th class="num">Mín.</th><th class="num">Máx.</th><th class="num">Inicial</th>
+      <table class="matriz-proyeccion">
+        <thead><tr>${fijasCabecera("Mín.", "Máx.")}<th class="num">Inicial</th>
           ${meses.map(m=>`<th class="num">${mesCorto(m)}</th>`).join("")}<th>Quiebre</th></tr></thead>
-        <tbody>${matriz.map(f=>`<tr><td class="celda-codigo">${f.material_codigo}</td><td>${f.texto_breve}</td><td>${nombreCentro(f.centro)}</td>
-          <td class="num">${numeroO(f.stock_minimo)}</td><td class="num">${numeroO(f.stock_maximo)}</td><td class="num">${numero(f.stock_inicial)}</td>
+        <tbody>${matriz.map(f=>`<tr>${fijasFila(f)}<td class="num">${numero(f.stock_inicial)}</td>
           ${f.celdas.map(c=>`<td class="num estado-${c.estado}">${numero(c.valor)}</td>`).join("")}
           <td class="${f.quiebre?'dato-negativo':''}">${f.quiebre?mesCorto(f.quiebre):'—'}</td></tr>`).join("")}</tbody>
+      </table>
+    </div>
+    <h3 class="subtitulo">Cobertura proyectada por material (meses)</h3>
+    <p class="nota">Cuántos meses alcanza el stock final de cada mes al ritmo de las salidas planificadas (consumo más traslados a otro centro) de los ${COB_SIGUIENTES} meses siguientes; un quiebre cubre 0 meses. Mismo color que la tabla en toneladas; mínimo y máximo en toneladas.</p>
+    <div class="tabla-scroll">
+      <table class="matriz-proyeccion">
+        <thead><tr>${fijasCabecera("Mín. (T)", "Máx. (T)")}<th class="num">Inicial</th>
+          ${meses.map(m=>`<th class="num">${mesCorto(m)}</th>`).join("")}</tr></thead>
+        <tbody>${matriz.map(f=>`<tr>${fijasFila(f)}<td class="num">${f.cobertura_inicial==null?'—':numero(f.cobertura_inicial,1)}</td>
+          ${f.celdas.map(c=>`<td class="num estado-${c.estado}" title="Stock final ${numero(c.valor)} T">${c.cobertura==null?'—':numero(c.cobertura,1)}</td>`).join("")}</tr>`).join("")}</tbody>
       </table>
     </div>`;
 }

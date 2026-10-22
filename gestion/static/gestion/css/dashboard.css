@@ -1526,6 +1526,29 @@ details.detalle-calculo[open] > summary.boton-detalle { margin-bottom: 12px; }
 .matriz-tco thead .tco-fijo { z-index: 3; background: var(--th-bg); }
 .matriz-tco tbody tr:nth-child(even) .tco-fijo { background: var(--surface-2); }
 .matriz-tco tbody tr:hover .tco-fijo { background: var(--line); }
+/* Stock y cobertura proyectados por material (Planificación > Inventario):
+   material, descripción, centro, mínimo y máximo fijos al desplazar los
+   meses hacia la derecha (pedido del usuario, 2026-10-21). Mismo patrón que
+   la matriz TCO: anchos fijos para apilar los "left" y fondo opaco. */
+.matriz-proyeccion { font-variant-numeric: tabular-nums; }
+.matriz-proyeccion th, .matriz-proyeccion td { white-space: nowrap; }
+.matriz-proyeccion .col-fija {
+  position: sticky; z-index: 1; box-sizing: border-box; background: var(--surface);
+  overflow: hidden; text-overflow: ellipsis;
+}
+.matriz-proyeccion .fija-1 { left: 0; width: 104px; min-width: 104px; max-width: 104px; }
+.matriz-proyeccion .fija-2 { left: 104px; width: 250px; min-width: 250px; max-width: 250px; }
+.matriz-proyeccion .fija-3 { left: 354px; width: 132px; min-width: 132px; max-width: 132px; }
+.matriz-proyeccion .fija-4 { left: 486px; width: 78px; min-width: 78px; max-width: 78px; }
+.matriz-proyeccion .fija-5 { left: 564px; width: 78px; min-width: 78px; max-width: 78px; box-shadow: 2px 0 0 var(--table-line); }
+.matriz-proyeccion thead .col-fija { z-index: 3; background: var(--th-bg); }
+.matriz-proyeccion tbody tr:nth-child(even) .col-fija { background: var(--surface-2); }
+.matriz-proyeccion tbody tr:hover .col-fija { background: var(--line); }
+/* En pantallas angostas solo queda fijo el código: las cinco juntas taparían los meses. */
+@media (max-width: 760px) {
+  .matriz-proyeccion .col-fija:not(.fija-1) { position: static; }
+  .matriz-proyeccion .fija-1 { box-shadow: 2px 0 0 var(--table-line); }
+}
 /* Mes sin compra: se repite el último precio, en gris y cursiva. */
 .matriz-tco td.tco-repetido { color: var(--muted); font-style: italic; }
 /* IPU de un material sin compra el año anterior: no entra al IPU. */
