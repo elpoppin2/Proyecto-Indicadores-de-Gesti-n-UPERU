@@ -314,18 +314,66 @@
        class="col-codigo"/"col-descripcion". Expuesto en window para que el
        script de filtros AJAX pueda re-aplicarlo tras reemplazar una sección. */
     (function () {
+      // Búsqueda tolerante: sin tildes ni mayúsculas, cada palabra por
+      // separado y en cualquier orden ("perno 5/8" encuentra "PERNO HEX
+      // 5/8"), y el código con o sin guion ("1400000037" = "14-00000037").
+      function normalizar(texto) {
+        return (texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      }
+      function palabras(texto) { return normalizar(texto).trim().split(/\s+/).filter(Boolean); }
+      function coincide(texto, buscadas) {
+        if (!buscadas.length) return true;
+        var t = normalizar(texto), sinGuion = t.replace(/-/g, '');
+        return buscadas.every(function (p) { return t.indexOf(p) !== -1 || sinGuion.indexOf(p.replace(/-/g, '')) !== -1; });
+      }
+      function formato(n, decimales) {
+        var v = Math.abs(n) < 0.5 * Math.pow(10, -decimales) ? 0 : n;
+        return v.toLocaleString('en-US', { minimumFractionDigits: decimales, maximumFractionDigits: decimales });
+      }
+      // Tablas con fila total (data-total-tabla): el total y el conteo son
+      // de las filas que quedan visibles tras la búsqueda.
+      function totalizar(contenedor) {
+        var visibles = 0, importe = 0, base = 0, filas = 0;
+        contenedor.querySelectorAll('table tbody tr').forEach(function (fila) {
+          filas++;
+          if (fila.hidden) return;
+          visibles++;
+          importe += parseFloat(fila.dataset.importe) || 0;
+          base += parseFloat(fila.dataset.base) || 0;
+        });
+        function poner(clave, texto, signo) {
+          var celda = contenedor.querySelector('[data-total="' + clave + '"]');
+          if (!celda) return;
+          celda.textContent = texto;
+          if (signo !== undefined) {
+            celda.classList.toggle('dato-negativo', signo > 0);
+            celda.classList.toggle('dato-positivo', signo < 0);
+          }
+        }
+        var pct = base ? (importe / base - 1) * 100 : 0;
+        poner('materiales', formato(visibles, 0) + (visibles === 1 ? ' material' : ' materiales'));
+        poner('importe', formato(importe, 0));
+        poner('pct', (pct > 0.05 ? '+' : '') + formato(pct, 1) + '%', pct);
+        poner('bolsa', formato(importe - base, 0), importe - base);
+        var conteo = contenedor.querySelector('[data-conteo]');
+        if (conteo) conteo.textContent = visibles === filas ? formato(filas, 0) + ' materiales'
+          : (visibles ? formato(visibles, 0) + ' de ' + formato(filas, 0) + ' materiales' : 'Ningún material coincide con la búsqueda');
+      }
       function filtrarTablaBuscable(contenedor) {
         var campoCodigo = contenedor.querySelector('[data-buscar="codigo"]');
         var campoDesc = contenedor.querySelector('[data-buscar="descripcion"]');
-        var codigo = campoCodigo ? campoCodigo.value.trim().toLowerCase() : '';
-        var desc = campoDesc ? campoDesc.value.trim().toLowerCase() : '';
+        var campoTodo = contenedor.querySelector('[data-buscar="todo"]');
+        var codigo = palabras(campoCodigo && campoCodigo.value);
+        var desc = palabras(campoDesc && campoDesc.value);
+        var todo = palabras(campoTodo && campoTodo.value);
         contenedor.querySelectorAll('table tbody tr').forEach(function (fila) {
           var celdaCodigo = fila.querySelector('.col-codigo');
           var celdaDesc = fila.querySelector('.col-descripcion');
-          var okCodigo = !codigo || (celdaCodigo && celdaCodigo.textContent.toLowerCase().indexOf(codigo) !== -1);
-          var okDesc = !desc || (celdaDesc && celdaDesc.textContent.toLowerCase().indexOf(desc) !== -1);
-          fila.hidden = !(okCodigo && okDesc);
+          var textoCodigo = celdaCodigo ? celdaCodigo.textContent : '';
+          var textoDesc = celdaDesc ? celdaDesc.textContent : '';
+          fila.hidden = !(coincide(textoCodigo, codigo) && coincide(textoDesc, desc) && coincide(textoCodigo + ' ' + textoDesc, todo));
         });
+        if (contenedor.hasAttribute('data-total-tabla')) totalizar(contenedor);
       }
       window.uperuFiltrarBuscador = filtrarTablaBuscable;
 

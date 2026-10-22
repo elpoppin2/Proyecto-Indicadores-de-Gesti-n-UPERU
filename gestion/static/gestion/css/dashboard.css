@@ -275,6 +275,58 @@ table thead th[data-orden="desc"]::after { content: "\25BC"; }
 .tabla-alto-fijo { max-height: var(--alto-tabla, 480px); overflow-y: auto; }
 .tabla-alto-fijo th { position: sticky; top: 0; z-index: 1; }
 
+/* --- Tabla en marco (Precios e IPU: materiales que subieron / bajaron y la
+   matriz de inflación). Se desplaza dentro del marco en ambos sentidos con
+   el encabezado arriba, las dos primeras columnas a la izquierda y el total
+   abajo siempre a la vista (pedido del usuario, 2026-10-22). Las líneas de
+   las celdas fijas van con box-shadow: con border-collapse los bordes no
+   acompañan a una celda sticky. --- */
+.tabla-marco {
+  max-height: min(68vh, 640px); overflow: auto; border: 1px solid var(--table-line); border-radius: 6px;
+  background: var(--surface); scrollbar-gutter: stable;
+}
+.tabla-marco > table { border: 0; }
+.tabla-fija { --fijo-1: 116px; --fijo-2: 300px; }
+.tabla-fija.fijas-matriz { --fijo-1: 290px; --fijo-2: 124px; }
+.tabla-fija thead th { position: sticky; top: 0; z-index: 2; box-shadow: inset 0 -1px 0 var(--table-line); }
+.tabla-fija .fijo-1, .tabla-fija .fijo-2 { position: sticky; z-index: 1; box-sizing: border-box; background: var(--surface); }
+.tabla-fija .fijo-1 { left: 0; width: var(--fijo-1); min-width: var(--fijo-1); max-width: var(--fijo-1); }
+.tabla-fija .fijo-2 { left: var(--fijo-1); width: var(--fijo-2); min-width: var(--fijo-2); max-width: var(--fijo-2); box-shadow: 2px 0 0 var(--table-line); }
+.tabla-fija th, .tabla-fija td { white-space: nowrap; }
+.tabla-fija td.fijo-1, .tabla-fija td.fijo-2 { white-space: normal; overflow-wrap: anywhere; }
+.tabla-fija td.col-codigo { white-space: nowrap; }
+.tabla-fija thead .fijo-1, .tabla-fija thead .fijo-2 { z-index: 4; background: var(--th-bg); }
+.tabla-fija thead .fijo-2 { box-shadow: 2px 0 0 var(--table-line), inset 0 -1px 0 var(--table-line); }
+.tabla-fija tbody tr:nth-child(even) .fijo-1, .tabla-fija tbody tr:nth-child(even) .fijo-2 { background: var(--surface-2); }
+.tabla-fija tbody tr:hover .fijo-1, .tabla-fija tbody tr:hover .fijo-2 { background: color-mix(in srgb, var(--surface-3) 70%, var(--surface)); }
+/* El total: una franja fija al pie del marco, con el mismo fondo que el encabezado. */
+.tabla-fija tfoot { position: sticky; bottom: 0; z-index: 3; }
+.tabla-fija tfoot td { background: var(--th-bg); border-top: 0; border-bottom: 0; }
+.tabla-fija tfoot tr:first-child td { box-shadow: inset 0 2px 0 var(--table-line); }
+.tabla-fija tfoot tr:first-child td.fijo-2 { box-shadow: 2px 0 0 var(--table-line), inset 0 2px 0 var(--table-line); }
+.tabla-fija tfoot td.fijo-1, .tabla-fija tfoot td.fijo-2 { background: var(--th-bg); }
+.tabla-fija tfoot td.fijo-1 { white-space: nowrap; }
+
+/* Buscador y conteo sobre la tabla. */
+.tabla-herramientas { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; margin-bottom: 8px; }
+.tabla-herramientas .campo-buscar { flex: 0 1 380px; }
+.campo input[type="search"] {
+  font: inherit; font-size: 13.5px; height: 34px; padding: 0 10px; border-radius: 6px; box-sizing: border-box; width: 100%;
+  border: 1px solid var(--table-line); background: var(--surface); color: var(--ink);
+}
+.campo input[type="search"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tabla-conteo { margin: 0; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) {
+  .tabla-fija .fijo-2 { position: static; box-shadow: none; }
+  .tabla-fija .fijo-1 { box-shadow: 2px 0 0 var(--table-line); }
+  .tabla-fija.fijas-matriz { --fijo-1: 200px; }
+}
+@media print {
+  .tabla-marco { max-height: none; overflow: visible; border: 0; }
+  .tabla-fija thead th, .tabla-fija tfoot, .tabla-fija .fijo-1, .tabla-fija .fijo-2 { position: static; }
+  .tabla-herramientas { display: none; }
+}
+
 /* --- Buscador de materiales (código/descripción), filtra la tabla en vivo --- */
 .buscador { display: flex; gap: 14px; flex-wrap: wrap; }
 .campo input[type="text"] {

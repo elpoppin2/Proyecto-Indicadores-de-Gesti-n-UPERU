@@ -227,7 +227,6 @@ _EVALUACIONES_IPU_CATEGORIA = {
     "mensual": {"desfase": 1, "texto": "Mes anterior",
                 "contra": "el mes anterior (Mar-26 vs Feb-26)", "base_titulo": "el mes anterior"},
 }
-_IPU_FILAS_TABLA = 15
 
 
 def _seleccion_precios(request, categoria):
@@ -350,18 +349,28 @@ def _cat_precios(request, categoria, tiene_inventario):
     materiales["bolsa"] = materiales["importe"] - materiales["base_importe"]
     materiales["pct"] = (materiales["importe"] / materiales["base_importe"] - 1) * 100
 
-    def filas(df_tabla):
-        return [{"material_codigo": r.material_codigo, "texto_breve": r.texto_breve, "centro": r.centro,
-                 "umb": umb.get(r.material_codigo, ""), "precio": r.precio, "mes": _mes_corto(r.mes),
-                 "pct": r.pct, "bolsa": r.bolsa} for r in df_tabla.itertuples()]
+    # Todos los materiales que subieron (y los que bajaron), con su total:
+    # lo pagado, lo que habría costado al precio base y la variación
+    # ponderada del conjunto. La tabla se desplaza con encabezado, código y
+    # descripción fijos, y el buscador recalcula el total de lo encontrado
+    # (pedido del usuario, 2026-10-22).
+    def tabla(df_tabla, id_tabla, titulo, orden, vacio):
+        filas = [{"material_codigo": r.material_codigo, "texto_breve": r.texto_breve, "centro": r.centro,
+                  "umb": umb.get(r.material_codigo, ""), "precio": r.precio, "mes": _mes_corto(r.mes),
+                  "importe": r.importe, "base_importe": r.base_importe, "pct": r.pct, "bolsa": r.bolsa}
+                 for r in df_tabla.itertuples()]
+        importe, base_importe = float(df_tabla["importe"].sum()), float(df_tabla["base_importe"].sum())
+        total = {"materiales": len(filas), "importe": importe, "bolsa": importe - base_importe,
+                 "pct": (importe / base_importe - 1) * 100 if base_importe else 0.0}
+        return {"id": id_tabla, "titulo": titulo, "orden": orden, "filas": filas, "total": total, "vacio": vacio}
 
-    suben = materiales[materiales["bolsa"] > 0]
-    bajan = materiales[materiales["bolsa"] < 0]
+    suben = materiales[materiales["bolsa"] > 0].sort_values("bolsa", ascending=False)
+    bajan = materiales[materiales["bolsa"] < 0].sort_values("bolsa")
     pr["tablas"] = [
-        {"titulo": f"Materiales que más subieron ({len(suben)} con alza en el período)", "orden": "desc",
-         "filas": filas(suben.nlargest(_IPU_FILAS_TABLA, "bolsa")), "vacio": "Ningún material subió de precio en el período."},
-        {"titulo": f"Materiales que más bajaron ({len(bajan)} con baja en el período)", "orden": "asc",
-         "filas": filas(bajan.nsmallest(_IPU_FILAS_TABLA, "bolsa")), "vacio": "Ningún material bajó de precio en el período."},
+        tabla(suben, "suben", f"Materiales que subieron de precio ({len(suben):,} en el período)", "desc",
+              "Ningún material subió de precio en el período."),
+        tabla(bajan, "bajan", f"Materiales que bajaron de precio ({len(bajan):,} en el período)", "asc",
+              "Ningún material bajó de precio en el período."),
     ]
     ultimo = ipu[meses[-1]] if meses else None
     pr["resumen"] = {

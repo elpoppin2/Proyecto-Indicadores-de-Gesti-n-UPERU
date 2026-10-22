@@ -2488,21 +2488,23 @@ function renderInflacion(suf){
         <span class="leyenda-item texto-tenue">Se reinicia cada enero · pasa el mouse por un punto o etiqueta para ver el detalle</span>
       </div>` : ""}
     <h3 class="subtitulo">${titulo}</h3>
-    <div class="tabla-scroll"><table class="tabla-inflacion">
-      <thead><tr><th>Material</th><th>Centro</th>${c.meses.map(m => `<th class="num">${mesCorto(m)}</th>`).join("")}
+    <div class="tabla-marco"><table class="tabla-inflacion tabla-fija fijas-matriz">
+      <thead><tr><th class="fijo-1">Material</th><th class="fijo-2">Centro</th>${c.meses.map(m => `<th class="num">${mesCorto(m)}</th>`).join("")}
         ${c.anios.map(a => `<th class="num">Bolsa ${a} (S/)</th>`).join("")}<th class="num" data-orden="desc">Bolsa total (S/)</th><th class="num">Período %</th></tr></thead>
       <tbody>
-        ${c.filas.map(f => `<tr><td>${f.texto_breve} <span class="celda-codigo texto-tenue">${f.material_codigo}</span></td><td>${nombreCentro(f.centro)}</td>
+        ${c.filas.map(f => `<tr><td class="fijo-1">${f.texto_breve} <span class="celda-codigo texto-tenue">${f.material_codigo}</span></td><td class="fijo-2">${nombreCentro(f.centro)}</td>
           ${f.celdas.map(td).join("")}${f.bolsa_anios.map(b => `<td class="num">${b === null ? "—" : numero(b)}</td>`).join("")}
           <td class="num"><strong>${numero(f.bolsa)}</strong></td><td class="num">${f.periodo_pct > 0 ? "+" : ""}${numero(f.periodo_pct,1)}%</td></tr>`).join("")}
-        ${c.filas.length > 1 && !c.acumulado ? `<tr class="fila-total"><td>Selección (ponderada, cada mes)</td><td></td>
+      </tbody>
+      <tfoot>
+        ${c.filas.length > 1 && !c.acumulado ? `<tr class="fila-total"><td class="fijo-1">Selección (ponderada, cada mes)</td><td class="fijo-2"></td>
           ${c.canasta.map(x => `<td class="num celda-inflacion ${x.sube ? "celda-sube" : "celda-baja"}" style="--intensidad:${x.intensidad};" data-detalle="${e(x.detalle)}">${x.texto}</td>`).join("")}
           ${c.bolsa_anios_total.map(b => `<td class="num">${numero(b)}</td>`).join("")}<td class="num">${numero(r.bolsa)}</td>
           <td class="num">${r.periodo_pct > 0 ? "+" : ""}${numero(r.periodo_pct,1)}%</td></tr>` : ""}
-        ${c.filas.length > 1 || !c.acumulado ? `<tr class="fila-total fila-ipu"><td>IPU acumulado del año</td><td></td>
+        ${c.filas.length > 1 || !c.acumulado ? `<tr class="fila-total fila-ipu"><td class="fijo-1">IPU acumulado del año</td><td class="fijo-2"></td>
           ${c.ipuFila.map(x => x ? `<td class="num celda-inflacion ${x.sube ? "celda-sube" : "celda-baja"}" style="--intensidad:${x.intensidad};" data-detalle="${e(x.detalle)}">${x.texto}</td>` : `<td class="num texto-tenue">—</td>`).join("")}
           ${c.bolsa_anios_total.map(() => "<td></td>").join("")}<td></td><td></td></tr>` : ""}
-      </tbody>
+      </tfoot>
     </table></div>
     ${c.detalle.length ? `<h3 class="subtitulo">Detalle de la comparación</h3>
       <div class="tabla-scroll"><table>

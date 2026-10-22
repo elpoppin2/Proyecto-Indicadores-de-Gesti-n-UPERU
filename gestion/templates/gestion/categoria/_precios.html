@@ -117,30 +117,53 @@
     {% if not pr.grafico_precio %}{% for t in pr.tablas %}
       <h3 class="subtitulo">{{ t.titulo }}</h3>
       {% if t.filas %}
-        <div class="tabla-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Material</th><th>Descripción</th><th>Centro</th><th>UMB</th>
-                <th class="num">Último precio (S/ por UMB)</th><th>Última compra</th>
-                <th class="num">Variación del período</th><th class="num" data-orden="{{ t.orden }}">Bolsa (S/)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for f in t.filas %}
-                <tr data-filtrar="f_material={{ f.material_codigo|urlencode }}&amp;f_centro={{ f.centro|urlencode }}" data-filtrar-clave="precios" tabindex="0" title="Ver sus comparaciones mes a mes">
-                  <td class="col-codigo">{{ f.material_codigo }}</td>
-                  <td class="col-descripcion">{{ f.texto_breve }}</td>
-                  <td>{{ f.centro|centro }}</td>
-                  <td>{{ f.umb }}</td>
-                  <td class="num">{{ f.precio|numero:2 }}</td>
-                  <td>{{ f.mes }}</td>
-                  <td class="num {% if f.pct > 0 %}dato-negativo{% elif f.pct < 0 %}dato-positivo{% endif %}">{% if f.pct > 0 %}+{% endif %}{{ f.pct|numero:1 }}%</td>
-                  <td class="num {% if f.bolsa > 0 %}dato-negativo{% elif f.bolsa < 0 %}dato-positivo{% endif %}">{{ f.bolsa|numero:0 }}</td>
+        {# Todas las filas, con encabezado, código y descripción fijos al desplazar y el total abajo; el buscador (base.html) recalcula el total de lo encontrado. #}
+        <div class="tabla-buscable" data-total-tabla>
+          <div class="tabla-herramientas">
+            <div class="campo campo-buscar">
+              <label for="buscar-{{ t.id }}-ipu">Buscar material</label>
+              <input type="search" id="buscar-{{ t.id }}-ipu" data-buscar="todo" placeholder="Código o palabras de la descripción" autocomplete="off" spellcheck="false">
+            </div>
+            <p class="tabla-conteo" data-conteo aria-live="polite">{{ t.total.materiales|numero }} materiales</p>
+          </div>
+          <div class="tabla-marco">
+            <table class="tabla-fija">
+              <thead>
+                <tr>
+                  <th class="fijo-1">Material</th><th class="fijo-2">Descripción</th><th>Centro</th><th>UMB</th>
+                  <th class="num">Último precio (S/ por UMB)</th><th>Última compra</th><th class="num">Pagado (S/)</th>
+                  <th class="num">Variación del período</th><th class="num" data-orden="{{ t.orden }}">Bolsa (S/)</th>
                 </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {% for f in t.filas %}
+                  <tr data-filtrar="f_material={{ f.material_codigo|urlencode }}&amp;f_centro={{ f.centro|urlencode }}" data-filtrar-clave="precios" tabindex="0" title="Ver sus comparaciones mes a mes" data-importe="{{ f.importe|stringformat:'.2f' }}" data-base="{{ f.base_importe|stringformat:'.2f' }}">
+                    <td class="col-codigo fijo-1">{{ f.material_codigo }}</td>
+                    <td class="col-descripcion fijo-2">{{ f.texto_breve }}</td>
+                    <td>{{ f.centro|centro }}</td>
+                    <td>{{ f.umb }}</td>
+                    <td class="num">{{ f.precio|numero:2 }}</td>
+                    <td>{{ f.mes }}</td>
+                    <td class="num">{{ f.importe|numero:0 }}</td>
+                    <td class="num {% if f.pct > 0 %}dato-negativo{% elif f.pct < 0 %}dato-positivo{% endif %}">{% if f.pct > 0 %}+{% endif %}{{ f.pct|numero:1 }}%</td>
+                    <td class="num {% if f.bolsa > 0 %}dato-negativo{% elif f.bolsa < 0 %}dato-positivo{% endif %}">{{ f.bolsa|numero:0 }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+              <tfoot>
+                {% with r=t.total %}
+                <tr class="fila-total">
+                  <td class="fijo-1">Total</td>
+                  <td class="fijo-2" data-total="materiales">{{ r.materiales|numero }} materiales</td>
+                  <td colspan="4"></td>
+                  <td class="num" data-total="importe">{{ r.importe|numero:0 }}</td>
+                  <td class="num {% if r.pct > 0 %}dato-negativo{% elif r.pct < 0 %}dato-positivo{% endif %}" data-total="pct" title="Ponderada: lo pagado ÷ lo que habría costado al precio base − 1">{% if r.pct > 0 %}+{% endif %}{{ r.pct|numero:1 }}%</td>
+                  <td class="num {% if r.bolsa > 0 %}dato-negativo{% elif r.bolsa < 0 %}dato-positivo{% endif %}" data-total="bolsa">{{ r.bolsa|numero:0 }}</td>
+                </tr>
+                {% endwith %}
+              </tfoot>
+            </table>
+          </div>
         </div>
       {% else %}
         <p class="aviso">{{ t.vacio }}</p>

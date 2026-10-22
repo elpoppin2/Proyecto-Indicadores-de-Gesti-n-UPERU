@@ -128,11 +128,12 @@
 
     <h3 class="subtitulo">Por material y mes · {% if inf.acumulado %}acumulado del año (IPU){% else %}cada mes{% endif %}{% if inf.en_soles %} · bolsa en S/{% elif inf.en_precio %} · {% if inf.acumulado %}precio promedio del año a la fecha{% else %}precio en S/ por {{ inf.unidad }}{% endif %} y su variación{% endif %}</h3>
     {% if inf.filas_recortadas %}<p class="nota">Se muestran los {{ inf.filas|length }} materiales de mayor impacto en soles (bolsa) de {{ inf.filas_total|numero }}; la Selección y el IPU son de todos. Usa Familia, Centro o Material para ver otros.</p>{% endif %}
-    <div class="tabla-scroll">
-      <table class="tabla-inflacion">
+    {# Material y centro fijos al desplazar los meses; encabezado arriba y Selección/IPU abajo, siempre a la vista (pedido del usuario, 2026-10-22). #}
+    <div class="tabla-marco">
+      <table class="tabla-inflacion tabla-fija fijas-matriz">
         <thead>
           <tr>
-            <th>Material</th><th>Centro</th>
+            <th class="fijo-1">Material</th><th class="fijo-2">Centro</th>
             {% for m in inf.meses %}<th class="num">{{ m }}</th>{% endfor %}
             {% for a in inf.anios %}<th class="num">Bolsa {{ a }} (S/)</th>{% endfor %}
             <th class="num" data-orden="desc">Bolsa total (S/)</th><th class="num">Período %</th>
@@ -141,8 +142,8 @@
         <tbody>
           {% for f in inf.filas %}
             <tr>
-              <td>{{ f.texto_breve }} <span class="celda-codigo texto-tenue">{{ f.material_codigo }}</span></td>
-              <td>{{ f.centro|centro }}</td>
+              <td class="fijo-1">{{ f.texto_breve }} <span class="celda-codigo texto-tenue">{{ f.material_codigo }}</span></td>
+              <td class="fijo-2">{{ f.centro|centro }}</td>
               {% for c in f.celdas %}
                 {% if c %}
                   <td class="num celda-inflacion {% if c.atipica %}celda-atipica{% elif c.sube %}celda-sube{% else %}celda-baja{% endif %}" style="--intensidad:{{ c.intensidad }};" data-detalle="{{ c.detalle }}">{{ c.texto }}{% if c.sustituida %}<span class="marca-sustituida">*</span>{% endif %}{% if c.atipica %}<span class="marca-atipica">!</span>{% endif %}{% if c.subtexto %}<span class="celda-subtexto">{{ c.subtexto }}</span>{% endif %}</td>
@@ -155,9 +156,11 @@
               <td class="num">{% if f.periodo_pct > 0 %}+{% endif %}{{ f.periodo_pct|numero:1 }}%</td>
             </tr>
           {% endfor %}
+        </tbody>
+        <tfoot>
           {% if inf.filas|length > 1 and not inf.acumulado %}
             <tr class="fila-total">
-              <td>Selección (ponderada, cada mes)</td><td></td>
+              <td class="fijo-1">Selección (ponderada, cada mes)</td><td class="fijo-2"></td>
               {% for c in inf.canasta %}
                 <td class="num celda-inflacion {% if c.sube %}celda-sube{% else %}celda-baja{% endif %}" style="--intensidad:{{ c.intensidad }};" data-detalle="{{ c.detalle }}">{{ c.texto }}</td>
               {% endfor %}
@@ -168,7 +171,7 @@
           {% endif %}
           {% if inf.filas|length > 1 or not inf.acumulado %}
             <tr class="fila-total fila-ipu">
-              <td>IPU acumulado del año</td><td></td>
+              <td class="fijo-1">IPU acumulado del año</td><td class="fijo-2"></td>
               {% for c in inf.ipu_fila %}
                 {% if c %}
                   <td class="num celda-inflacion {% if c.sube %}celda-sube{% else %}celda-baja{% endif %}" style="--intensidad:{{ c.intensidad }};" data-detalle="{{ c.detalle }}">{{ c.texto }}</td>
@@ -180,7 +183,7 @@
               <td></td><td></td>
             </tr>
           {% endif %}
-        </tbody>
+        </tfoot>
       </table>
     </div>
 

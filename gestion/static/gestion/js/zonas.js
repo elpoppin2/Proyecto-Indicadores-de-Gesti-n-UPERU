@@ -117,6 +117,16 @@
     var palabra = d.split(/\s+/)[0] || 'Otros';
     return palabra.charAt(0) + palabra.slice(1).toLowerCase();
   }
+  // Búsqueda sin tildes ni mayúsculas, palabra por palabra en cualquier
+  // orden y el código con o sin guion (igual que los buscadores de tablas).
+  function normalizar(t) { return (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+  function coincide(texto, palabras) {
+    var sinGuion = texto.replace(/-/g, '');
+    return palabras.every(function (p) { return texto.indexOf(p) !== -1 || sinGuion.indexOf(p.replace(/-/g, '')) !== -1; });
+  }
+  // Con muchos grupos (Suministros, Repuestos: uno por primera palabra) se
+  // muestran como botones solo los más grandes; el buscador llega al resto.
+  var MAX_CHIPS = 14;
   function enTitulo(s) { return s.toLowerCase().replace(/(^|[\s(-])\S/g, function (c) { return c.toUpperCase(); }); }
   function gruposDe(select) {
     var mapa = {};
@@ -215,18 +225,23 @@
 
     var buscar = crear('input', 'filtro-multi-buscar');
     buscar.type = 'search';
-    buscar.placeholder = 'Buscar material o código';
+    buscar.placeholder = 'Código o palabras de la descripción';
     buscar.setAttribute('aria-label', 'Buscar material o código');
     panel.appendChild(buscar);
 
     var chips = crear('div', 'filtro-multi-grupos');
     var lista = crear('div', 'filtro-multi-lista');
+    var conChip = {};
+    grupos.slice().sort(function (a, b) { return b.opciones.length - a.opciones.length; }).slice(0, MAX_CHIPS)
+      .forEach(function (g) { conChip[g.nombre] = true; });
     grupos.forEach(function (g) {
-      var chip = crear('button', 'chip-grupo', g.nombre + ' ');
-      chip.type = 'button';
-      chip.dataset.grupo = g.nombre;
-      chip.appendChild(crear('span', 'chip-cuenta', String(g.opciones.length)));
-      chips.appendChild(chip);
+      if (conChip[g.nombre]) {
+        var chip = crear('button', 'chip-grupo', g.nombre + ' ');
+        chip.type = 'button';
+        chip.dataset.grupo = g.nombre;
+        chip.appendChild(crear('span', 'chip-cuenta', String(g.opciones.length)));
+        chips.appendChild(chip);
+      }
 
       var bloque = crear('div', 'grupo-bloque');
       bloque.dataset.grupo = g.nombre;
@@ -247,12 +262,21 @@
         fila.appendChild(check);
         fila.appendChild(crear('span', 'opcion-nombre', enTitulo(descripcion(o))));
         fila.appendChild(crear('span', 'opcion-codigo', o.value));
-        fila.dataset.buscar = (o.value + ' ' + descripcion(o)).toLowerCase();
+        fila.dataset.buscar = normalizar(o.value + ' ' + descripcion(o) + ' ' + g.nombre);
         bloque.appendChild(fila);
       });
       lista.appendChild(bloque);
     });
-    panel.appendChild(chips);
+    var resultado = crear('div', 'filtro-multi-resultado');
+    var conteo = crear('span', 'filtro-multi-conteo');
+    var marcarVisibles = crear('button', 'btn-link', 'Marcar los encontrados');
+    marcarVisibles.type = 'button';
+    marcarVisibles.dataset.accion = 'marcar-visibles';
+    marcarVisibles.hidden = true;
+    resultado.appendChild(conteo);
+    resultado.appendChild(marcarVisibles);
+    if (grupos.length > 1) panel.appendChild(chips);
+    panel.appendChild(resultado);
     panel.appendChild(lista);
     var pie = crear('div', 'filtro-multi-pie');
     var botonTodos = crear('button', 'btn-link', 'Todos (sin filtro)');
@@ -266,15 +290,16 @@
     panel.appendChild(pie);
 
     function checks(grupo) {
-      return Array.prototype.slice.call(lista.querySelectorAll('input[type="checkbox"][value]' + (grupo ? '[data-grupo="' + grupo + '"]' : '')));
+      return Array.prototype.slice.call(lista.querySelectorAll('input[type="checkbox"][value]' + (grupo ? '[data-grupo="' + CSS.escape(grupo) + '"]' : '')));
     }
     function estados() {
       grupos.forEach(function (g) {
         var cs = checks(g.nombre), n = cs.filter(function (x) { return x.checked; }).length;
-        var cg = lista.querySelector('[data-grupo-check="' + g.nombre + '"]');
+        var cg = lista.querySelector('[data-grupo-check="' + CSS.escape(g.nombre) + '"]');
         cg.checked = n === cs.length;
         cg.indeterminate = n > 0 && n < cs.length;
-        chips.querySelector('[data-grupo="' + g.nombre + '"]').setAttribute('aria-pressed', n === cs.length ? 'true' : 'false');
+        var chip = chips.querySelector('[data-grupo="' + CSS.escape(g.nombre) + '"]');
+        if (chip) chip.setAttribute('aria-pressed', n === cs.length ? 'true' : 'false');
       });
       var total = checks().filter(function (x) { return x.checked; }).length;
       aplicar.textContent = total ? 'Aplicar (' + total + ')' : 'Aplicar (todos)';
@@ -298,26 +323,45 @@
       }
       var accion = e.target.closest('[data-accion]');
       if (!accion) return;
+      if (accion.dataset.accion === 'marcar-visibles') {
+        lista.querySelectorAll('.opcion-material:not([hidden]) input').forEach(function (x) { x.checked = true; });
+        estados();
+        return;
+      }
       if (accion.dataset.accion === 'todos') checks().forEach(function (x) { x.checked = false; });
       aplicarSeleccion();
     });
-    buscar.addEventListener('input', function () {
-      var texto = buscar.value.trim().toLowerCase();
+    var totalOpciones = select.options.length;
+    function filtrar() {
+      var palabras = normalizar(buscar.value).trim().split(/\s+/).filter(Boolean);
+      var encontrados = 0;
       lista.querySelectorAll('.grupo-bloque').forEach(function (bloque) {
         var visibles = 0;
         bloque.querySelectorAll('.opcion-material').forEach(function (fila) {
-          var ver = !texto || fila.dataset.buscar.indexOf(texto) !== -1 || bloque.dataset.grupo.toLowerCase().indexOf(texto) !== -1;
+          var ver = coincide(fila.dataset.buscar, palabras);
           fila.hidden = !ver;
           if (ver) visibles++;
         });
         bloque.hidden = !visibles;
+        encontrados += visibles;
       });
+      conteo.textContent = !palabras.length ? totalOpciones.toLocaleString('en-US') + ' materiales'
+        : encontrados ? encontrados.toLocaleString('en-US') + ' de ' + totalOpciones.toLocaleString('en-US') + ' materiales'
+        : 'Ningún material coincide. Prueba con otra palabra o parte del código.';
+      marcarVisibles.hidden = !palabras.length || !encontrados;
+      marcarVisibles.textContent = encontrados === 1 ? 'Marcar el encontrado' : 'Marcar los ' + encontrados.toLocaleString('en-US') + ' encontrados';
+    }
+    var esperaBusqueda = null;
+    buscar.addEventListener('input', function () {
+      clearTimeout(esperaBusqueda);
+      esperaBusqueda = setTimeout(filtrar, totalOpciones > 300 ? 120 : 0);
     });
     panel.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') { e.preventDefault(); cerrar(true); }
       else if (e.key === 'Enter' && e.target === buscar) { e.preventDefault(); aplicarSeleccion(); }
     });
     estados();
+    filtrar();
     document.body.appendChild(panel);
     ubicar();
     c._boton.setAttribute('aria-expanded', 'true');
