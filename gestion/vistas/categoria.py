@@ -11,7 +11,7 @@ from django.template.loader import render_to_string
 from django.utils.safestring import mark_safe
 
 from .categoria_indicadores import _cat_indicadores
-from .categoria_pestanas import _cat_abastecimiento, _cat_compras, _cat_cuentas, _cat_inventario, _cat_precios
+from .categoria_pestanas import _cat_abastecimiento, _cat_compras, _cat_cuentas, _cat_inventario, _cat_precios_zona
 from .comun import _ROTACION_PAGINA_TAM, _centros_por_nombre, _construir_nav, _por_str, _rotacion_materiales_filtrado, _segmentadores_compras, _segmentadores_inventario, _slug
 from .portada import _contexto_informe_area, _contexto_resumen_area
 from .zonas import _zonas_categoria
@@ -23,7 +23,7 @@ _CONTENIDO_ZONA_CATEGORIA = {
     "compras": ("gestion/categoria/_compras.html", _cat_compras),
     "inventario": ("gestion/categoria/_inventario.html", _cat_inventario),
     "abastecimiento": ("gestion/categoria/_abastecimiento.html", _cat_abastecimiento),
-    "precios": ("gestion/categoria/_precios.html", _cat_precios),
+    "precios": ("gestion/categoria/_precios.html", _cat_precios_zona),
     "cuentas": ("gestion/categoria/_cuentas.html", _cat_cuentas),
     "resumen": ("gestion/_resumen_area.html", lambda r, c, t: _contexto_resumen_area(r, _slug(c))),
     "informe": ("gestion/_informe_area.html", lambda r, c, t: _contexto_informe_area(r, _slug(c))),

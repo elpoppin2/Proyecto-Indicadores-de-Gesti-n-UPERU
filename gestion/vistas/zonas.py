@@ -69,7 +69,7 @@ _ZONAS_CATEGORIA = [
       "sec-criticos", "sec-variacion"], "inventario"),
     ("abastecimiento", "Abastecimiento S&OP", "Plan vs ingresos por centro",
      ["sec-sop-categoria", "sec-sop-mensual"], "sop"),
-    ("precios", "Precios e IPU", "Precio de compra e inflación", ["sec-ipu-categoria"], None),
+    ("precios", "Precios e IPU", "Precio de compra e inflación", ["sec-ipu-categoria", "sec-inflacion-categoria"], None),
     ("cuentas", "Cuentas por pagar", "Plazo de pago (PMP)",
      ["bloque-cuentas", "sec-pmp", "sec-plazos", "sec-dispersion-cxp", "sec-proveedores-cxp", "sec-deuda"], None),
     # Pedido del usuario (2026-10-21): cada área con su resumen e informe mensual.

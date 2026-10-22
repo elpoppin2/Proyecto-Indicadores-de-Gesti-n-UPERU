@@ -8,7 +8,7 @@ from dashboard import queries as q
 from .. import charts, desglose, ejecutivo
 from .comun import _ROTACION_PAGINA_TAM, _evolucion_inventario, _mes_abrev_guion, _mes_corto, _nombre_corto, _opciones_material, _por_familia_centro, _por_materiales, _por_str, _proveedor_unico_periodo, _rango_en_anio, _rango_meses, _rotacion_materiales_filtrado, _segmentadores_compras, _segmentadores_inventario, _selector_material, _soles_eje, _soles_marca, _texto_rango
 from .plan_cumplimiento import _meses_plan
-from .plan_precios import _filtrar_periodo_inflacion, _nota_base, _periodos_inflacion
+from .plan_precios import _contexto_evaluacion_precios, _filtrar_periodo_inflacion, _nota_base, _periodos_inflacion
 
 
 # Meses de la gráfica Compras por mes (pestaña Compras y su panel en Indicadores).
@@ -388,6 +388,33 @@ def _cat_precios(request, categoria, tiene_inventario):
             for r in reversed(inflacion.to_dict("records"))
         ]
     return {"pr": pr}
+
+
+# Inflación de precios interanual con el esquema de Planificación (matriz
+# material × mes con Ver precio TCO / bolsa / variación, Análisis individual o
+# IPU acumulado del año, y la participación de cada familia en el IPU).
+# Pedido del usuario (2026-10-22) para Suministros Industriales; para
+# sumarlo a otra categoría basta agregarla aquí.
+_CATEGORIAS_CON_INFLACION = {"SUMINISTROS INDUSTRIALES"}
+_INFLACION_CATEGORIA = {
+    "desfase": 12, "id": "sec-inflacion-categoria", "titulo": "Inflación de precios (interanual)",
+    "contra": "el mismo mes del año anterior", "ejemplo": "Ene-26 vs Ene-25",
+    "sustituto": "Dic-24, Nov-24…", "base_titulo": "un año antes",
+}
+_INFLACION_CATEGORIA_FILAS = 40
+
+
+def _cat_precios_zona(request, categoria, tiene_inventario):
+    """Pestaña Precios e IPU completa: la de siempre (_cat_precios) y, en
+    _CATEGORIAS_CON_INFLACION, la Inflación de precios interanual."""
+    contexto = _cat_precios(request, categoria, tiene_inventario)
+    if categoria in _CATEGORIAS_CON_INFLACION:
+        base = q.precios_entrada_materiales_real()
+        contexto["inf"] = _contexto_evaluacion_precios(
+            request, base[base["categoria"] == categoria], _INFLACION_CATEGORIA, "infcat",
+            campo="familia", campo_titulo="Familia", unidad=None, max_filas=_INFLACION_CATEGORIA_FILAS, por_familia=True,
+        )
+    return contexto
 
 
 # Tramos de plazo de pago de Cuentas por pagar: (días hasta, nombre).

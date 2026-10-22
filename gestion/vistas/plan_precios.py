@@ -337,8 +337,65 @@ def _contexto_inflacion(request, sufijo="inflacion"):
     mes y, con un material, su detalle. Pedido por el usuario. Precio real
     (MB51 + FBL3N) por defecto desde que la FBL3N quedó completa (2024 a
     set-26); "Solo MB51" deja la evaluación como antes."""
-    evaluacion = _EVALUACIONES_PRECIOS[sufijo]
-    base = q.precios_entrada_sop_real()
+    return _contexto_evaluacion_precios(request, q.precios_entrada_sop_real(), _EVALUACIONES_PRECIOS[sufijo], sufijo)
+
+
+_FAMILIAS_IPU_FILAS = 15
+
+
+def _participacion_familias_ipu(inflacion_total, base, anio, meses):
+    """Participación de cada familia en el IPU acumulado del año `anio` (el
+    último del período, dict de por_anio) hasta su último mes con
+    comparación: lo pagado y lo que habría costado al precio base de cada
+    familia. Aporte (puntos) = bolsa de la familia ÷ base de todas × 100:
+    los aportes suman el IPU del año. Pedido del usuario (2026-10-22)."""
+    hasta = max(m for m in meses if m.year == anio["anio"])
+    filas = inflacion_total[[m.year == anio["anio"] and m <= hasta for m in inflacion_total["mes"]]]
+    filas = filas[~filas["atipica"]]
+    if filas.empty:
+        return None
+    familia = dict(zip(base["material_codigo"], base["familia"]))
+    filas = filas.assign(familia=[familia.get(m) or "Sin familia" for m in filas["material_codigo"]],
+                         base_importe=filas["precio_base"] * filas["toneladas"],
+                         clave=list(zip(filas["material_codigo"], filas["centro"])))
+    g = filas.groupby("familia").agg(importe=("importe", "sum"), base=("base_importe", "sum"),
+                                     materiales=("clave", "nunique")).reset_index()
+    base_total, importe_total = float(g["base"].sum()), float(g["importe"].sum())
+    if not base_total:
+        return None
+    g["bolsa"] = g["importe"] - g["base"]
+    g["aporte"] = g["bolsa"] / base_total * 100
+    g = g.reindex(g["aporte"].abs().sort_values(ascending=False).index)
+    mayor = float(g["aporte"].abs().max()) or 1.0
+
+    def fila(nombre, r_importe, r_base, materiales):
+        bolsa, aporte = r_importe - r_base, (r_importe - r_base) / base_total * 100
+        return {"familia": nombre, "materiales": int(materiales), "importe": r_importe, "base": r_base, "bolsa": bolsa,
+                "pct": (r_importe / r_base - 1) * 100 if r_base else None, "aporte": aporte,
+                "peso": r_importe / importe_total * 100 if importe_total else 0.0,
+                "barra_sentido": "caro" if aporte > 0 else "barato" if aporte < 0 else "",
+                "barra_pct": f"{min(abs(aporte) / mayor, 1) * 50:z.1f}"}
+
+    primeras, resto = g.head(_FAMILIAS_IPU_FILAS), g.iloc[_FAMILIAS_IPU_FILAS:]
+    resultado = [fila(r.familia, r.importe, r.base, r.materiales) for r in primeras.itertuples()]
+    if not resto.empty:
+        resultado.append({**fila(f"Otras {len(resto)} familias", float(resto["importe"].sum()), float(resto["base"].sum()),
+                                 resto["materiales"].sum()), "resto": True})
+    return {"anio": anio["anio"], "anio_base": anio["anio"] - 1, "hasta": _mes_corto(hasta), "ipu": anio["pct"],
+            "bolsa": importe_total - base_total, "familias": int(len(g)), "filas": resultado}
+
+
+def _contexto_evaluacion_precios(request, base, evaluacion, sufijo, campo="categoria", campo_titulo="Categoría",
+                                 unidad="T", max_filas=None, por_familia=False):
+    """Cuerpo de _contexto_inflacion para cualquier conjunto de compras
+    (`base`, salida de precios_entrada_*_real): Planificación filtra por
+    Categoría y mide en toneladas; la pestaña Precios de una categoría
+    (pedido del usuario, 2026-10-22: el mismo esquema en Suministros
+    Industriales) filtra por Familia, con unidades mixtas (`unidad`=None:
+    "S/ por UMB" de cada material), muestra en la matriz solo los
+    `max_filas` materiales de mayor impacto (|bolsa|; la Selección y el IPU
+    siguen siendo de todos) y, con `por_familia`, la participación de cada
+    familia en el IPU acumulado del año."""
     if base.empty:
         return None
     tipo_sel = request.GET.get(f"tipo_{sufijo}", "real")
@@ -346,12 +403,20 @@ def _contexto_inflacion(request, sufijo="inflacion"):
         tipo_sel = "real"
     if tipo_sel == "mb51":
         base = base.assign(importe=base["importe_mb51"], precio=base["precio_mb51"])
+    umb = dict(zip(base["material_codigo"], base["unidad_medida_base"])) if "unidad_medida_base" in base else {}
 
-    categorias_op, _ = _opciones_categoria_centro(base)
-    categoria_sel = request.GET.get(f"categoria_{sufijo}", "Todas")
+    def por_unidad(material=None):
+        """"T", o la UMB del material (unidades mixtas)."""
+        return unidad or umb.get(material, "UMB")
+
+    def cantidad(valor, material=None):
+        return f"{valor:z,.0f} {por_unidad(material)}"
+
+    categorias_op = ["Todas"] + sorted(v for v in base[campo].dropna().unique().tolist() if v)
+    categoria_sel = request.GET.get(f"{campo}_{sufijo}", "Todas")
     if categoria_sel not in categorias_op:
         categoria_sel = "Todas"
-    por_categoria = base if categoria_sel == "Todas" else base[base["categoria"] == categoria_sel]
+    por_categoria = base if categoria_sel == "Todas" else base[base[campo] == categoria_sel]
     _, centros_op = _opciones_categoria_centro(por_categoria)
     centro_sel = request.GET.get(f"centro_{sufijo}", "Todos")
     if centro_sel not in centros_op:
@@ -387,10 +452,11 @@ def _contexto_inflacion(request, sufijo="inflacion"):
         "es_real": tipo_sel == "real",
         "periodos": [{"valor": v, "texto": t} for v, t in periodos], "periodo_sel": periodo_sel,
         "categorias": categorias_op, "categoria_sel": categoria_sel,
+        "filtro_campo": campo, "filtro_titulo": campo_titulo, "unidad": unidad or "UMB", "unidad_fija": bool(unidad),
         "centros": centros_op, "centro_sel": centro_sel,
         "materiales": materiales_op, "material_sel": material_sel,
         "ver": [{"valor": "pct", "texto": "Variación %"}, {"valor": "soles", "texto": "Bolsa (S/)"},
-                {"valor": "precio", "texto": "Precio (S/ por T)"}],
+                {"valor": "precio", "texto": f"Precio (S/ por {unidad or 'UMB'})"}],
         "ver_sel": ver_sel, "en_soles": en_soles, "en_precio": en_precio,
         "analisis": [{"valor": "individual", "texto": "Individual (cada mes)"},
                      {"valor": "acumulado", "texto": "Acumulado del año (IPU)"}],
@@ -428,17 +494,19 @@ def _contexto_inflacion(request, sufijo="inflacion"):
         if nota:
             base_txt += f" ({nota})"
         signo = "+" if r["bolsa"] >= 0 else "−"
+        u = por_unidad(r["material_codigo"])
         texto = (f"{r['texto_breve']} ({q.nombre_centro(r['centro'])}) · {_mes_corto(r['mes'])}: {r['variacion'] * 100:+z.1f}%\n"
-                 f"{_mes_corto(r['mes'])}: S/ {r['precio']:z,.2f} por T\n"
-                 f"vs {base_txt}: S/ {r['precio_base']:z,.2f} por T\n"
-                 f"Bolsa: (S/ {r['precio']:z,.2f} − S/ {r['precio_base']:z,.2f}) × {r['toneladas']:z,.0f} T = "
+                 f"{_mes_corto(r['mes'])}: S/ {r['precio']:z,.2f} por {u}\n"
+                 f"vs {base_txt}: S/ {r['precio_base']:z,.2f} por {u}\n"
+                 f"Bolsa: (S/ {r['precio']:z,.2f} − S/ {r['precio_base']:z,.2f}) × {cantidad(r['toneladas'], r['material_codigo'])} = "
                  f"{signo}S/ {abs(r['bolsa']):z,.0f}")
         if r["atipica"]:
             texto += "\nATÍPICA: el precio más que se duplica o cae a menos de la mitad (dato a revisar en MB51 o en los ajustes de la FBL3N); no suma en la bolsa ni en la selección."
         return texto
 
-    def detalle_acumulado(mes, datos, ipu, nombre=""):
-        """Texto del recuadro de un valor acumulado (IPU) del mes `mes`."""
+    def detalle_acumulado(mes, datos, ipu, nombre="", material=None):
+        """Texto del recuadro de un valor acumulado (IPU) del mes `mes`. Con
+        unidades mixtas, la cantidad solo va si es de un material."""
         inicio = min(m for m in ipu if m.year == mes.year)
         tramo = f"{_mes_corto(inicio)}–{_mes_corto(mes)}" if inicio != mes else _mes_corto(mes)
         signo = "+" if datos["bolsa_acumulada"] >= 0 else "−"
@@ -448,11 +516,25 @@ def _contexto_inflacion(request, sufijo="inflacion"):
                      f"S/ {datos['base_acumulada']:z,.0f}\n")
         else:
             texto = f"{nombre}IPU acumulado {tramo} (variaciones de cada mes encadenadas): {datos['acumulado'] * 100:+z.1f}%\n"
-        return texto + (f"Bolsa acumulada: {signo}S/ {abs(datos['bolsa_acumulada']):z,.0f} "
-                        f"({datos['toneladas_acumuladas']:z,.0f} T)")
+        texto += f"Bolsa acumulada: {signo}S/ {abs(datos['bolsa_acumulada']):z,.0f}"
+        if unidad or material:
+            texto += f" ({cantidad(datos['toneladas_acumuladas'], material)})"
+        return texto
 
+    # Con muchos materiales (una categoría: cientos), la matriz muestra los
+    # max_filas de mayor impacto en soles; el resto entra igual en la
+    # Selección, el IPU y los totales.
+    grupos_inflacion = inflacion.groupby(["material_codigo", "centro"])
+    total_materiales = grupos_inflacion.ngroups
+    mostrar = None
+    if max_filas and total_materiales > max_filas:
+        impacto = inflacion[~inflacion["atipica"]].groupby(["material_codigo", "centro"])["bolsa"].sum().abs()
+        mostrar = set(impacto.nlargest(max_filas).index)
+    ultimas = [g["variacion"].iloc[-1] for _, g in grupos_inflacion]
     filas = []
-    for (material, centro), g in inflacion.groupby(["material_codigo", "centro"]):
+    for (material, centro), g in grupos_inflacion:
+        if mostrar is not None and (material, centro) not in mostrar:
+            continue
         por_mes = {r["mes"]: r for r in g.to_dict("records")}
         ultimo = g.iloc[-1]
         if acumulado:
@@ -470,7 +552,8 @@ def _contexto_inflacion(request, sufijo="inflacion"):
                 celdas.append(celda(
                     d["acumulado"] * 100, d["bolsa_acumulada"],
                     {"sustituida": False, "atipica": False,
-                     "detalle": detalle_acumulado(m, d, ipu_material, f"{r['texto_breve']} ({q.nombre_centro(centro)}) · ")},
+                     "detalle": detalle_acumulado(m, d, ipu_material, f"{r['texto_breve']} ({q.nombre_centro(centro)}) · ",
+                                                  material)},
                     precio=d["importe_acumulado"] / d["toneladas_acumuladas"] if d["toneladas_acumuladas"] else None))
             else:
                 celdas.append(celda(
@@ -499,7 +582,7 @@ def _contexto_inflacion(request, sufijo="inflacion"):
         detalle = (f"{_mes_corto(m)} vs {base_txt}: {c['variacion'] * 100:+z.1f}%\n"
                    f"Bolsa: {signo}S/ {abs(c['bolsa']):z,.0f}\n"
                    f"{c['materiales']} material{'es' if c['materiales'] != 1 else ''} comprado{'s' if c['materiales'] != 1 else ''}"
-                   f" · {c['toneladas']:z,.0f} T · S/ {c['importe']:z,.0f}")
+                   + (f" · {c['toneladas']:z,.0f} {unidad}" if unidad else "") + f" · S/ {c['importe']:z,.0f}")
         canasta.append(celda(c["variacion"] * 100, c["bolsa"], {"detalle": detalle}))
         d = ipu.get(m)
         if d is None:
@@ -535,20 +618,23 @@ def _contexto_inflacion(request, sufijo="inflacion"):
         "grafico_precio": charts.evolucion_precio(
             [(r.mes, float(r.precio), float(r.toneladas)) for r in inflacion.itertuples()], _mes_corto,
             base=[(r.mes, float(r.precio_base)) for r in inflacion.itertuples()], ancho_minimo=960,
-        ) if en_precio and len(filas) == 1 else None,
+        ) if en_precio and total_materiales == 1 else None,
         "resumen": {
             "ultimo_mes": _mes_corto(meses[-1]), "ultima_pct": canasta[-1]["pct"], "ultima_bolsa": canasta[-1]["bolsa"],
             "periodo_pct": total["variacion"] * 100, "bolsa": total["bolsa"], "toneladas": total["toneladas"],
             "desde": _mes_corto(meses[0]), "hasta": _mes_corto(meses[-1]), "por_anio": por_anio,
-            "suben": sum(1 for f in filas if f["ultima_pct"] > 0), "bajan": sum(1 for f in filas if f["ultima_pct"] < 0),
+            "suben": sum(1 for v in ultimas if v > 0), "bajan": sum(1 for v in ultimas if v < 0),
             "sustituidas": int(inflacion["base_sustituida"].sum()), "comparaciones": int(len(inflacion)),
             "atipicas": int(inflacion["atipica"].sum()),
         },
         # Bolsa de cada año DENTRO del período (columnas de la tabla).
         "bolsa_anios_total": [q.inflacion_canasta(inflacion[inflacion["anio"] == a])["bolsa"] for a in anios],
-        "un_material": len(filas) == 1,
+        "un_material": total_materiales == 1,
+        "filas_total": total_materiales, "filas_recortadas": mostrar is not None,
     })
-    if len(filas) == 1:
+    if por_familia and por_anio:
+        contexto["familias_ipu"] = _participacion_familias_ipu(inflacion_total, base, por_anio[-1], meses)
+    if total_materiales == 1:
         contexto["detalle"] = [
             {**r, "mes_corto": _mes_corto(r["mes"]), "mes_base_corto": _mes_corto(r["mes_base"]),
              "mes_referencia_corto": _mes_corto(r["mes_referencia"]), "nota_base": _nota_base(r), "pct": r["variacion"] * 100}

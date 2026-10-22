@@ -585,6 +585,8 @@ th.col-barra, td.col-barra { min-width: 170px; text-align: center; }
 .barra-divergente .barra-barato, .barra-divergente .barra-caro { position: absolute; top: 3px; height: 12px; opacity: .55; }
 .barra-divergente .barra-barato { right: 50%; background: var(--up); border-radius: 3px 0 0 3px; }
 .barra-divergente .barra-caro { left: 50%; background: var(--down); border-radius: 0 3px 3px 0; }
+.leyenda-marca.barra-caro { height: 10px; width: 14px; border-radius: 2px; background: var(--down); opacity: .55; }
+.leyenda-marca.barra-barato { height: 10px; width: 14px; border-radius: 2px; background: var(--up); opacity: .55; }
 tr.fila-total td { font-weight: 600; border-top: 2px solid var(--table-line); }
 
 /* --- Evaluación diaria: tabla (con scroll de alto fijo) a la izquierda,

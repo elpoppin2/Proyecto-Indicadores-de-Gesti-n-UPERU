@@ -16,11 +16,12 @@
     ({{ inf.sustituto }}), marcado con <span class="marca-sustituida">*</span>.{% if inf.desfase == 12 %} La base siempre es un
     precio del año anterior: si no lo hay hasta ese mes, se usa la primera compra de ese año; un material sin compra el año
     anterior no se compara (no entra al IPU ni a la bolsa).{% endif %}</p>
-    <p><strong>Bolsa</strong> = (precio del mes − precio base) × toneladas del mes evaluado{% if inf.desfase == 12 %}: 2025 vs 2024 con
-    las toneladas de 2025, 2026 vs 2025 con las de 2026{% endif %}. La fila Selección pondera todos los materiales: lo pagado ÷ lo que
-    habrían costado esas toneladas al precio base.</p>
+    <p><strong>Bolsa</strong> = (precio del mes − precio base) × {% if inf.unidad_fija %}toneladas{% else %}cantidad{% endif %} del mes evaluado{% if inf.desfase == 12 %}: 2025 vs 2024 con
+    las {% if inf.unidad_fija %}toneladas{% else %}cantidad{% endif %} de 2025, 2026 vs 2025 con las de 2026{% endif %}. La fila Selección pondera todos los materiales: lo pagado ÷ lo que
+    habrían costado esas {% if inf.unidad_fija %}toneladas{% else %}cantidad{% endif %} al precio base.{% if not inf.unidad_fija %} Cada material con su unidad (UND, KG, M…): se compara su
+    precio por unidad consigo mismo, y lo que se suma son soles.{% endif %}</p>
     <p><strong>IPU (Índice de Precios Unacem)</strong> acumulado del año: {% if inf.desfase == 12 %}de enero al mes T contra el mismo
-    tramo del año anterior, ponderado con las toneladas del año más reciente{% else %}variaciones mensuales encadenadas desde enero,
+    tramo del año anterior, ponderado con las {% if inf.unidad_fija %}toneladas{% else %}cantidad{% endif %} del año más reciente{% else %}variaciones mensuales encadenadas desde enero,
     (1 + v₁) × (1 + v₂) × … − 1{% endif %}. Se reinicia cada enero.</p>
     <p>Si el precio se duplica o cae a menos de la mitad, la comparación se marca con <span class="marca-atipica">!</span> (dato
     atípico): se muestra, pero no suma en la bolsa ni en la selección.</p>
@@ -45,8 +46,8 @@
       </select>
     </div>
     <div class="campo">
-      <label for="categoria_{{ inf.sufijo }}">Categoría</label>
-      <select name="categoria_{{ inf.sufijo }}" id="categoria_{{ inf.sufijo }}">
+      <label for="{{ inf.filtro_campo }}_{{ inf.sufijo }}">{{ inf.filtro_titulo }}</label>
+      <select name="{{ inf.filtro_campo }}_{{ inf.sufijo }}" id="{{ inf.filtro_campo }}_{{ inf.sufijo }}">
         {% for cat in inf.categorias %}
           <option value="{{ cat }}" {% if cat == inf.categoria_sel %}selected{% endif %}>{{ cat }}</option>
         {% endfor %}
@@ -87,12 +88,12 @@
     <div class="metricas">
       <div class="metrica">
         <span class="valor {% if r.bolsa > 0 %}dato-negativo{% elif r.bolsa < 0 %}dato-positivo{% endif %}">{% if r.bolsa > 0 %}+{% elif r.bolsa < 0 %}−{% endif %}S/ {{ r.bolsa|numero:0|cut:"-" }}</span>
-        <span class="etiqueta">Bolsa {{ r.desde }} a {{ r.hasta }} ({% if r.periodo_pct > 0 %}+{% endif %}{{ r.periodo_pct|numero:1 }}% ponderado · {{ r.toneladas|numero:0 }} T)</span>
+        <span class="etiqueta">Bolsa {{ r.desde }} a {{ r.hasta }} ({% if r.periodo_pct > 0 %}+{% endif %}{{ r.periodo_pct|numero:1 }}% ponderado{% if inf.unidad_fija %} · {{ r.toneladas|numero:0 }} {{ inf.unidad }}{% endif %})</span>
       </div>
       {% for a in r.por_anio %}
         <div class="metrica">
           <span class="valor {% if a.pct > 0 %}dato-negativo{% elif a.pct < 0 %}dato-positivo{% endif %}"><small class="prefijo-ipu">IPU</small> {% if a.pct > 0 %}+{% endif %}{{ a.pct|numero:1 }}%</span>
-          <span class="etiqueta">{{ a.anio }}{% if a.anio_completo %} (Ene–Dic){% else %} acumulado a {{ a.hasta }}{% endif %}{% if a.anio_base %} vs {{ a.anio_base }}{% else %}, variaciones mensuales encadenadas{% endif %} · bolsa {% if a.bolsa > 0 %}+{% elif a.bolsa < 0 %}−{% endif %}S/ {{ a.bolsa|numero:0|cut:"-" }} con toneladas de {{ a.anio }} ({{ a.toneladas|numero:0 }} T)</span>
+          <span class="etiqueta">{{ a.anio }}{% if a.anio_completo %} (Ene–Dic){% else %} acumulado a {{ a.hasta }}{% endif %}{% if a.anio_base %} vs {{ a.anio_base }}{% else %}, variaciones mensuales encadenadas{% endif %} · bolsa {% if a.bolsa > 0 %}+{% elif a.bolsa < 0 %}−{% endif %}S/ {{ a.bolsa|numero:0|cut:"-" }}{% if inf.unidad_fija %} con toneladas de {{ a.anio }} ({{ a.toneladas|numero:0 }} {{ inf.unidad }}){% else %} con las cantidades de {{ a.anio }}{% endif %}</span>
         </div>
       {% endfor %}
       <div class="metrica">
@@ -106,9 +107,9 @@
       <h3 class="subtitulo">Precio del mes vs precio base</h3>
       {% include "gestion/_grafico_precio.html" with g=g aria="Precio del mes contra el precio base" %}
       <div class="leyenda-curva">
-        <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>Precio del mes (S/ por T)</span>
+        <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>Precio del mes (S/ por {{ inf.unidad }})</span>
         <span class="leyenda-item"><span class="leyenda-marca leyenda-meta"></span>Precio base contra el que se compara ({{ inf.contra }})</span>
-        <span class="leyenda-item"><span class="leyenda-marca barra-toneladas"></span>Toneladas compradas en el mes</span>
+        <span class="leyenda-item"><span class="leyenda-marca barra-toneladas"></span>{% if inf.unidad_fija %}Toneladas compradas{% else %}Cantidad comprada ({{ inf.unidad }}){% endif %} en el mes</span>
       </div>
     {% endif %}
     {% endwith %}
@@ -125,7 +126,8 @@
     {% endif %}
     {% endwith %}
 
-    <h3 class="subtitulo">Por material y mes · {% if inf.acumulado %}acumulado del año (IPU){% else %}cada mes{% endif %}{% if inf.en_soles %} · bolsa en S/{% elif inf.en_precio %} · {% if inf.acumulado %}precio promedio del año a la fecha{% else %}precio en S/ por T{% endif %} y su variación{% endif %}</h3>
+    <h3 class="subtitulo">Por material y mes · {% if inf.acumulado %}acumulado del año (IPU){% else %}cada mes{% endif %}{% if inf.en_soles %} · bolsa en S/{% elif inf.en_precio %} · {% if inf.acumulado %}precio promedio del año a la fecha{% else %}precio en S/ por {{ inf.unidad }}{% endif %} y su variación{% endif %}</h3>
+    {% if inf.filas_recortadas %}<p class="nota">Se muestran los {{ inf.filas|length }} materiales de mayor impacto en soles (bolsa) de {{ inf.filas_total|numero }}; la Selección y el IPU son de todos. Usa Familia, Centro o Material para ver otros.</p>{% endif %}
     <div class="tabla-scroll">
       <table class="tabla-inflacion">
         <thead>
@@ -182,14 +184,61 @@
       </table>
     </div>
 
+    {% with fi=inf.familias_ipu %}
+    {% if fi %}
+      <h3 class="subtitulo">Familias que más pesan en el IPU {{ fi.anio }} (acumulado a {{ fi.hasta }})</h3>
+      <p class="nota">Cuánto aporta cada familia al IPU del año ({% if fi.ipu > 0 %}+{% endif %}{{ fi.ipu|numero:1 }}%): su bolsa ÷ lo que habrían costado todas las compras al precio de {{ fi.anio_base }}. Los aportes suman el IPU; ordenadas por el tamaño del aporte.</p>
+      <div class="tabla-scroll">
+        <table class="tabla-familias-ipu">
+          <thead>
+            <tr>
+              <th>Familia</th><th class="num">Materiales</th><th class="num">Pagado {{ fi.anio }} (S/)</th>
+              <th class="num">Al precio de {{ fi.anio_base }} (S/)</th><th class="num">Bolsa (S/)</th>
+              <th class="num">Variación de la familia</th><th class="num">Peso en las compras</th>
+              <th class="col-barra">Aporte al IPU (puntos)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in fi.filas %}
+              <tr{% if f.resto %} class="fila-total"{% endif %}>
+                <td>{{ f.familia }}</td>
+                <td class="num">{{ f.materiales|numero }}</td>
+                <td class="num">{{ f.importe|numero:0 }}</td>
+                <td class="num">{{ f.base|numero:0 }}</td>
+                <td class="num {% if f.bolsa > 0 %}dato-negativo{% elif f.bolsa < 0 %}dato-positivo{% endif %}">{{ f.bolsa|numero:0 }}</td>
+                <td class="num {% if f.pct > 0 %}dato-negativo{% elif f.pct < 0 %}dato-positivo{% endif %}">{% if f.pct is None %}—{% else %}{% if f.pct > 0 %}+{% endif %}{{ f.pct|numero:1 }}%{% endif %}</td>
+                <td class="num">{{ f.peso|numero:1 }}%</td>
+                <td class="col-barra">
+                  <span class="barra-divergente">
+                    {% if f.barra_sentido %}<span class="barra-{{ f.barra_sentido }}" style="width:{{ f.barra_pct }}%;"></span>{% endif %}
+                    <span class="barra-divergente-valor">{% if f.aporte > 0 %}+{% endif %}{{ f.aporte|numero:2 }}</span>
+                  </span>
+                </td>
+              </tr>
+            {% endfor %}
+            <tr class="fila-total fila-ipu">
+              <td>IPU {{ fi.anio }}</td><td class="num">{{ fi.familias|numero }} familias</td><td></td><td></td>
+              <td class="num">{{ fi.bolsa|numero:0 }}</td><td></td><td></td>
+              <td class="num"><strong>{% if fi.ipu > 0 %}+{% endif %}{{ fi.ipu|numero:2 }}</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="leyenda-curva">
+        <span class="leyenda-item"><span class="leyenda-marca barra-caro"></span>Encarece (sube el IPU)</span>
+        <span class="leyenda-item"><span class="leyenda-marca barra-barato"></span>Abarata (baja el IPU)</span>
+      </div>
+    {% endif %}
+    {% endwith %}
+
     {% if inf.detalle %}
       <h3 class="subtitulo">Detalle de la comparación</h3>
       <div class="tabla-scroll">
         <table>
           <thead>
             <tr>
-              <th>Mes</th><th class="num">Toneladas</th><th class="num">Precio (S/ por T)</th>
-              <th>Comparado contra</th><th class="num">Precio base (S/ por T)</th><th class="num">Variación</th>
+              <th>Mes</th><th class="num">{% if inf.unidad_fija %}Toneladas{% else %}Cantidad{% endif %}</th><th class="num">Precio (S/ por {{ inf.unidad }})</th>
+              <th>Comparado contra</th><th class="num">Precio base (S/ por {{ inf.unidad }})</th><th class="num">Variación</th>
               <th class="num">Bolsa (S/)</th>
             </tr>
           </thead>
