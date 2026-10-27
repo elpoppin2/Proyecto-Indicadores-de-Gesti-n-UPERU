@@ -232,6 +232,22 @@ form.filtros { display: flex; gap: 12px 14px; flex-wrap: wrap; align-items: flex
   border: 1px solid var(--table-line); background: var(--surface); color: var(--ink); min-width: 160px;
 }
 .campo select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Segmentador de varias opciones en fichas (Categoría de Indicadores de
+   Planificación): una casilla por opción, marcada = ficha oscura. */
+fieldset.campo-fichas { border: 0; margin: 0; padding: 0; min-width: 0; }
+fieldset.campo-fichas legend { padding: 0; margin-bottom: 5px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.fichas-filtro { display: flex; flex-wrap: wrap; gap: 6px; }
+.ficha-filtro { position: relative; display: inline-flex; cursor: pointer; }
+.ficha-filtro input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.ficha-filtro span {
+  display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border-radius: 999px;
+  border: 1px solid var(--table-line); background: var(--surface); color: var(--muted); font-size: 13px;
+  transition: background-color .15s, color .15s, border-color .15s; user-select: none;
+}
+.ficha-filtro:hover span { border-color: var(--ink); }
+.ficha-filtro input:checked + span { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+.ficha-filtro input:checked + span::before { content: "✓"; margin-right: 6px; font-size: 12px; }
+.ficha-filtro input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* --- Métricas --- */
 .metricas { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px 18px; }
@@ -370,7 +386,11 @@ table thead th[data-orden="desc"]::after { content: "\25BC"; }
 .chart-barras .barra-buena { fill: var(--up); }
 .chart-barras .barra-regular { fill: var(--muted); }
 .chart-barras .barra-mala { fill: var(--down); }
-.leyenda-marca.barra-buena, .leyenda-marca.barra-regular, .leyenda-marca.barra-mala { height: 10px; border-radius: 2px; }
+.leyenda-marca.barra-buena, .leyenda-marca.barra-regular, .leyenda-marca.barra-mala { height: 10px; width: 10px; border-radius: 2px; }
+/* La muestra de la leyenda es la misma barra (en HTML se pinta con background, no con fill). */
+.leyenda-marca.barra-buena { background: var(--up); }
+.leyenda-marca.barra-regular { background: var(--muted); }
+.leyenda-marca.barra-mala { background: var(--down); }
 
 /* --- Evolución de inventario proyectada (S&OP): línea de stock en tinta,
    área suave, línea de 0 punteada, y los meses en quiebre (stock negativo)
@@ -893,12 +913,7 @@ body:has(> .login-shell) { padding: 0; }
    desaparecía y la nueva se veía en blanco un instante (parpadeo debajo de
    la barra, reportado por el usuario), más largo la primera vez que se abre
    una zona pesada (Consumo, Inventario). */
-@keyframes zona-entrar { from { opacity: .85; transform: translateY(5px); } to { opacity: 1; transform: none; } }
-@keyframes zona-entrar-der { from { opacity: .85; transform: translateX(12px); } to { opacity: 1; transform: none; } }
-@keyframes zona-entrar-izq { from { opacity: .85; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
-.zona-panel.entrando { animation: zona-entrar .28s cubic-bezier(.2, .8, .2, 1); }
-.zona-panel.entrando-der { animation: zona-entrar-der .3s cubic-bezier(.2, .8, .2, 1); }
-.zona-panel.entrando-izq { animation: zona-entrar-izq .3s cubic-bezier(.2, .8, .2, 1); }
+/* (La entrada de cada zona está en "Cambio de pestaña", al final: tiempos de transitions-dev.) */
 /* Paneles de Indicadores: aparecen en cascada al entrar a la zona, desde un
    estado ya visible (desde 0 parpadeaban). La franja de números clave de
    cada zona, justo debajo de la barra, no se anima: es lo primero que se lee. */
@@ -972,6 +987,7 @@ tbody.tabla-ordenada { animation: filas-asentar .25s ease-out; }
 .indicadores-cabecera .indicadores-nota { flex: 1 1 320px; max-width: 80ch; padding-bottom: 4px; }
 .indicadores-graficos.cargando .paneles-indicador { opacity: .55; transition: opacity .15s; }
 .paneles-indicador { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: stretch; }
+.paneles-indicador[hidden] { display: none; }
 .panel-ancho { grid-column: 1 / -1; }
 @media (max-width: 980px) { .paneles-indicador { grid-template-columns: minmax(0, 1fr); } }
 .panel-indicador {
@@ -1531,6 +1547,8 @@ tr[data-filtrar]:focus-visible { outline: 2px solid var(--accent); outline-offse
 td.dato-destacado { font-weight: 700; }
 .nota-celda { color: var(--muted); cursor: help; }
 tr.fila-atenuada td { color: var(--muted); }
+/* Cobertura: parte propia / en acopio del stock de un centro de acopio. */
+.parte-acopio { color: var(--muted); white-space: nowrap; }
 details.desglose-simple { border-top: 1px dashed var(--line); padding-top: 10px; }
 details.desglose-simple > summary { cursor: pointer; width: fit-content; font-size: 13px; font-weight: 600; color: var(--accent-texto); }
 details.desglose-simple > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
@@ -1607,6 +1625,15 @@ details.detalle-calculo[open] > summary.boton-detalle { margin-bottom: 12px; }
 .matriz-tco td.tco-repetido { color: var(--muted); font-style: italic; }
 /* IPU de un material sin compra el año anterior: no entra al IPU. */
 .matriz-tco td.tco-sin-base { color: var(--muted); font-weight: 400; font-size: 11.5px; cursor: help; }
+/* Volúmenes del IPU debajo de los precios (pedido del usuario, 2026-10-26):
+   mismo ancho de columna en las dos matrices, así los meses quedan uno sobre
+   otro al desplazarlas juntas (graficos.js, data-scroll-grupo). */
+.matriz-tco th.num, .matriz-tco td.num { box-sizing: border-box; width: 84px; min-width: 84px; }
+.subtitulo-tco { margin: 26px 0 4px; font-size: 15px; }
+/* Mes con toneladas del barco que siguen en Atocongo por trasladarse. */
+.matriz-tco td.tco-pendiente, .muestra-pendiente { box-shadow: inset 3px 0 0 var(--muted); }
+.muestra-pendiente { display: inline-block; width: 14px; height: 12px; vertical-align: -1px; margin-right: 4px;
+  background: var(--surface-2); }
 .codigo-suave { color: var(--muted); font-size: 12px; }
 @media print { details.detalle-calculo { display: none !important; } }
 /* Transporte (Logística de Materias Primas): tramos de carga por viaje (de
@@ -1628,3 +1655,290 @@ details.detalle-calculo[open] > summary.boton-detalle { margin-bottom: 12px; }
 .mapa-calor .mc-celda[style*="--nivel: 0.6"], .mapa-calor .mc-celda[style*="--nivel: 0.7"], .mapa-calor .mc-celda[style*="--nivel: 0.8"],
 .mapa-calor .mc-celda[style*="--nivel: 0.9"], .mapa-calor .mc-celda[style*="--nivel: 1"] { color: #fff; }
 .mapa-calor .mc-celda.con-detalle:hover { box-shadow: inset 0 0 0 1.5px var(--ink); }
+
+/* =====================================================================
+   Pulido de la interfaz (pedido del usuario, 2026-10-23: "lo más pulido
+   posible, desde animaciones, diseño, scrolls"), con las habilidades
+   design-taste-frontend (reglas de pantallas de app) y transitions-dev.
+   El sistema visual no cambia: IBM Plex, el rojo de UNACEM, el encabezado
+   gris y las franjas de las tablas (elegidos por el usuario).
+   ===================================================================== */
+
+/* transitions-dev — copy this :root block into your project once.
+   Every transition snippet reads from these semantic names. */
+:root {
+  /* Card resize */
+  --resize-dur: 300ms;
+  --resize-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Number pop-in */
+  --digit-dur: 500ms;
+  --digit-distance: 8px;
+  --digit-stagger: 70ms;
+  --digit-blur: 2px;
+  --digit-ease: cubic-bezier(0.34, 1.45, 0.64, 1);
+  --digit-dir-x: 0;
+  --digit-dir-y: 1;
+  /* Notification badge */
+  --badge-slide-dur: 260ms;
+  --badge-pop-dur: 500ms;
+  --badge-pop-close-dur: 180ms;
+  --badge-fade-dur: 400ms;
+  --badge-fade-close-dur: 180ms;
+  --badge-blur: 2px;
+  --badge-offset-x: -8.2px;
+  --badge-offset-y: 12.4px;
+  --badge-slide-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --badge-pop-ease: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --badge-close-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  /* Text states swap */
+  --text-swap-dur: 200ms;
+  --text-swap-translate-y: 8px;
+  --text-swap-blur: 2px;
+  --text-swap-ease: ease-out;
+  /* Menu dropdown */
+  --dropdown-open-dur: 250ms;
+  --dropdown-close-dur: 150ms;
+  --dropdown-pre-scale: 0.97;
+  --dropdown-closing-scale: 0.99;
+  --dropdown-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Modal open / close */
+  --modal-open-dur: 250ms;
+  --modal-close-dur: 150ms;
+  --modal-scale: 0.96;
+  --modal-scale-close: 0.96;
+  --modal-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Panel reveal */
+  --panel-open-dur: 400ms;
+  --panel-close-dur: 350ms;
+  --panel-translate-y: 100px;
+  --panel-blur: 2px;
+  --panel-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Page side-by-side */
+  --page-slide-dur: 200ms;
+  --page-fade-dur: 200ms;
+  --page-slide-distance: 8px;
+  --page-blur: 3px;
+  --page-stagger: 0ms;
+  --page-exit-enabled: 1;
+  --page-slide-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --page-fade-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Icon swap */
+  --icon-swap-dur: 200ms;
+  --icon-swap-blur: 2px;
+  --icon-swap-start-scale: 0.25;
+  --icon-swap-ease: ease-in-out;
+  /* Success check */
+  --check-opacity-dur: 550ms;
+  --check-rotate-dur: 550ms;
+  --check-rotate-from: 80deg;
+  --check-bob-dur: 450ms;
+  --check-y-amount: 40px;
+  --check-blur-dur: 500ms;
+  --check-blur-from: 10px;
+  --check-path-dur: 550ms;
+  --check-path-delay: 80ms;
+  --check-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --check-ease-opacity: cubic-bezier(0.22, 1, 0.36, 1);
+  --check-ease-rotate: cubic-bezier(0.22, 1, 0.36, 1);
+  --check-ease-bob: cubic-bezier(0.34, 1.35, 0.64, 1);
+  --check-ease-path: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Avatar group hover */
+  --avatar-lift: -4px;
+  --avatar-dur: 320ms;
+  --avatar-scale: 1.05;
+  --avatar-falloff: 0.45;
+  --avatar-ease-in: cubic-bezier(0.22, 1, 0.36, 1);
+  --avatar-ease-out: cubic-bezier(0.34, 3.85, 0.64, 1);
+  /* Error state shake */
+  --shake-distance: 6px;
+  --shake-overshoot: 4px;
+  --shake-dur-a: 80ms;
+  --shake-dur-b: 60ms;
+  --shake-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --revert-hold: 3000ms;
+  --revert-dur: 280ms;
+}
+
+/* --- Menú desplegable (transitions-dev 05): el panel del filtro Material
+   crece desde su botón. zonas.js pone .is-open / .is-closing y el origen
+   (arriba o abajo del botón). --- */
+.t-dropdown {
+  transform-origin: top left;
+  transform: scale(var(--dropdown-pre-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dropdown-open-dur) var(--dropdown-ease),
+    opacity   var(--dropdown-open-dur) var(--dropdown-ease);
+  will-change: transform, opacity;
+}
+.t-dropdown[data-origin="top-right"]     { transform-origin: top right; }
+.t-dropdown[data-origin="top-center"]    { transform-origin: top center; }
+.t-dropdown[data-origin="bottom-left"]   { transform-origin: bottom left; }
+.t-dropdown[data-origin="bottom-center"] { transform-origin: bottom center; }
+.t-dropdown[data-origin="bottom-right"]  { transform-origin: bottom right; }
+
+.t-dropdown.is-open {
+  transform: scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+.t-dropdown.is-closing {
+  transform: scale(var(--dropdown-closing-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dropdown-close-dur) var(--dropdown-ease),
+    opacity   var(--dropdown-close-dur) var(--dropdown-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-dropdown { transition: none !important; }
+}
+
+/* --- Cifras que cambian (transitions-dev 02): las cifras clave, las
+   métricas y los totales entran dígito a dígito cuando un filtro o el
+   buscador las cambia (graficos.js arma los .t-digit). --- */
+@keyframes t-digit-pop-in {
+  0%   {
+    transform: translate(
+      calc(var(--digit-distance) * var(--digit-dir-x)),
+      calc(var(--digit-distance) * var(--digit-dir-y))
+    );
+    opacity: 0;
+    filter: blur(var(--digit-blur));
+  }
+  100% { transform: translate(0, 0); opacity: 1; filter: blur(0); }
+}
+
+.t-digit-group {
+  display: inline-flex;
+  align-items: baseline;
+}
+.t-digit {
+  display: inline-block;
+  will-change: transform, opacity, filter;
+}
+.t-digit-group.is-animating .t-digit {
+  animation: t-digit-pop-in var(--digit-dur) var(--digit-ease) both;
+}
+.t-digit-group.is-animating .t-digit[data-stagger="1"] {
+  animation-delay: var(--digit-stagger);
+}
+.t-digit-group.is-animating .t-digit[data-stagger="2"] {
+  animation-delay: calc(var(--digit-stagger) * 2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-digit-group .t-digit { animation: none !important; }
+}
+/* Un espacio dentro del grupo (S/ 1.2 MM) conserva su ancho. */
+.t-digit-espacio { white-space: pre; }
+
+/* --- Texto que cambia en su lugar (transitions-dev 04): el resumen del
+   botón del filtro Material ("Todos" -> "3 materiales"). --- */
+@keyframes t-text-swap-in {
+  from { transform: translateY(var(--text-swap-translate-y)); opacity: 0; filter: blur(var(--text-swap-blur)); }
+  to   { transform: translateY(0); opacity: 1; filter: blur(0); }
+}
+.filtro-multi-texto { display: block; overflow: hidden; text-overflow: ellipsis; }
+.filtro-multi-boton.is-swapping .filtro-multi-texto { animation: t-text-swap-in var(--text-swap-dur) var(--text-swap-ease); }
+@media (prefers-reduced-motion: reduce) {
+  .filtro-multi-boton.is-swapping .filtro-multi-texto { animation: none !important; }
+}
+
+/* --- Panel que se despliega (transitions-dev 07, adaptado a <details>):
+   el detalle fila por fila y el "Cómo se calcula" bajan con un leve
+   desenfoque en vez de aparecer de golpe. Recorrido corto: es contenido de
+   la página, no un panel flotante. --- */
+@keyframes t-panel-in {
+  from { transform: translateY(var(--panel-translate-y)); opacity: 0; filter: blur(var(--panel-blur)); }
+  to   { transform: translateY(0); opacity: 1; filter: blur(0); }
+}
+details.desglose[open] > .desglose-cuerpo,
+details.metodo[open] > .metodo-cuerpo {
+  --panel-translate-y: 14px;
+  animation: t-panel-in var(--panel-open-dur) var(--panel-ease) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  details.desglose[open] > .desglose-cuerpo, details.metodo[open] > .metodo-cuerpo { animation: none !important; }
+}
+
+/* --- Cambio de pestaña (transitions-dev 08, adaptado a zonas que se
+   muestran y ocultan): la zona entra deslizándose 8px desde el lado de la
+   pestaña elegida, con el desenfoque y los tiempos de "page side-by-side".
+   Reemplaza las animaciones zona-entrar anteriores. --- */
+@keyframes zona-entrar { from { opacity: 0; transform: translateY(var(--page-slide-distance)); filter: blur(var(--page-blur)); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes zona-entrar-der { from { opacity: 0; transform: translateX(var(--page-slide-distance)); filter: blur(var(--page-blur)); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes zona-entrar-izq { from { opacity: 0; transform: translateX(calc(var(--page-slide-distance) * -1)); filter: blur(var(--page-blur)); } to { opacity: 1; transform: none; filter: none; } }
+.zona-panel.entrando { animation: zona-entrar calc(var(--page-slide-dur) + 60ms) var(--page-slide-ease); }
+.zona-panel.entrando-der { animation: zona-entrar-der calc(var(--page-slide-dur) + 60ms) var(--page-slide-ease); }
+.zona-panel.entrando-izq { animation: zona-entrar-izq calc(var(--page-slide-dur) + 60ms) var(--page-slide-ease); }
+
+/* --- Error en el login (transitions-dev 12): los campos se sacuden y se
+   marcan; vuelven a su color al escribir. --- */
+.t-input {
+  transition: border-color 150ms ease-out;
+  will-change: transform;
+}
+.t-input.is-error {
+  transition: border-color var(--revert-dur, 280ms) ease-out;
+}
+.t-input.is-shaking {
+  animation: t-input-shake calc(
+      var(--shake-dur-a) * 2 + var(--shake-dur-b) * 2
+    ) linear;
+}
+@keyframes t-input-shake {
+  0%      { transform: translateX(0);                                 animation-timing-function: var(--shake-ease); }
+  28.57%  { transform: translateX(var(--shake-distance));             animation-timing-function: var(--shake-ease); }
+  57.14%  { transform: translateX(calc(var(--shake-distance) * -1)); animation-timing-function: var(--shake-ease); }
+  78.57%  { transform: translateX(var(--shake-overshoot));            animation-timing-function: var(--shake-ease); }
+  100%    { transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-input { animation: none !important; transform: none !important; }
+}
+.login-card .t-input.is-error { border-color: var(--accent); }
+
+/* --- Scroll ---------------------------------------------------------- */
+/* Saltos a una sección (Ver detalle, enlaces del informe) con desplazamiento suave. */
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+/* Barras de desplazamiento finas y del color de la interfaz en todo lo que
+   se desplaza por dentro (tablas, gráficos anchos, pestañas, listas). */
+.tabla-scroll, .tabla-marco, .tabla-alto-fijo, .chart-scroll, .zonas, .filtro-multi-lista, .desglose-cuerpo {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
+}
+/* Tablas largas (más de 18 filas, las marca graficos.js): se desplazan dentro
+   de su recuadro con el encabezado siempre visible, como las de Precios e IPU. */
+.tabla-scroll.tabla-larga { max-height: min(72vh, 720px); overflow: auto; }
+.tabla-scroll.tabla-larga thead th { position: sticky; top: 0; z-index: 2; box-shadow: inset 0 -1px 0 var(--table-line); }
+.tabla-scroll.tabla-larga thead th:first-child { z-index: 3; }
+/* Encabezados de columnas fijas a la izquierda (matrices TCO, proyección, tablas en marco): encima de todo. */
+.tabla-scroll.tabla-larga thead th.col-fija, .tabla-scroll.tabla-larga thead th.tco-fijo,
+.tabla-scroll.tabla-larga thead th.fijo-1, .tabla-scroll.tabla-larga thead th.fijo-2 { z-index: 4; }
+@media print {
+  .tabla-scroll.tabla-larga { max-height: none; overflow: visible; }
+  .tabla-scroll.tabla-larga thead th { position: static; }
+}
+
+/* --- Celular: los controles de filtro con 44px de alto (antes el texto de
+   16px quedaba cortado dentro de una caja de 34px). --- */
+@media (max-width: 760px) {
+  .campo select, .campo input[type="text"], .campo input[type="search"], .filtro-multi-boton {
+    height: auto; min-height: 44px; line-height: 1.3; padding-top: 8px; padding-bottom: 8px;
+  }
+}
+
+/* --- Gráficos de los paneles de Indicadores (dibujados a 480 x 200): la
+   línea queda en 2px y los puntos discretos al ampliarse; en el celular se
+   ven a su tamaño de diseño (480px) y se deslizan de lado, menos que antes
+   (640px): más angostos, las etiquetas de los meses se juntaban. --- */
+.chart-lineas .linea-serie { vector-effect: non-scaling-stroke; stroke-width: 2; }
+.panel-indicador .chart-lineas .punto-serie { r: 2.4px; }
+@media (max-width: 760px) {
+  .panel-indicador .chart-scroll > .chart-wrap { min-width: 480px; }
+}

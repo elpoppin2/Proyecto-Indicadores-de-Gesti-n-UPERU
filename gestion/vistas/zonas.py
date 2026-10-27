@@ -1,5 +1,7 @@
 """Pestañas (zonas) de cada página: Planificación, Logística de Materias Primas (con su alcance de materiales) y categorías. Solo datos: las usan las páginas, el resumen por área y los comandos (calentar_cache, revisar_paginas)."""
 
+import datetime
+
 from dashboard import queries as q
 
 
@@ -33,6 +35,19 @@ ALCANCE_LOGISTICA = (
     ("07-00000027", "U002"),  # Puzolana Ayacucho (Condorcocha)
     ("14-00000037", "U002"),  # Clinker Tipo I ATO: traslado de Atocongo a Condorcocha
 )
+# Meses que Logística no considera en el abastecimiento S&OP de un (material,
+# centro): (material, centro, mes). Pedido del usuario (2026-10-23): el Carbón
+# Importado de Condorcocha de setiembre 2026 (tenía plan y no tuvo ingresos).
+EXCLUSIONES_LOGISTICA = (
+    ("06-00000003", "U002", datetime.date(2026, 9, 1)),
+)
+# Proveedores que cuentan en Logística por material (código de la ZMM056) y
+# plan provisional (material, centro, mes, T) mientras el S&OP no lo traiga.
+# Pedido del usuario (2026-10-23): la Puzolana Ayacucho solo con J&G
+# Inversiones Exmicom. El plan provisional de Condorcocha (set-26) se retiró
+# ese mismo día: el S&OP de setiembre ya lo trae.
+PROVEEDORES_LOGISTICA = {"07-00000027": ("10037155",)}
+PLAN_PROVISIONAL_LOGISTICA = ()
 _ZONAS_LOGISTICA = [
     ("indicadores", "Indicadores", "Resumen de cumplimiento", []),
     ("cumplimiento", "Cumplimiento", "Plan de abastecimiento vs ingresos",

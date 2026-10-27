@@ -4,9 +4,65 @@ import datetime
 
 import pandas as pd
 
-from .base import _cacheado, _en_alcance, _limites_mes, _lista_materiales, _query
+from .base import _cacheado, _en_alcance, _limites_mes, _lista_materiales, _plan_extra_alcance, _query, _sql_proveedores_alcance
+from .importados import reparto_por_embarque
 from .inventario import catalogo_materiales
 from .sop_base import CATEGORIAS_PLANIFICACION_SOP, FECHA_INGRESO_EFECTIVA, _FILTRO_CON_CODIGO_SOP, _IN_TIPOS_OPERACION_RECEPCION, materiales_planificados_sop
+
+
+# Importados que llegan por barco (pedido del usuario, 2026-10-23): en el
+# cumplimiento su real no es la balanza (en Atocongo el barco entra por U004
+# y se traslada sin pesarse en la báscula de recepción) sino lo que MB51 deja
+# PUESTO EN DESTINO en cada planta, en toneladas secas: el reparto por
+# embarque (importados.reparto_por_embarque: traslados desde U004, reenvío
+# de Atocongo a Condorcocha y ajustes de humedad Z15/Z16 de cada barco).
+MATERIALES_REAL_MB51 = ("06-00000003", "07-00001301")  # Carbón Importado, Escoria japonesa (Altos Hornos)
+
+# Mes en que cuenta para el cumplimiento lo recibido de un importado en un
+# mes (material, centro, mes real) -> mes del S&OP:
+# - El barco de Carbón Importado de marzo 2026 llegó a Atocongo entre fines de
+#   marzo y abril; el S&OP de abril lo planificó completo en abril y el OTIF
+#   del usuario lo cuenta en abril (2026-10-26).
+# - El traslado de Carbón Importado de Atocongo a Condorcocha del 30-set-2026
+#   (641 de ese día; casi todo llegó el 1-oct) es del abastecimiento de
+#   OCTUBRE: acuerdo del 2026-10-06 (INGRESOS_CON_OTRA_FECHA, en la báscula)
+#   que el usuario pidió mantener cuando el real pasó a MB51 (2026-10-26).
+#   Setiembre queda en 0 para Condorcocha.
+MES_CUMPLIMIENTO_IMPORTADOS = {
+    ("06-00000003", "U001", "2026-03-01"): "2026-04-01",
+    ("06-00000003", "U002", "2026-09-01"): "2026-10-01",
+}
+
+
+def sops_abastecimiento_disponibles():
+    """Emisiones del S&OP de abastecimiento cargadas (mes de emisión), de la
+    más nueva a la más antigua."""
+    df = _query("SELECT DISTINCT mes_snapshot AS mes FROM gestion_planabastecimientosop ORDER BY mes_snapshot DESC")
+    return [m if isinstance(m, datetime.date) else datetime.date.fromisoformat(str(m)[:10]) for m in df["mes"]]
+
+
+def _real_mb51(mes):
+    """Toneladas puestas en destino (MB51, secas) de MATERIALES_REAL_MB51 en
+    `mes`, por material y centro: material_codigo, centro, cantidad_real,
+    embarques."""
+    r = reparto_por_embarque()
+    clave = mes.isoformat() if hasattr(mes, "isoformat") else str(mes)[:10]
+    r = r[r["material_codigo"].isin(MATERIALES_REAL_MB51)]
+    mes_cumplimiento = [MES_CUMPLIMIENTO_IMPORTADOS.get((m, c, x), x)
+                        for m, c, x in zip(r["material_codigo"], r["centro"], r["mes"].astype(str).str[:10])]
+    r = r[[x == clave for x in mes_cumplimiento]]
+    # Lo que llegó a cada planta en el mes (pedido del usuario, 2026-10-26: el
+    # barco de Sep-26 se recibió completo en Atocongo, aunque luego se reenvíe):
+    # no se descuenta lo que Atocongo reenvía después a Condorcocha.
+    r = r.groupby(["material_codigo", "centro"], as_index=False).agg(
+        cantidad_real=("recibido", "sum"), embarques=("embarques", lambda s: ", ".join(sorted({x for x in s if x}))))
+    return r[r["cantidad_real"].abs() >= 0.5].reset_index(drop=True)
+
+
+def _sin_mb51(sql_material="material_codigo"):
+    """Condición SQL (con su AND) que deja fuera de la balanza los materiales
+    cuyo real sale de MB51."""
+    return f" AND {sql_material} NOT IN ({','.join(repr(m) for m in MATERIALES_REAL_MB51)})"
 
 
 def meses_planificacion_disponibles():
@@ -32,19 +88,37 @@ def descripcion_centros_planificacion():
     return dict(zip(df["centro"], df["destino"]))
 
 
-def plan_abastecimiento_por_material(mes):
-    """Plan de abastecimiento (S&OP) por material/centro para `mes`, siempre
-    con la versión más reciente del plan cargado (el snapshot más nuevo): si
-    se recarga el plan al mes siguiente, la proyección se actualiza sola, no
-    queda una foto vieja congelada."""
-    return _en_alcance(_query(f"""
+def meses_con_sop_propio():
+    """Meses que tienen su propio S&OP de abastecimiento (la emisión de ese
+    mes trae ese mes): los únicos que se evalúan por defecto."""
+    df = _query("SELECT DISTINCT mes_snapshot AS mes FROM gestion_planabastecimientosop "
+                "WHERE mes_planificado = mes_snapshot ORDER BY mes_snapshot")
+    return [m if isinstance(m, datetime.date) else datetime.date.fromisoformat(str(m)[:10]) for m in df["mes"]]
+
+
+def plan_abastecimiento_por_material(mes, sop=None):
+    """Plan de abastecimiento (S&OP) por material/centro para `mes`. `sop`:
+    la emisión del S&OP (mes de emisión) elegida en el segmentador S&OP; sin
+    ella, la del MISMO mes (regla del usuario, 2026-10-26: cada mes se evalúa
+    solo contra su propio S&OP — setiembre contra el S&OP de setiembre —; un
+    mes sin su S&OP no tiene plan). Solo las celdas con dato: una celda vacía
+    es un material que ese S&OP no trae para ese mes."""
+    df = _en_alcance(_query(f"""
         SELECT material_codigo AS material_codigo, centro_destino AS centro,
                SUM(cantidad_plan) AS cantidad_plan
         FROM gestion_planabastecimientosop
-        WHERE mes_planificado = %s AND {_FILTRO_CON_CODIGO_SOP}
-              AND mes_snapshot = (SELECT MAX(mes_snapshot) FROM gestion_planabastecimientosop)
+        WHERE mes_planificado = %s AND mes_snapshot = %s AND cantidad_plan IS NOT NULL
+              AND {_FILTRO_CON_CODIGO_SOP}
         GROUP BY material_codigo, centro_destino
-    """, [mes]))
+    """, [mes, sop or mes]), mes=mes)
+    # Plan provisional del alcance (Logística: Puzolana Ayacucho en
+    # Condorcocha, set-26), sumado al del S&OP.
+    extra = _plan_extra_alcance(mes)
+    if extra:
+        extra = pd.DataFrame(extra, columns=["material_codigo", "centro", "cantidad_plan"])
+        df = (pd.concat([df, extra], ignore_index=True)
+              .groupby(["material_codigo", "centro"], as_index=False)["cantidad_plan"].sum())
+    return df
 
 
 def ingresos_fisicos_por_material(mes):
@@ -53,14 +127,16 @@ def ingresos_fisicos_por_material(mes):
     mes calendario `mes` (por FECHA_INGRESO_EFECTIVA). Definido por el
     usuario: no se toma de MB51 para estos materiales."""
     fecha_inicio, fecha_fin = _limites_mes(mes)
-    return _en_alcance(_query(f"""
+    balanza = _query(f"""
         SELECT material_codigo AS material_codigo, centro AS centro,
                SUM(cantidad) AS cantidad_real
         FROM gestion_ingresofisicosop
         WHERE {FECHA_INGRESO_EFECTIVA} BETWEEN %s AND %s
-              AND tipo_operacion IN ({_IN_TIPOS_OPERACION_RECEPCION})
+              AND tipo_operacion IN ({_IN_TIPOS_OPERACION_RECEPCION}){_sql_proveedores_alcance()}{_sin_mb51()}
         GROUP BY material_codigo, centro
-    """, [fecha_inicio, fecha_fin]))
+    """, [fecha_inicio, fecha_fin])
+    mb51 = _real_mb51(mes)[["material_codigo", "centro", "cantidad_real"]]
+    return _en_alcance(pd.concat([balanza, mb51], ignore_index=True), mes=mes)
 
 
 def ingresos_fisicos_por_proveedor(mes):
@@ -71,15 +147,27 @@ def ingresos_fisicos_por_proveedor(mes):
     de origen (ATOCONGO, PUCARA...). Usado por el Detalle por material de
     Cumplimiento. Pedido por el usuario (después llegará el plan por proveedor)."""
     fecha_inicio, fecha_fin = _limites_mes(mes)
-    return _en_alcance(_query(f"""
+    df = _query(f"""
         SELECT material_codigo AS material_codigo, centro AS centro, proveedor_codigo AS proveedor_codigo,
                proveedor AS proveedor, MAX(tipo_operacion) AS tipo_operacion,
                SUM(cantidad) AS cantidad_real, COUNT(*) AS carros
         FROM gestion_ingresofisicosop
         WHERE {FECHA_INGRESO_EFECTIVA} BETWEEN %s AND %s
-              AND tipo_operacion IN ({_IN_TIPOS_OPERACION_RECEPCION})
+              AND tipo_operacion IN ({_IN_TIPOS_OPERACION_RECEPCION}){_sql_proveedores_alcance()}
         GROUP BY material_codigo, centro, proveedor_codigo, proveedor
-    """, [fecha_inicio, fecha_fin]))
+    """, [fecha_inicio, fecha_fin])
+    # Importados por barco: una sola fila con lo puesto en destino según MB51
+    # (sus embarques); los carros siguen siendo los camiones de la balanza.
+    mb51 = _real_mb51(mes)
+    if not df.empty or not mb51.empty:
+        carros = df[df["material_codigo"].isin(MATERIALES_REAL_MB51)].groupby(["material_codigo", "centro"])["carros"].sum()
+        filas = [{"material_codigo": r.material_codigo, "centro": r.centro, "proveedor_codigo": "",
+                  "proveedor": f"MB51 puesto en destino · embarque {r.embarques}" if r.embarques else "MB51 puesto en destino",
+                  "tipo_operacion": "MB51", "cantidad_real": r.cantidad_real,
+                  "carros": int(carros.get((r.material_codigo, r.centro), 0))} for r in mb51.itertuples()]
+        df = pd.concat([df[~df["material_codigo"].isin(MATERIALES_REAL_MB51)], pd.DataFrame(filas, columns=df.columns)],
+                       ignore_index=True)
+    return _en_alcance(df, mes=mes)
 
 
 @_cacheado
@@ -98,7 +186,7 @@ def entregas_por_proveedor_sop():
                MAX(descripcion_material) AS descripcion,
                substr({FECHA_INGRESO_EFECTIVA}, 1, 7) || '-01' AS mes, SUM(cantidad) AS toneladas, COUNT(*) AS carros
         FROM gestion_ingresofisicosop
-        WHERE fecha_ingreso IS NOT NULL AND tipo_operacion IN ({_IN_TIPOS_OPERACION_RECEPCION})
+        WHERE fecha_ingreso IS NOT NULL AND tipo_operacion IN ({_IN_TIPOS_OPERACION_RECEPCION}){_sql_proveedores_alcance()}
         GROUP BY material_codigo, centro, proveedor_codigo, proveedor, mes
     """)
     if df.empty:
@@ -153,7 +241,7 @@ def viajes_recepcion():
                placa AS placa, fecha_pesaje_lleno AS f_lleno, hora_pesaje_lleno AS h_lleno,
                fecha_pesaje_vacio AS f_vacio, hora_pesaje_vacio AS h_vacio
         FROM gestion_ingresofisicosop
-        WHERE tipo_operacion IN ({_IN_TIPOS_OPERACION_RECEPCION}) AND fecha_ingreso IS NOT NULL
+        WHERE tipo_operacion IN ({_IN_TIPOS_OPERACION_RECEPCION}) AND fecha_ingreso IS NOT NULL{_sql_proveedores_alcance()}
     """)
     df = _en_alcance(df)
     if df.empty:
@@ -192,7 +280,7 @@ def traslados_recibidos(mes, centro):
         FROM gestion_ingresofisicosop
         WHERE {FECHA_INGRESO_EFECTIVA} BETWEEN %s AND %s AND centro = %s AND tipo_operacion = '5'
         GROUP BY material_codigo, proveedor
-    """, [fecha_inicio, fecha_fin, centro]), centro=centro)
+    """, [fecha_inicio, fecha_fin, centro]), centro=centro, mes=mes)
 
 
 def _con_categoria_efectiva_planificacion(df, plan):
@@ -216,13 +304,16 @@ def _con_categoria_efectiva_planificacion(df, plan):
 
 
 @_cacheado
-def plan_vs_real_abastecimiento_por_material(mes, categoria=None, centro=None, material=None):
+def plan_vs_real_abastecimiento_por_material(mes, categoria=None, centro=None, material=None, sop=None):
     """Detalle Plan vs Real de abastecimiento por material (toneladas), solo
     Materias Primas y Energía/Combustibles. `categoria`/`centro`/`material`:
-    segmentadores propios de esta tabla."""
-    plan = plan_abastecimiento_por_material(mes)
+    segmentadores propios de esta tabla; `sop`: emisión del S&OP (ver
+    plan_abastecimiento_por_material). Solo los materiales que trae ese S&OP
+    (regla del usuario, 2026-10-26, para cuadrar con su OTIF): lo recibido
+    de un material que el S&OP del mes no planificó no entra al cumplimiento."""
+    plan = plan_abastecimiento_por_material(mes, sop)
     real = ingresos_fisicos_por_material(mes)
-    df = plan.merge(real, on=["material_codigo", "centro"], how="outer")
+    df = plan.merge(real, on=["material_codigo", "centro"], how="left")
     df["cantidad_plan"] = df["cantidad_plan"].fillna(0.0).astype(float)
     df["cantidad_real"] = df["cantidad_real"].fillna(0.0).astype(float)
 
@@ -253,7 +344,73 @@ def plan_vs_real_abastecimiento_por_material(mes, categoria=None, centro=None, m
     return df[columnas].sort_values("cantidad_plan", ascending=False).reset_index(drop=True)
 
 
-def evaluacion_diaria_abastecimiento(mes, categoria=None, centro=None, material=None):
+def _traslados_recibidos_mb51(fecha_inicio, fecha_fin):
+    """Toneladas que cada planta recibió por traslado (641, neto de 642) de
+    MATERIALES_REAL_MB51 cada día entre las fechas: fecha, material_codigo,
+    centro, toneladas."""
+    df = _query(f"""
+        SELECT fecha_contabilizacion AS fecha, material_codigo AS material_codigo, centro AS centro,
+               SUM(cantidad) AS toneladas
+        FROM gestion_movimientomaterial
+        WHERE material_codigo IN ({','.join(repr(m) for m in MATERIALES_REAL_MB51)})
+              AND fecha_contabilizacion BETWEEN %s AND %s
+              AND ((clase_movimiento = '641' AND cantidad > 0) OR (clase_movimiento = '642' AND cantidad < 0))
+        GROUP BY fecha_contabilizacion, material_codigo, centro
+    """, [fecha_inicio, fecha_fin])
+    df["fecha"] = pd.to_datetime(df["fecha"]).dt.date
+    df["toneladas"] = df["toneladas"].astype(float)
+    return df
+
+
+def ingresos_diarios_abastecimiento(mes):
+    """Ingresos de cada día de `mes` por material/centro: fecha,
+    material_codigo, centro, cantidad_real, carros. Balanza (ZMM056,
+    Recepción), salvo MATERIALES_REAL_MB51: su total del mes es lo puesto en
+    destino de MB51 (secas), repartido entre los días en que la planta recibió
+    el traslado (641, neto de 642) según sus toneladas; sin traslados en el
+    mes, va al último día. Lo recibido en otro mes que cuenta en este
+    (MES_CUMPLIMIENTO_IMPORTADOS) va al primer día. Los carros siguen siendo
+    los de la balanza."""
+    fecha_inicio, fecha_fin = _limites_mes(mes)
+    balanza = _query(f"""
+        SELECT {FECHA_INGRESO_EFECTIVA} AS fecha, material_codigo AS material_codigo, centro AS centro,
+               SUM(cantidad) AS cantidad_real, COUNT(*) AS carros
+        FROM gestion_ingresofisicosop
+        WHERE {FECHA_INGRESO_EFECTIVA} BETWEEN %s AND %s
+              AND tipo_operacion IN ({_IN_TIPOS_OPERACION_RECEPCION}){_sql_proveedores_alcance()}
+        GROUP BY {FECHA_INGRESO_EFECTIVA}, material_codigo, centro
+    """, [fecha_inicio, fecha_fin])
+    if not balanza.empty:
+        balanza["fecha"] = pd.to_datetime(balanza["fecha"]).dt.date
+    mb51 = _real_mb51(mes)
+    if mb51.empty:
+        return balanza[~balanza["material_codigo"].isin(MATERIALES_REAL_MB51)].reset_index(drop=True)
+    traslados = _traslados_recibidos_mb51(fecha_inicio, fecha_fin)
+    for (material, centro, origen), destino in MES_CUMPLIMIENTO_IMPORTADOS.items():
+        if destino == fecha_inicio.isoformat():
+            otro = _traslados_recibidos_mb51(*_limites_mes(datetime.date.fromisoformat(origen)))
+            otro = otro[(otro["material_codigo"] == material) & (otro["centro"] == centro)].assign(fecha=fecha_inicio)
+            traslados = pd.concat([traslados, otro], ignore_index=True)
+    filas = []
+    for r in mb51.itertuples():
+        dias = traslados[(traslados["material_codigo"] == r.material_codigo) & (traslados["centro"] == r.centro)] \
+            if not traslados.empty else traslados
+        total = float(dias["toneladas"].sum()) if not dias.empty else 0.0
+        if total > 0:
+            filas += [(d.fecha, r.material_codigo, r.centro, r.cantidad_real * d.toneladas / total) for d in dias.itertuples()]
+        else:
+            filas.append((fecha_fin, r.material_codigo, r.centro, r.cantidad_real))
+    importados = pd.DataFrame(filas, columns=["fecha", "material_codigo", "centro", "cantidad_real"])
+    carros = balanza[balanza["material_codigo"].isin(MATERIALES_REAL_MB51)][["fecha", "material_codigo", "centro", "carros"]]
+    importados = importados.groupby(["fecha", "material_codigo", "centro"], as_index=False)["cantidad_real"].sum()
+    importados = importados.merge(carros, on=["fecha", "material_codigo", "centro"], how="outer")
+    importados["cantidad_real"] = importados["cantidad_real"].fillna(0.0)
+    importados["carros"] = importados["carros"].fillna(0).astype(int)
+    return pd.concat([balanza[~balanza["material_codigo"].isin(MATERIALES_REAL_MB51)], importados],
+                     ignore_index=True)
+
+
+def evaluacion_diaria_abastecimiento(mes, categoria=None, centro=None, material=None, sop=None):
     """Evaluación diaria de abastecimiento: el Plan mensual (ya filtrado por
     categoría/centro/material, misma versión más reciente que la evaluación
     mensual) repartido en partes iguales entre los días calendario de `mes`
@@ -268,7 +425,7 @@ def evaluacion_diaria_abastecimiento(mes, categoria=None, centro=None, material=
     el usuario."""
     plan_total = float(
         plan_vs_real_abastecimiento_por_material(
-            mes, categoria=categoria, centro=centro, material=material
+            mes, categoria=categoria, centro=centro, material=material, sop=sop
         )["cantidad_plan"].sum()
     )
 
@@ -276,19 +433,16 @@ def evaluacion_diaria_abastecimiento(mes, categoria=None, centro=None, material=
     dias_mes = (fecha_fin - fecha_inicio).days + 1
     plan_diario = plan_total / dias_mes if dias_mes else 0.0
 
-    real = _query(f"""
-        SELECT {FECHA_INGRESO_EFECTIVA} AS fecha, material_codigo AS material_codigo, centro AS centro,
-               SUM(cantidad) AS cantidad_real, COUNT(*) AS carros
-        FROM gestion_ingresofisicosop
-        WHERE {FECHA_INGRESO_EFECTIVA} BETWEEN %s AND %s
-              AND tipo_operacion IN ({_IN_TIPOS_OPERACION_RECEPCION})
-        GROUP BY {FECHA_INGRESO_EFECTIVA}, material_codigo, centro
-    """, [fecha_inicio, fecha_fin])
+    real = ingresos_diarios_abastecimiento(mes)
 
     catalogo = catalogo_materiales()[["material_codigo", "categoria"]]
-    real = _en_alcance(real).merge(catalogo, on="material_codigo", how="left")
-    real = _con_categoria_efectiva_planificacion(real, plan_abastecimiento_por_material(mes))
+    plan = plan_abastecimiento_por_material(mes, sop)
+    real = _en_alcance(real, mes=mes).merge(catalogo, on="material_codigo", how="left")
+    real = _con_categoria_efectiva_planificacion(real, plan)
     real = real[real["categoria"].isin(CATEGORIAS_PLANIFICACION_SOP)]
+    # Como la evaluación mensual: solo los materiales que trae el S&OP del mes.
+    pares = set(zip(plan["material_codigo"], plan["centro"]))
+    real = real[[k in pares for k in zip(real["material_codigo"], real["centro"])]]
     if categoria:
         real = real[real["categoria"] == categoria]
     if centro:
@@ -328,11 +482,11 @@ def evaluacion_diaria_abastecimiento(mes, categoria=None, centro=None, material=
     return filas
 
 
-def resumen_abastecimiento_por_categoria(mes, categoria=None, centro=None):
+def resumen_abastecimiento_por_categoria(mes, categoria=None, centro=None, sop=None):
     """Resumen Plan vs Real por categoría (Materias Primas / Energía y
-    Combustibles), para la fila-resumen de Planificación. `categoria`/`centro`:
-    mismos segmentadores que plan_vs_real_abastecimiento_por_material."""
-    detalle = plan_vs_real_abastecimiento_por_material(mes, categoria=categoria, centro=centro)
+    Combustibles), para la fila-resumen de Planificación. `categoria`/`centro`/
+    `sop`: mismos segmentadores que plan_vs_real_abastecimiento_por_material."""
+    detalle = plan_vs_real_abastecimiento_por_material(mes, categoria=categoria, centro=centro, sop=sop)
     if detalle.empty:
         return []
     resumen = detalle.groupby("categoria", as_index=False).agg(
@@ -353,7 +507,7 @@ def resumen_abastecimiento_por_categoria(mes, categoria=None, centro=None):
     return filas
 
 
-def cumplimiento_mensual_abastecimiento(categoria=None, centro=None):
+def cumplimiento_mensual_abastecimiento(categoria=None, centro=None, sop=None):
     """Serie mensual de Plan vs Real de Abastecimiento (todos los meses con
     snapshot cargado), para ver la tendencia de cumplimiento mes a mes en vez
     de un solo mes a la vez. Un mes sin Plan (todavía no llegó ese snapshot) o
@@ -362,8 +516,11 @@ def cumplimiento_mensual_abastecimiento(categoria=None, centro=None):
     Plan de Abastecimiento mes a mes. Pedido por el usuario."""
     hoy_mes = datetime.date.today().replace(day=1)
     filas = []
-    for mes in meses_planificacion_disponibles():
-        detalle = plan_vs_real_abastecimiento_por_material(mes, categoria=categoria, centro=centro)
+    # Sin segmentador S&OP, solo los meses con su propio S&OP (cada mes contra
+    # el S&OP de ese mes, regla del usuario 2026-10-26).
+    meses = meses_planificacion_disponibles() if sop else meses_con_sop_propio()
+    for mes in meses:
+        detalle = plan_vs_real_abastecimiento_por_material(mes, categoria=categoria, centro=centro, sop=sop)
         plan_total = float(detalle["cantidad_plan"].sum()) if not detalle.empty else 0.0
         real_total = float(detalle["cantidad_real"].sum()) if not detalle.empty else 0.0
         # Un mes futuro (todavía no llega ni empieza) no tiene 0% de

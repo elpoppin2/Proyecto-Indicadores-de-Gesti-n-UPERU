@@ -6,7 +6,7 @@
       <span class="panel-zona">{{ p.zona_nombre }}</span>
       <h2>{{ p.titulo }}</h2>
     </div>
-    <button type="button" class="btn-link btn-ir-zona" data-ir-zona="{{ p.zona }}">Ver detalle<span class="chevron" aria-hidden="true"></span></button>
+    {% if p.zona %}<button type="button" class="btn-link btn-ir-zona" data-ir-zona="{{ p.zona }}">Ver detalle<span class="chevron" aria-hidden="true"></span></button>{% endif %}
   </header>
   <div class="panel-resultado">
     <span class="panel-cifra">{{ p.cifra }}</span>

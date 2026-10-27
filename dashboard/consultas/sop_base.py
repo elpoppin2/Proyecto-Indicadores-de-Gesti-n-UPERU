@@ -16,6 +16,24 @@ from .inventario import _IN_CLASES_MOVIMIENTO_CONSUMO
 
 CATEGORIAS_PLANIFICACION_SOP = ("MATERIAS PRIMAS", "COMBUSTIBLES")
 
+# Segmentos de Planificación (pedido del usuario, 2026-10-26: el IPU y la
+# pestaña Indicadores separan Combustibles en sólido y líquido): Combustible
+# Sólido son los carbones; Combustible Líquido, el resto de Combustibles (los
+# petróleos y unos pocos menores: gasohol, GLP, aceite de pirólisis).
+SEGMENTO_MATERIAS_PRIMAS = "MATERIAS PRIMAS"
+SEGMENTO_COMBUSTIBLE_SOLIDO = "COMBUSTIBLE SÓLIDO"
+SEGMENTO_COMBUSTIBLE_LIQUIDO = "COMBUSTIBLE LÍQUIDO"
+SEGMENTOS_PLANIFICACION = (SEGMENTO_MATERIAS_PRIMAS, SEGMENTO_COMBUSTIBLE_SOLIDO, SEGMENTO_COMBUSTIBLE_LIQUIDO)
+
+
+def segmento_planificacion(categoria, texto):
+    """Segmento de Planificación de un material de `categoria` (MATERIAS
+    PRIMAS o COMBUSTIBLES) según su descripción; otra categoría queda igual."""
+    if categoria != "COMBUSTIBLES":
+        return categoria
+    t = (texto or "").upper()
+    return SEGMENTO_COMBUSTIBLE_SOLIDO if ("CARBON" in t or "CARBÓN" in t or "COQUE" in t) else SEGMENTO_COMBUSTIBLE_LIQUIDO
+
 # Tipo de operación del ticket de báscula (ZMM056) que cuenta como "Recepción"
 # (ingreso real): 1 = de terceros (compra externa), 5 = propia (cantera o
 # traslado entre plantas). 4 = Despacho/salida (p.ej. clínker o cemento

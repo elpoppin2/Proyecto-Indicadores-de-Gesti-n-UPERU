@@ -666,6 +666,10 @@ def _cartera(mes, inicio_12, fin, inicio_anio, corte, supuestos, inflacion, ipu_
     items = []
     if corte:
         cobertura = q.cobertura_stock_planificacion(fecha_stock=corte)
+        # El máximo del S&OP es del stock físico: se juntan lo propio y lo en
+        # acopio de un centro de acopio (ver q.ACOPIO_COBERTURA).
+        cobertura = cobertura.groupby(["material_codigo", "centro"], as_index=False).agg(
+            stock_cierre=("stock_cierre", "sum"), categoria=("categoria", "first"), texto_breve=("texto_breve", "first"))
         minmax = q.minmax_sop(mes)
         if not cobertura.empty and not minmax.empty:
             minmax = minmax[[pd.Timestamp(m).date().replace(day=1) == mes for m in minmax["mes"]]]

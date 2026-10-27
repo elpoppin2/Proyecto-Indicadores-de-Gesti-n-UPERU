@@ -3,10 +3,21 @@
   <h2>Evaluación mensual</h2>
   <p class="nota">Toneladas que ingresaron a planta frente al plan de abastecimiento del S&amp;OP (Materias primas y Combustibles).</p>
   <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
-    <p>El plan viene del archivo mensual de Abastecimiento S&amp;OP. Los ingresos son los tickets de báscula (ZMM056) ya
-    contabilizados en SAP: para estos materiales la báscula es la fuente de lo que realmente ingresó, no MB51.</p>
+    <p>El plan viene del archivo de Abastecimiento S&amp;OP de cada mes. Con S&amp;OP "El más reciente de cada mes", cada
+    mes toma la última emisión que lo trae; al elegir una emisión, se compara contra ella.</p>
+    <p>Los ingresos son los tickets de báscula (ZMM056) ya contabilizados en SAP. El Carbón Importado y la Escoria japonesa,
+    que llegan por barco, se miden con MB51: las toneladas puestas en destino en cada planta (traslado desde el centro de
+    importación y de Atocongo a Condorcocha), en seco con el ajuste de humedad de cada barco.</p>
   </div></details>
   <form class="filtros" method="get" data-target="sec-plan-mensual">
+    <div class="campo">
+      <label for="sop_plan">S&amp;OP</label>
+      <select name="sop_plan" id="sop_plan">
+        {% for o in planificacion.sops %}
+          <option value="{{ o.valor }}" {% if o.valor == planificacion.sop_sel %}selected{% endif %}>{{ o.texto }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <div class="campo">
       <label for="mes_plan">Mes</label>
       <select name="mes_plan" id="mes_plan">

@@ -1,8 +1,24 @@
 """Reglas de negocio en SQL que comparten varias consultas: qué compras cuentan, valor de compra, proveedor y categoría efectivos, contrato, condiciones de pago (PMP) y categoría/familia efectiva del inventario y del material."""
 
+import json
 import re
+from pathlib import Path
 
 from .base import _query
+
+
+# Cantidades de las reglas que no van al repositorio (público): están en
+# datos_locales/reglas_locales.json, excluido de git. Sin el archivo, cada
+# regla que las usa queda sin efecto.
+_ARCHIVO_REGLAS_LOCALES = Path(__file__).resolve().parents[2] / "datos_locales" / "reglas_locales.json"
+
+
+def regla_local(clave, defecto):
+    """Valor `clave` de datos_locales/reglas_locales.json, o `defecto`."""
+    try:
+        return json.loads(_ARCHIVO_REGLAS_LOCALES.read_text(encoding="utf-8")).get(clave, defecto)
+    except (OSError, ValueError):
+        return defecto
 
 
 # Regla de negocio para el apartado de Compras: excluir grupos de compra que no
@@ -34,7 +50,34 @@ PROVEEDOR_EFECTIVO_LC = "COALESCE(NULLIF(lc.cuenta_proveedor, ''), lc.proveedor)
 # Categoría efectiva de una línea de compra: la del grupo de artículos (CATEGORÍAS
 # OFICIAL) o, si no tiene, la Categoría de Servicio de su grupo de compras (GCp).
 # Requiere JOIN con gestion_categoria (alias c) y gestion_categoriaservicio (alias cs).
-CATEGORIA_EFECTIVA_LC = "COALESCE(NULLIF(c.categoria, ''), NULLIF(cs.categoria_servicio, ''))"
+_CATEGORIA_BASE_LC = "COALESCE(NULLIF(c.categoria, ''), NULLIF(cs.categoria_servicio, ''))"
+
+# Pedidos con categoría puesta a mano, por encima de la regla anterior
+# (pedido del usuario, 2026-10-26): Doc. compra -> categoría.
+# - 4400542795: reubicación de la red de gas natural (3 posiciones a A000,
+#   ago-2026). La compró el G11 y caía en MATERIAS PRIMAS, donde bajaba el PMP
+#   de agosto; no es materia prima.
+CATEGORIA_POR_PEDIDO_LC = {"4400542795": "COMBUSTIBLES"}
+
+# Fletes de materias primas (pedido del usuario, 2026-10-26: cada compra de
+# materia prima tiene su flete y cuenta en el valor de compra de MATERIAS
+# PRIMAS): los servicios "FLETE DE <material>" del G33 (Atocongo: yeso,
+# clínker, sílice, escoria, puzolana, caliza, fierro), que por su GCp caían en
+# SERVICIOS INDUSTRIALES. Salvo las posiciones abiertas 140 y 150 de la OC
+# 4000000935 (set-2025: cantidad de referencia sin entregas, valor fuera de
+# escala), que siguen donde estaban.
+GRUPO_COMPRAS_FLETES_MP = "G33"
+FLETES_MP_EXCLUIDOS = (("4000000935", "140"), ("4000000935", "150"))
+_SQL_FLETE_MP_LC = (
+    f"lc.grupo_compras = '{GRUPO_COMPRAS_FLETES_MP}' AND substr(UPPER(lc.texto_breve), 1, 5) = 'FLETE'"
+    + "".join(f" AND NOT (lc.doc_compra = '{d}' AND lc.pos_doc_compra = '{p}')" for d, p in FLETES_MP_EXCLUIDOS)
+)
+CATEGORIA_EFECTIVA_LC = (
+    "(CASE"
+    + "".join(f" WHEN lc.doc_compra = '{d}' THEN '{cat}'" for d, cat in CATEGORIA_POR_PEDIDO_LC.items())
+    + f" WHEN {_SQL_FLETE_MP_LC} THEN 'MATERIAS PRIMAS'"
+    + f" ELSE {_CATEGORIA_BASE_LC} END)"
+)
 
 # El modelo de "Valor de Compras" excluye líneas sin categoría resuelta (en blanco o
 # sin match) y las categorías NO APLICA / ENERGÍA ELÉCTRICA. Definido por el usuario.

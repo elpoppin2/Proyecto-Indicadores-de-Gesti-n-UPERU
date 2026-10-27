@@ -15,15 +15,35 @@
     {% endif %}
     <div class="campo">
       <label for="id_username">Usuario</label>
-      <input type="text" name="username" id="id_username" autocomplete="username" autofocus required>
+      <input type="text" name="username" id="id_username" class="t-input{% if form.errors %} is-error{% endif %}" autocomplete="username" value="{{ form.username.value|default:'' }}"{% if not form.errors %} autofocus{% endif %} required>
     </div>
     <div class="campo">
       <label for="id_password">Contraseña</label>
-      <input type="password" name="password" id="id_password" autocomplete="current-password" required>
+      <input type="password" name="password" id="id_password" class="t-input{% if form.errors %} is-error{% endif %}" autocomplete="current-password"{% if form.errors %} autofocus{% endif %} required>
     </div>
     <input type="hidden" name="next" value="{{ next }}">
     <button type="submit">Ingresar</button>
     <p class="login-pie">Acceso para el equipo de Supply Chain de UNACEM Perú.</p>
   </form>
 </div>
+{% if form.errors %}
+<script>
+  /* transitions-dev 12 (error state shake): con usuario o contraseña
+     incorrectos los campos se sacuden y quedan marcados hasta que se
+     escribe de nuevo. Con "reducir movimiento" no se mueven. */
+  (function () {
+    var campos = document.querySelectorAll('.login-card .t-input');
+    var cs = getComputedStyle(document.documentElement);
+    var ms = function (n, d) { var v = parseFloat(cs.getPropertyValue(n)); return isFinite(v) ? v : d; };
+    var duracion = ms('--shake-dur-a', 80) * 2 + ms('--shake-dur-b', 60) * 2;
+    campos.forEach(function (c) {
+      c.classList.remove('is-shaking');
+      void c.offsetWidth;
+      c.classList.add('is-shaking');
+      setTimeout(function () { c.classList.remove('is-shaking'); }, duracion + 20);
+      c.addEventListener('input', function () { campos.forEach(function (x) { x.classList.remove('is-error'); }); }, { once: true });
+    });
+  })();
+</script>
+{% endif %}
 {% endblock %}

@@ -56,7 +56,9 @@ def _contexto_precios_entrada(request):
     df = _por_materiales(por_centro, material_sel)
 
     tarjetas = q.resumen_precios_entrada(df)
+    umb = dict(zip(base["material_codigo"], base["unidad_medida_base"]))
     for t in tarjetas:
+        t["unidad"] = umb.get(t["material_codigo"]) or "T"  # el Petróleo Diesel, en galones
         t["mes_ultimo_corto"] = _mes_corto(t["mes_ultimo"])
         t["mes_base_anual_corto"] = _mes_corto(t["mes_base_anual"]) if t["mes_base_anual"] else ""
         t["variacion_anual_pct"] = None if t["variacion_anual"] is None else t["variacion_anual"] * 100
@@ -74,7 +76,7 @@ def _contexto_precios_entrada(request):
         # Importados por embarque (queries.embarques_importados): de qué
         # barcos salió lo recibido cada mes y la composición de cada barco.
         material_uno = tarjetas[0]["material_codigo"]
-        reparto = q.reparto_por_embarque()
+        reparto = q.reparto_por_embarque(para_precio=True)
         reparto = reparto[reparto["material_codigo"] == material_uno]
         de_barco = {(r.centro, datetime.date.fromisoformat(r.mes)): r for r in reparto.itertuples()}
         barcos, _ = q.embarques_importados()
@@ -191,9 +193,12 @@ def _matriz_tco(historia, df):
     filas = []
     primer_mes = meses_de[anios[0]][0]
     # Importados por embarque: de qué barco salió lo recibido cada mes.
-    reparto = q.reparto_por_embarque()
+    reparto = q.reparto_por_embarque(para_precio=True)
     de_barco = {(r.material_codigo, r.centro, datetime.date.fromisoformat(r.mes)): r.embarques
                 for r in reparto.itertuples() if r.embarques}
+    # Lo que está en el acopio esperando su traslado (PARTE_ACOPIO_POR_BARCO): no cuenta todavía.
+    por_trasladar = {(r.material_codigo, r.centro, datetime.date.fromisoformat(r.mes)): r.por_trasladar
+                     for r in reparto.itertuples() if r.por_trasladar > 0.5}
     fuera_ipu = {}  # año -> materiales sin compra el año anterior (no entran a su IPU)
     for (material, centro), g in h.groupby(["material_codigo", "centro"]):
         por_mes = {r.mes: r for r in g.itertuples()}
@@ -249,11 +254,35 @@ def _matriz_tco(historia, df):
                                      + f" = S/ {r.importe_tco:z,.0f}"
                                      + (f" · embarque {de_barco[(material, centro, c['mes'])]}"
                                         if (material, centro, c["mes"]) in de_barco else "")})
+        # Volúmenes con que pesa cada mes en el IPU (pedido del usuario,
+        # 2026-10-26: para verificar la separación entre plantas), con el
+        # total de cada año en la columna de su IPU.
+        volumenes = []
+        for c in columnas:
+            if c["tipo"] == "ipu":
+                volumenes.append({"total": sum(r.toneladas for m, r in por_mes.items() if m.year == c["anio"]), "anio": True})
+                continue
+            r, clave = por_mes.get(c["mes"]), (material, centro, c["mes"])
+            pendiente = por_trasladar.get(clave, 0.0)
+            titulo = f"{c['texto']}: {r.toneladas:z,.0f} T" if r is not None else ""
+            if clave in de_barco:
+                titulo += f" · embarque {de_barco[clave]}"
+            if pendiente:
+                titulo += (f" · además {pendiente:z,.0f} T del barco siguen en {q.nombre_centro(centro).title()} por "
+                           f"trasladarse a la otra planta: cuentan cuando lleguen")
+            volumenes.append({"t": r.toneladas if r is not None else None, "titulo": titulo, "pendiente": bool(pendiente)})
         filas.append({"material": material, "texto": g["texto_breve"].iloc[0],
-                      "centro": _CENTRO_CORTO.get(centro, centro), "orden_centro": centro, "celdas": celdas})
+                      "centro": _CENTRO_CORTO.get(centro, centro), "orden_centro": centro, "celdas": celdas,
+                      "volumenes": volumenes})
     filas.sort(key=lambda f: (f["orden_centro"], f["material"]))
     total = _ipu_por_anio(h, anios)
-    return {"anios": anios, "columnas": columnas, "filas": filas,
+    total_volumen = []
+    for i, c in enumerate(columnas):
+        valores = [f["volumenes"][i].get("total" if c["tipo"] == "ipu" else "t") for f in filas]
+        total_volumen.append(sum(v for v in valores if v))
+    return {"anios": anios, "columnas": columnas, "filas": filas, "total_volumen": total_volumen,
+            "indices_ipu": [i for i, c in enumerate(columnas) if c["tipo"] == "ipu"],
+            "hay_pendiente": any(v.get("pendiente") for f in filas for v in f["volumenes"]),
             "total": [total.get(c["anio"]) if c["tipo"] == "ipu" else "" for c in columnas],
             "fuera_ipu": [{"anio": a, "anio_base": a - 1, "materiales": ", ".join(sorted(m))}
                           for a, m in sorted(fuera_ipu.items())]}
@@ -337,7 +366,8 @@ def _contexto_inflacion(request, sufijo="inflacion"):
     mes y, con un material, su detalle. Pedido por el usuario. Precio real
     (MB51 + FBL3N) por defecto desde que la FBL3N quedó completa (2024 a
     set-26); "Solo MB51" deja la evaluación como antes."""
-    return _contexto_evaluacion_precios(request, q.precios_entrada_sop_real(), _EVALUACIONES_PRECIOS[sufijo], sufijo)
+    return _contexto_evaluacion_precios(request, q.precios_entrada_sop_real(), _EVALUACIONES_PRECIOS[sufijo], sufijo,
+                                        unidad="auto")
 
 
 _FAMILIAS_IPU_FILAS = 15
@@ -425,6 +455,10 @@ def _contexto_evaluacion_precios(request, base, evaluacion, sufijo, campo="categ
     materiales_op = _opciones_material(por_centro)
     material_sel = _selector_material(request, sufijo, materiales_op)
     df = _por_materiales(por_centro, material_sel)
+    if unidad == "auto":
+        # Planificación: en toneladas si todo lo elegido se compra en T; con el
+        # Combustible Líquido (diésel en galones), cada material en su unidad.
+        unidad = "T" if {umb.get(m, "T") for m in df["material_codigo"].unique()} <= {"T"} else None
     ver_sel = request.GET.get(f"ver_{sufijo}", "pct")
     if ver_sel not in ("pct", "soles", "precio"):
         ver_sel = "pct"

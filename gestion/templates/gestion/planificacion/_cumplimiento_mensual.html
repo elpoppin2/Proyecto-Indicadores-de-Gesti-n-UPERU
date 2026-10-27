@@ -4,6 +4,14 @@
   <p class="nota">Cumplimiento del plan de abastecimiento (real ÷ plan) mes a mes. Un mes sin plan o sin ingresos todavía no tiene barra.</p>
   <form class="filtros" method="get" data-target="sec-cumplimiento-mensual">
     <div class="campo">
+      <label for="sop_cumplmes">S&amp;OP</label>
+      <select name="sop_cumplmes" id="sop_cumplmes">
+        {% for o in planificacion_cumplimiento.sops %}
+          <option value="{{ o.valor }}" {% if o.valor == planificacion_cumplimiento.sop_sel %}selected{% endif %}>{{ o.texto }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
       <label for="categoria_cumplmes">Categoría</label>
       <select name="categoria_cumplmes" id="categoria_cumplmes">
         {% for cat in planificacion_cumplimiento.categorias %}
@@ -24,7 +32,7 @@
 
   {% with g=planificacion_cumplimiento.grafico %}
     {% if g %}
-      <div class="chart-scroll">
+      <div class="chart-scroll" style="max-width: {{ g.ancho }}px;">
       <div class="chart-wrap chart-barras">
         <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Cumplimiento mensual de Abastecimiento">
           <line class="linea-meta" x1="0" y1="{{ g.y_meta }}" x2="{{ g.ancho }}" y2="{{ g.y_meta }}"></line>

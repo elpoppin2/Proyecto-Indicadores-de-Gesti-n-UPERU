@@ -1,0 +1,32 @@
+{# Pestaña Indicadores de Planificación: cuatro cuadrantes como los de Suministros Industriales (views.plan_cuadrantes), con los filtros Año (2025 en adelante, Solo 2025, Solo 2026...) y Categoría (Materias Primas, Combustible Sólido, Combustible Líquido: uno o varios). Pedidos del usuario (2026-10-23, 24 y 26). En el localhost los filtros vuelven a pedir la sección (base.html); en el HTML estático vienen todas las combinaciones dibujadas y se muestra la elegida (graficos.js, data-vista). #}
+<section class="indicadores-graficos" id="sec-indicadores">
+  <div class="indicadores-cabecera">
+    <form class="filtros" method="get" data-target="sec-indicadores" data-sin-reinicio{% if estatico %} data-estatico onsubmit="return false"{% endif %}>
+      <div class="campo">
+        <label for="anio_indicadores">Año</label>
+        <select name="anio_indicadores" id="anio_indicadores">
+          {% for o in periodos %}
+            <option value="{{ o.valor }}"{% if o.valor == periodo_sel %} selected{% endif %}>{{ o.texto }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <fieldset class="campo campo-fichas" data-al-menos-uno>
+        <legend>Categoría</legend>
+        <div class="fichas-filtro">
+          {% for s in segmentos %}
+            <label class="ficha-filtro"><input type="checkbox" name="seg_indicadores" value="{{ s.codigo }}"{% if s.activo %} checked{% endif %}><span>{{ s.nombre }}</span></label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      {% if not estatico %}<noscript><button type="submit">Aplicar</button></noscript>{% endif %}
+    </form>
+    <p class="nota indicadores-nota">Las categorías elegidas en el año elegido, contra el año anterior. Elige una o varias categorías. Pasa el mouse por un gráfico para ver el detalle.</p>
+  </div>
+  {% for v in vistas %}
+    <div class="paneles-indicador" data-vista="{{ v.clave }}"{% if v.clave != clave_sel %} hidden{% endif %}>
+      {% for p in v.paneles %}
+        {% include "gestion/planificacion/_panel_indicador.html" with p=p i=forloop.counter0 %}
+      {% endfor %}
+    </div>
+  {% endfor %}
+</section>

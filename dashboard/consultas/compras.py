@@ -1,5 +1,7 @@
 """Compras (ME2N): por mes, categoría, proveedor y condición de pago, PMP, concentración de proveedores, Fill Rate, Lead Time y OTIF."""
 
+import datetime
+
 import pandas as pd
 from django.db import connection
 
@@ -11,6 +13,15 @@ from .reglas import CATEGORIA_EFECTIVA_LC, FILTRO_BAJO_CONTRATO_LC, FILTRO_CATEG
 def anios_compras_disponibles():
     df = _query("SELECT DISTINCT anio_origen FROM gestion_lineacompra ORDER BY anio_origen")
     return df["anio_origen"].tolist()
+
+
+def ultima_fecha_compras():
+    """Fecha de la última orden de compra cargada (fecha_documento), o None."""
+    df = _query("SELECT MAX(fecha_documento) AS f FROM gestion_lineacompra")
+    f = df["f"].iloc[0] if not df.empty else None
+    if f is None or (isinstance(f, float) and f != f):
+        return None
+    return f if isinstance(f, datetime.date) else datetime.date.fromisoformat(str(f)[:10])
 
 
 def compras_por_mes(anio):
@@ -253,6 +264,24 @@ def calcular_pmp_rango(fecha_inicio, fecha_fin):
     if not valor_total:
         return 0.0
     return float((dias * df["valor_total"]).sum() / valor_total)
+
+
+def compras_por_mes_condicion_pago_material(categorias):
+    """Como compras_por_mes_y_condicion_pago de `categorias`, pero por
+    material (con su descripción y categoría): para separar los segmentos de
+    Planificación (Combustible Sólido / Líquido) en el plazo medio de pago."""
+    categoria = f"CASE {CATEGORIA_EFECTIVA_LC} {_CASE_CONSOLIDACION_CATEGORIAS} ELSE {CATEGORIA_EFECTIVA_LC} END"
+    return _query(f"""
+        SELECT strftime('%%Y-%%m-01', lc.fecha_documento) AS mes, lc.condicion_pago AS condicion_pago,
+               lc.material_codigo AS material_codigo, MAX(lc.texto_breve) AS texto_breve, {categoria} AS categoria,
+               SUM({VALOR_COMPRA_EXPR_LC}) AS valor_total
+        FROM gestion_lineacompra lc
+        LEFT JOIN gestion_categoria c ON c.grupo_articulo = lc.grupo_articulo
+        LEFT JOIN gestion_categoriaservicio cs ON cs.grupo_compras = lc.grupo_compras
+        WHERE lc.fecha_documento IS NOT NULL AND {FILTRO_COMPRAS_VALIDAS_LC}
+              AND {FILTRO_CATEGORIA_VALIDA_LC} AND {categoria} IN ({",".join(["%s"] * len(categorias))})
+        GROUP BY strftime('%%Y-%%m-01', lc.fecha_documento), lc.condicion_pago, lc.material_codigo, {categoria}
+    """, list(categorias))
 
 
 def compras_por_mes_y_condicion_pago(categoria=None):

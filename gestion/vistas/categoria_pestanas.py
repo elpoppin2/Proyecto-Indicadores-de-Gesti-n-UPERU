@@ -379,6 +379,11 @@ def _cat_precios(request, categoria, tiene_inventario):
         "materiales": int(len(materiales)), "desde": _mes_corto(min(inflacion["mes"])), "hasta": _mes_corto(max(inflacion["mes"])),
         "suben": int((materiales["ultima"] > 0).sum()), "bajan": int((materiales["ultima"] < 0).sum()),
         "atipicas": int(inflacion["atipica"].sum()),
+        # Todo el período, ponderado (lo pagado ÷ lo que habría costado al
+        # precio base − 1): la cifra del IPU de Indicadores con "2025 en adelante".
+        "periodo_pct": (float(materiales["importe"].sum()) / float(materiales["base_importe"].sum()) - 1) * 100
+        if float(materiales["base_importe"].sum()) else 0.0,
+        "bolsa": float(materiales["bolsa"].sum()),
     } if meses else None
 
     # Un solo material (en un solo centro): su precio mes a mes contra el

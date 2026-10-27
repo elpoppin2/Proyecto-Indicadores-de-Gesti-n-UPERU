@@ -66,7 +66,8 @@
        red, HTML inesperado), se recurre a la navegación normal como respaldo. */
     (function () {
       function formularioFiltro(nodo) {
-        return nodo.closest && nodo.closest('form.filtros[data-target]');
+        // form[data-estatico]: filtro de las copias sin servidor, se resuelve en el navegador (graficos.js).
+        return nodo.closest && nodo.closest('form.filtros[data-target]:not([data-estatico])');
       }
 
       // `reiniciar`: en vez de fijar los valores del formulario, se quitan de
@@ -82,7 +83,13 @@
             params.delete(campo.name);
           });
         } else {
-          new FormData(form).forEach(function (valor, clave) { params.set(clave, valor); });
+          // Se reemplazan todos los valores de cada campo del formulario: las
+          // casillas (Categoría de Indicadores) repiten el nombre, una por
+          // marcada, y las desmarcadas no deben quedar en la URL.
+          var nombres = {};
+          form.querySelectorAll('[name]').forEach(function (campo) { nombres[campo.name] = true; });
+          Object.keys(nombres).forEach(function (nombre) { params.delete(nombre); });
+          new FormData(form).forEach(function (valor, clave) { params.append(clave, valor); });
         }
         var qs = params.toString();
         return window.location.pathname + (qs ? '?' + qs : '');
@@ -344,7 +351,10 @@
         function poner(clave, texto, signo) {
           var celda = contenedor.querySelector('[data-total="' + clave + '"]');
           if (!celda) return;
+          var cambio = celda.textContent.trim() !== texto;
           celda.textContent = texto;
+          // El total que cambia con la búsqueda entra dígito a dígito (graficos.js).
+          if (cambio && clave !== 'materiales' && window.uperuAnimarCifra) window.uperuAnimarCifra(celda);
           if (signo !== undefined) {
             celda.classList.toggle('dato-negativo', signo > 0);
             celda.classList.toggle('dato-positivo', signo < 0);

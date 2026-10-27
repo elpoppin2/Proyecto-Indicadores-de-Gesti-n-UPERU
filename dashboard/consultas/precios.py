@@ -5,20 +5,35 @@ import datetime
 import pandas as pd
 
 from .base import _cacheado, _query, _query_directo, _sumar_meses, _texto_sql
-from .importados import AJUSTES_CODIGOS_ANTERIORES, CENTRO_IMPORTACION, PRODUCCION_PROPIA, _CLASES_ENTRADA_COMPRA, _con_codigos_anteriores, _embarque_de_partidas, _produccion_propia, _puesto_en_destino, _sql_material_vigente, _sql_traspasos_cambio_codigo, embarques_importados, liquidaciones_produccion_propia, materiales_importados, reparto_por_embarque
+from .importados import AJUSTES_CODIGOS_ANTERIORES, CENTRO_IMPORTACION, PRODUCCION_PROPIA, _CLASES_ENTRADA_COMPRA, _con_codigos_anteriores, _embarque_de_partidas, _produccion_propia, _puesto_en_destino, _sql_centro_destino, _sql_material_vigente, _sql_traspasos_cambio_codigo, embarques_importados, liquidaciones_produccion_propia, materiales_importados, reparto_por_embarque, valores_traslado
 from .inventario import catalogo_materiales
-from .reglas import CLASES_LIQUIDACION_ORDENES
+from .reglas import CLASES_LIQUIDACION_ORDENES, regla_local
 from .sop_base import materiales_planificados_sop
+
+
+# IPU de Planificación en tres categorías (pedido del usuario, 2026-10-26):
+# Materias Primas, Combustible Sólido (los combustibles del S&OP, carbones) y
+# Combustible Líquido (los petróleos, que no están en el S&OP; como la hoja
+# "Energ Líq" del Excel IPU del usuario: solo Atocongo y Condorcocha).
+CATEGORIA_COMBUSTIBLE_SOLIDO = "COMBUSTIBLE SÓLIDO"
+CATEGORIA_COMBUSTIBLE_LIQUIDO = "COMBUSTIBLE LÍQUIDO"
+# material -> (centros, categoría del IPU)
+MATERIALES_IPU_ADICIONALES = {
+    "06-00000023": (("U001", "U002"), CATEGORIA_COMBUSTIBLE_LIQUIDO),  # Petróleo Diesel B5 S-50 (galones)
+    "06-00000026": (("U001", "U002"), CATEGORIA_COMBUSTIBLE_LIQUIDO),  # Petróleo Industrial N°6
+}
 
 
 @_cacheado
 def precios_entrada_sop():
-    """Una fila por material/centro/mes con compras: toneladas, importe (S/),
-    precio (S/ por T), entradas y proveedores distintos, más texto_breve y
-    categoría. Materiales: los del Plan de Abastecimiento S&OP."""
-    columnas = ["material_codigo", "texto_breve", "centro", "categoria", "mes",
+    """Una fila por material/centro/mes con compras: toneladas (la cantidad,
+    en la unidad_medida_base del material: el diésel en galones), importe
+    (S/), precio (S/ por unidad), entradas y proveedores distintos, más
+    texto_breve y categoría del IPU. Materiales: los del Plan de
+    Abastecimiento S&OP y MATERIALES_IPU_ADICIONALES (en sus centros)."""
+    columnas = ["material_codigo", "texto_breve", "unidad_medida_base", "centro", "categoria", "mes",
                 "toneladas", "importe", "precio", "entradas", "proveedores"]
-    materiales = materiales_planificados_sop()
+    materiales = sorted(set(materiales_planificados_sop()) | set(MATERIALES_IPU_ADICIONALES))
     if not materiales:
         return pd.DataFrame(columns=columnas)
     # "+clase_movimiento": que SQLite use el índice por material (muy
@@ -26,8 +41,9 @@ def precios_entrada_sop():
     # 101 de todos los materiales). Mismo resultado. Los códigos antiguos
     # (CODIGOS_ANTERIORES) entran con su código nuevo.
     vigente = _sql_material_vigente()
+    destino = _sql_centro_destino()  # almacén de traslado (A200) -> planta de destino
     df = _query(f"""
-        SELECT {vigente} AS material_codigo, centro AS centro,
+        SELECT {vigente} AS material_codigo, {destino} AS centro,
                substr(fecha_contabilizacion, 1, 7) || '-01' AS mes,
                SUM(cantidad) AS toneladas, SUM(importe_moneda_local) AS importe,
                SUM(CASE WHEN clase_movimiento = '101' THEN 1 ELSE 0 END) AS entradas,
@@ -36,7 +52,7 @@ def precios_entrada_sop():
         WHERE material_codigo IN ({",".join(f"'{m}'" for m in _con_codigos_anteriores(materiales))})
               AND ((+clase_movimiento IN {_CLASES_ENTRADA_COMPRA} AND proveedor <> '') OR {_sql_traspasos_cambio_codigo()})
               AND fecha_contabilizacion IS NOT NULL
-        GROUP BY {vigente}, centro, mes
+        GROUP BY {vigente}, {destino}, mes
     """)
     df = _produccion_propia(_puesto_en_destino(df), set(materiales))
     if df.empty:
@@ -47,10 +63,18 @@ def precios_entrada_sop():
     df = df[(df["toneladas"] > 0.5) & (df["importe"] > 0)].copy()
     df["precio"] = df["importe"] / df["toneladas"]
     df["mes"] = pd.to_datetime(df["mes"]).dt.date
-    catalogo = catalogo_materiales()[["material_codigo", "texto_breve", "categoria"]]
+    # Los adicionales, solo en sus centros (el diésel también se compra en U031 y U004).
+    fuera = pd.Series([m in MATERIALES_IPU_ADICIONALES and c not in MATERIALES_IPU_ADICIONALES[m][0]
+                       for m, c in zip(df["material_codigo"], df["centro"])], index=df.index)
+    df = df[~fuera]
+    catalogo = catalogo_materiales()[["material_codigo", "texto_breve", "unidad_medida_base", "categoria"]]
     df = df.merge(catalogo, on="material_codigo", how="left")
     df.loc[df["categoria"].isna(), "categoria"] = "MATERIAS PRIMAS"
+    df.loc[df["categoria"] == "COMBUSTIBLES", "categoria"] = CATEGORIA_COMBUSTIBLE_SOLIDO
+    for material, (_, categoria) in MATERIALES_IPU_ADICIONALES.items():
+        df.loc[df["material_codigo"] == material, "categoria"] = categoria
     df["texto_breve"] = df["texto_breve"].fillna("")
+    df["unidad_medida_base"] = df["unidad_medida_base"].fillna("T")
     return df[columnas].sort_values(["material_codigo", "centro", "mes"]).reset_index(drop=True)
 
 
@@ -66,8 +90,9 @@ def precios_entrada_materiales():
     columnas = ["material_codigo", "texto_breve", "unidad_medida_base", "centro", "categoria", "familia", "mes",
                 "toneladas", "importe", "precio", "entradas", "proveedores"]
     vigente = _sql_material_vigente()  # códigos antiguos con su código nuevo
+    destino = _sql_centro_destino()  # almacén de traslado (A200) -> planta de destino
     df = _query(f"""
-        SELECT {vigente} AS material_codigo, centro AS centro,
+        SELECT {vigente} AS material_codigo, {destino} AS centro,
                substr(fecha_contabilizacion, 1, 7) || '-01' AS mes,
                SUM(cantidad) AS toneladas, SUM(importe_moneda_local) AS importe,
                SUM(CASE WHEN clase_movimiento = '101' THEN 1 ELSE 0 END) AS entradas,
@@ -75,7 +100,7 @@ def precios_entrada_materiales():
         FROM gestion_movimientomaterial
         WHERE ((clase_movimiento IN {_CLASES_ENTRADA_COMPRA} AND proveedor <> '') OR {_sql_traspasos_cambio_codigo()})
               AND material_codigo <> '' AND fecha_contabilizacion IS NOT NULL
-        GROUP BY {vigente}, centro, mes
+        GROUP BY {vigente}, {destino}, mes
     """)
     df = _produccion_propia(_puesto_en_destino(df))
     if df.empty:
@@ -200,7 +225,7 @@ def con_precio_real(base):
     importados = materiales_importados()
     # Importados por embarque: sus ajustes vienen del FIFO de embarques
     # (abajo), no del mes de contabilización.
-    reparto = reparto_por_embarque()
+    reparto = reparto_por_embarque(para_precio=True)  # los mismos meses que el precio
     por_embarque = set(reparto["material_codigo"])
     aj = aj[~aj["material_codigo"].isin(por_embarque)]
     columnas = ["ajuste", "ajuste_ordenes", "ajuste_trasladado"]
@@ -303,15 +328,16 @@ def _prorratear_por_contrato(local):
     if not regla.any():
         return local
     vigente = _sql_material_vigente()
+    destino = _sql_centro_destino()  # almacén de traslado (A200) -> planta de destino
     materiales = _con_codigos_anteriores({m for m, _ in AJUSTES_POR_CONTRATO})
     recibido = _query(f"""
-        SELECT {vigente} AS material_codigo, centro AS centro_destino, contrato_marco AS contrato,
+        SELECT {vigente} AS material_codigo, {destino} AS centro_destino, contrato_marco AS contrato,
                substr(fecha_contabilizacion, 1, 7) || '-01' AS mes_recibido, SUM(cantidad) AS toneladas
         FROM gestion_movimientomaterial
         WHERE material_codigo IN ({",".join(_texto_sql(m) for m in materiales)})
               AND contrato_marco IN ({",".join(_texto_sql(c) for c in set(AJUSTES_POR_CONTRATO.values()))})
               AND +clase_movimiento IN {_CLASES_ENTRADA_COMPRA} AND proveedor <> '' AND fecha_contabilizacion IS NOT NULL
-        GROUP BY {vigente}, centro, contrato_marco, mes_recibido
+        GROUP BY {vigente}, {destino}, contrato_marco, mes_recibido
     """)
     recibido = recibido[recibido["toneladas"] > 0].assign(mes_recibido=lambda r: pd.to_datetime(r["mes_recibido"]).dt.date)
     recibido["parte"] = recibido["toneladas"] / recibido.groupby(["material_codigo", "centro_destino", "contrato"])["toneladas"].transform("sum")
@@ -452,13 +478,62 @@ PRECIOS_REFERENCIA_IPU = [
 ]
 
 
+# Precio de referencia tomado de otro centro (regla del usuario, 2026-10-25):
+# hasta 2025 el Carbón Importado iba de U004 directo a Condorcocha y Atocongo
+# no lo recibía (después Atocongo pasó a ser centro de acopio, ver
+# importados.ACOPIO_IMPORTADOS). En los meses sin compra en Atocongo su
+# referencia es el precio de Condorcocha de ese mes menos el flete
+# Atocongo–Condorcocha: como si se hubiera recibido en Atocongo. Igual que
+# PRECIOS_REFERENCIA_IPU: solo base del IPU y precio de la matriz TCO.
+# Desde el 2026-10-26 el precio de Condorcocha es puesto en planta (TCO: con
+# el flete que SAP suma al recibir, ver importados._lotes_por_embarque), así
+# que se le resta el flete real de lo que llegó ese mes; el valor fijo
+# (datos_locales/reglas_locales.json, "flete_referencia") solo si ese mes no
+# tiene traslados, y sin él el flete del último mes anterior con traslados.
+# (material, centro sin compra) -> (centro del que se toma el precio, flete S/ por T si no hay dato).
+REFERENCIA_DESDE_OTRO_CENTRO = {("06-00000003", "U001"): ("U002", regla_local("flete_referencia", {}).get("06-00000003|U001"))}
+
+
+def _flete_llegadas(material, centro):
+    """{mes: flete S/ por T} de lo que `centro` recibió por traslado cada mes
+    (valor de llegada − valor de salida ÷ toneladas, de todos los orígenes)."""
+    v = valores_traslado((material,))
+    v = v[v["destino"] == centro].groupby("mes")[["toneladas", "valor_llega", "valor_sale"]].sum()
+    v = v[v["toneladas"].abs() > 1e-6]
+    return {datetime.date.fromisoformat(m): (r.valor_llega - r.valor_sale) / r.toneladas for m, r in v.iterrows()}
+
+
+def referencias_desde_otro_centro(df=None):
+    """Precios de REFERENCIA_DESDE_OTRO_CENTRO de cada mes en que el centro de
+    origen tiene compra: material_codigo, centro, mes, precio (sin descontar
+    todavía los meses con compra propia). Toma los precios de `df` si trae el
+    centro de origen; si no (un filtro de centro o material), los del precio
+    real del S&OP."""
+    filas = []
+    for (codigo, centro), (origen, flete_fijo) in REFERENCIA_DESDE_OTRO_CENTRO.items():
+        fuente = df[(df["material_codigo"] == codigo) & (df["centro"] == origen)] if df is not None else df
+        if fuente is None or fuente.empty:
+            todo = precios_entrada_sop_real()
+            fuente = todo[(todo["material_codigo"] == codigo) & (todo["centro"] == origen)]
+        fletes = _flete_llegadas(codigo, origen)
+        for r in fuente[fuente["toneladas"] > 0].itertuples():
+            flete = fletes.get(r.mes, flete_fijo)
+            if flete is None:
+                anteriores = [m for m in fletes if m < r.mes]
+                flete = fletes[max(anteriores)] if anteriores else 0.0
+            filas.append({"material_codigo": codigo, "centro": centro, "mes": r.mes,
+                          "precio": float(r.precio) - flete})
+    return pd.DataFrame(filas, columns=["material_codigo", "centro", "mes", "precio"])
+
+
 def bases_referencia_ipu(df):
-    """Precios de referencia (PRECIOS_REFERENCIA_IPU) de los material/centro
-    de `df` en los meses que `df` no tiene compra: material_codigo, centro,
-    mes, precio."""
+    """Precios de referencia (PRECIOS_REFERENCIA_IPU y
+    REFERENCIA_DESDE_OTRO_CENTRO) de los material/centro de `df` en los
+    meses que `df` no tiene compra: material_codigo, centro, mes, precio."""
     filas = []
     con_compra = set(zip(df["material_codigo"], df["centro"], df["mes"]))
-    for material, centro in df[["material_codigo", "centro"]].drop_duplicates().itertuples(index=False):
+    pares = set(df[["material_codigo", "centro"]].drop_duplicates().itertuples(index=False, name=None))
+    for material, centro in pares:
         for codigo, centro_regla, desde, hasta, precio in PRECIOS_REFERENCIA_IPU:
             if codigo != material or (centro_regla and centro_regla != centro):
                 continue
@@ -467,6 +542,12 @@ def bases_referencia_ipu(df):
                 if (material, centro, mes) not in con_compra:
                     filas.append({"material_codigo": material, "centro": centro, "mes": mes, "precio": precio})
                 mes = _sumar_meses(mes, 1)
+    if pares & set(REFERENCIA_DESDE_OTRO_CENTRO):
+        ya = {(f["material_codigo"], f["centro"], f["mes"]) for f in filas}
+        for r in referencias_desde_otro_centro(df).itertuples(index=False):
+            clave = (r.material_codigo, r.centro, r.mes)
+            if (r.material_codigo, r.centro) in pares and clave not in con_compra and clave not in ya:
+                filas.append(r._asdict())
     return pd.DataFrame(filas, columns=["material_codigo", "centro", "mes", "precio"])
 
 

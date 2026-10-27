@@ -743,8 +743,16 @@ def evolucion_consumo(real, plan, etiqueta_mes, mes_parcial=None, ancho=960, alt
     return {
         "ancho": ancho, "alto": alto, "base": f"{base:z.1f}", "barras": barras, "puntos": puntos, "linea": linea,
         "eje": [{"x_pct": f"{x_de(m) / ancho * 100:z.2f}", "texto": etiqueta_mes(m)}
-                for i, m in enumerate(meses) if i % paso_eje == 0 or i == len(meses) - 1],
+                for i, m in enumerate(meses) if _etiqueta_eje_visible(i, len(meses), paso_eje)],
     }
+
+
+def _etiqueta_eje_visible(i, n, paso):
+    """Etiqueta i de n en el eje de meses: una cada `paso` y siempre la última; la
+    regular que queda pegada a la última se omite (se pisaban: "Sep-2Oct-26")."""
+    if i == n - 1:
+        return True
+    return i % paso == 0 and not (paso > 1 and n - 1 - i < paso * 0.6)
 
 
 def lineas_mensuales(series, etiqueta_mes, formato, referencias=None, desde_cero=False,
@@ -850,7 +858,7 @@ def lineas_indice(series, etiquetas, formato, referencias=None, desde_cero=False
         "referencias": [{"y": f"{y_de(r['valor']):z.1f}", "y_pct": f"{(y_de(r['valor']) - 12) / alto * 100:z.2f}",
                          "texto": r["texto"], "clase": r.get("clase", "")} for r in referencias],
         "eje": [{"x_pct": f"{x_de(i) / ancho * 100:z.2f}", "texto": e}
-                for i, e in enumerate(etiquetas) if i % paso_eje == 0 or i == len(etiquetas) - 1],
+                for i, e in enumerate(etiquetas) if _etiqueta_eje_visible(i, len(etiquetas), paso_eje)],
     }
 
 

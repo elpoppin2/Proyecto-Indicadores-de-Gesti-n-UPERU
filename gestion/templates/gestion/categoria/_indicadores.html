@@ -1,9 +1,33 @@
-{# Pestaña Indicadores de una categoría (views._cat_indicadores): un panel por pestaña con su número clave y el gráfico que lo explica, al último dato disponible. "Ver detalle" abre la pestaña. #}
+{# Pestaña Indicadores de una categoría (views._cat_indicadores): un panel por pestaña con su número clave y el gráfico que lo explica. "Ver detalle" abre la pestaña. Las categorías con filtro Año (Suministros Industriales, como Planificación; pedido del usuario 2026-10-24) traen sus paneles por período (vistas): en el localhost el filtro vuelve a pedir la sección (base.html); en la copia de SharePoint vienen todos los períodos y el filtro muestra uno (graficos.js). #}
 <section class="indicadores-graficos" id="sec-indicadores-categoria">
-  <p class="nota indicadores-nota">Resumen de {{ categoria|title }} al último dato de cada indicador. Pasa el mouse por un gráfico para ver el detalle.</p>
-  <div class="paneles-indicador">
-    {% for p in paneles %}
-      {% include "gestion/planificacion/_panel_indicador.html" with p=p i=forloop.counter0 %}
+  {% if vistas %}
+    <div class="indicadores-cabecera">
+      <form class="filtros" method="get" data-target="sec-indicadores-categoria" data-sin-reinicio{% if estatico %} data-estatico onsubmit="return false"{% endif %}>
+        <div class="campo">
+          <label for="anio_indicadores">Año</label>
+          <select name="anio_indicadores" id="anio_indicadores">
+            {% for o in periodos %}
+              <option value="{{ o.valor }}"{% if o.valor == periodo_sel %} selected{% endif %}>{{ o.texto }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% if not estatico %}<noscript><button type="submit">Aplicar</button></noscript>{% endif %}
+      </form>
+      <p class="nota indicadores-nota">{{ categoria|title }} en el año elegido, contra el año anterior. Pasa el mouse por un gráfico para ver el detalle.</p>
+    </div>
+    {% for v in vistas %}
+      <div class="paneles-indicador" data-vista="anio_indicadores={{ v.valor }}"{% if v.valor != periodo_sel %} hidden{% endif %}>
+        {% for p in v.paneles %}
+          {% include "gestion/planificacion/_panel_indicador.html" with p=p i=forloop.counter0 %}
+        {% endfor %}
+      </div>
     {% endfor %}
-  </div>
+  {% else %}
+    <p class="nota indicadores-nota">Resumen de {{ categoria|title }} al último dato de cada indicador. Pasa el mouse por un gráfico para ver el detalle.</p>
+    <div class="paneles-indicador">
+      {% for p in paneles %}
+        {% include "gestion/planificacion/_panel_indicador.html" with p=p i=forloop.counter0 %}
+      {% endfor %}
+    </div>
+  {% endif %}
 </section>

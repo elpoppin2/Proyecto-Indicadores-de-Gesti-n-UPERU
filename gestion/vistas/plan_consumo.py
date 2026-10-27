@@ -374,6 +374,43 @@ def _cobertura_meses(stock, salidas):
     return max(stock, 0.0) / promedio if promedio > 0 else None
 
 
+def _estado_cobertura(stock, cobertura, minimo, maximo):
+    """Estado de una celda de la matriz de cobertura, en meses (mínimo y
+    máximo ya pasados a meses; None si no hay)."""
+    if stock < 0:
+        return "quiebre"
+    if cobertura is None:
+        return "sin_parametro"
+    if minimo is not None and cobertura < minimo:
+        return "bajo_minimo"
+    if maximo is not None and cobertura > maximo:
+        return "sobre_maximo"
+    return "en_rango" if minimo is not None or maximo is not None else "sin_parametro"
+
+
+def _fila_cobertura(material, texto, centro, inicial, finales, flujo, minimos, maximos, parte=""):
+    """Una fila de la matriz de cobertura proyectada (meses): stock ÷ `flujo`
+    promedio (T por mes) de los _COBERTURA_MESES_SIGUIENTES meses siguientes.
+    Color por meses (pedido del usuario, 2026-10-26: Carbón Nacional de
+    Atocongo salía "bajo mínimo" en dic-26 con 9.3 meses porque ene–mar casi no
+    consume): mínimo y máximo (T) ÷ flujo promedio de todo el horizonte. Las
+    filas de una `parte` de un centro de acopio van sin color: el mínimo y
+    máximo del S&OP son del stock físico."""
+    promedio = sum(flujo) / len(flujo) if flujo else 0.0
+
+    def a_meses(valor):
+        return None if parte or valor is None or valor != valor or promedio <= 0 else float(valor) / promedio
+
+    celdas = []
+    for i, v in enumerate(finales):
+        cobertura = _cobertura_meses(v, flujo[i + 1:i + 1 + _COBERTURA_MESES_SIGUIENTES] or flujo[i:i + 1])
+        celdas.append({"valor": v, "cobertura": cobertura,
+                       "estado": _estado_cobertura(v, cobertura, a_meses(minimos[i]), a_meses(maximos[i]))})
+    return {"material_codigo": material, "texto_breve": texto, "centro": centro, "parte": parte, "stock_inicial": inicial,
+            "minimo_meses": a_meses(minimos[0]), "maximo_meses": a_meses(maximos[0]),
+            "cobertura_inicial": _cobertura_meses(inicial, flujo[:_COBERTURA_MESES_SIGUIENTES]), "celdas": celdas}
+
+
 def _contexto_proyeccion_sop(request):
     """Evolución de inventario proyectada (S&OP): inventario de cierre del mes
     anterior + Abastecimiento − Consumo, mes a mes (ver
@@ -495,30 +532,45 @@ def _contexto_proyeccion_sop(request):
     # cobertura (meses), pedido del usuario (2026-10-21): stock ÷ salidas
     # planificadas (consumo + traslados a otro centro) promedio de los
     # _COBERTURA_MESES_SIGUIENTES meses que siguen (los que queden en el
-    # horizonte; el último mes, con las suyas).
+    # horizonte; el último mes, con las suyas); ver _fila_cobertura. En un
+    # centro de acopio (q.ACOPIO_COBERTURA) la cobertura va en dos filas, con
+    # la proporción de la Cobertura de stock al cierre de partida: lo propio
+    # (contra su consumo) y lo en acopio (contra el consumo del destino).
+    partes = q.participacion_propia_acopio(fecha_inicial)
+    consumo_de = {(r.material_codigo, r.centro, r.mes): float(r.consumo) for r in base.itertuples()}
     matriz = []
     for (material, centro), grupo in grupos:
         grupo = grupo.sort_values("mes")
         negativos = grupo[grupo["stock_final"] < 0]
         minimo, maximo = grupo["stock_minimo"].iloc[0], grupo["stock_maximo"].iloc[0]
+        texto = grupo["texto_breve"].iloc[0]
+        inicial = float(grupo["stock_inicial"].iloc[0])
         salidas = [float(c + t) for c, t in zip(grupo["consumo"], grupo["traslado"])]
         finales = [float(v) for v in grupo["stock_final"]]
-        coberturas = [
-            _cobertura_meses(v, salidas[i + 1:i + 1 + _COBERTURA_MESES_SIGUIENTES] or salidas[i:i + 1])
-            for i, v in enumerate(finales)
-        ]
+        minimos, maximos = list(grupo["stock_minimo"]), list(grupo["stock_maximo"])
+        if (material, centro) in partes:
+            propia, destino = partes[(material, centro)]
+            filas_cobertura = [
+                _fila_cobertura(material, texto, centro, inicial * propia, [v * propia for v in finales],
+                                [float(v) for v in grupo["consumo"]], minimos, maximos, parte="propio"),
+                _fila_cobertura(material, texto, centro, inicial * (1 - propia), [v * (1 - propia) for v in finales],
+                                [consumo_de.get((material, destino, m), 0.0) for m in grupo["mes"]], minimos, maximos,
+                                parte=f"acopio para {q.nombre_centro(destino).title()}"),
+            ]
+        else:
+            filas_cobertura = [_fila_cobertura(material, texto, centro, inicial, finales, salidas, minimos, maximos)]
         matriz.append({
-            "material_codigo": material, "texto_breve": grupo["texto_breve"].iloc[0], "centro": centro,
-            "stock_inicial": float(grupo["stock_inicial"].iloc[0]),
-            "cobertura_inicial": _cobertura_meses(float(grupo["stock_inicial"].iloc[0]),
-                                                  salidas[:_COBERTURA_MESES_SIGUIENTES]),
+            "material_codigo": material, "texto_breve": texto, "centro": centro,
+            "stock_inicial": inicial,
             "stock_minimo": None if minimo != minimo else float(minimo),
             "stock_maximo": None if maximo != maximo else float(maximo),
-            "celdas": [{"valor": v, "estado": e, "cobertura": cb} for v, e, cb in zip(finales, grupo["estado"], coberturas)],
+            "celdas": [{"valor": v, "estado": e} for v, e in zip(finales, grupo["estado"])],
             "quiebre": negativos["mes"].iloc[0] if not negativos.empty else None,
             "quiebre_corto": _mes_corto(negativos["mes"].iloc[0]) if not negativos.empty else "",
+            "filas_cobertura": filas_cobertura,
         })
     matriz.sort(key=lambda f: (f["quiebre"] is None, f["quiebre"] or datetime.date.max, f["centro"], f["material_codigo"]))
+    matriz_cobertura = [fc for f in matriz for fc in f["filas_cobertura"]]
 
     # Diagnóstico de mínimos/máximos, con los mismos filtros de la sección.
     diagnostico = q.diagnostico_minmax_sop(snapshot_sel)
@@ -545,7 +597,7 @@ def _contexto_proyeccion_sop(request):
         "centros": centros_op, "centro_sel": centro_sel,
         "materiales": materiales_op, "material_sel": material_sel,
         "meses": [{"fecha": m, "corto": _mes_corto(m)} for m in meses],
-        "resumen": resumen, "matriz": matriz, "un_material": un_material,
+        "resumen": resumen, "matriz": matriz, "matriz_cobertura": matriz_cobertura, "un_material": un_material,
         "cobertura_meses_siguientes": _COBERTURA_MESES_SIGUIENTES,
         "stock_partida": resumen[0]["stock_inicial"], "stock_cierre": resumen[-1]["stock_final"],
         "mes_cierre": meses[-1], "con_quiebre": sum(1 for f in matriz if f["quiebre"]),

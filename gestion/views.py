@@ -21,7 +21,7 @@ from .vistas.overview import overview
 from .vistas.plan_calidad import _contexto_energia, exportar_energia, exportar_premios
 from .vistas.plan_consumo import _contexto_consumo, _contexto_consumo_especifico
 from .vistas.plan_cumplimiento import _contexto_entregas
-from .vistas.planificacion import _html_indicadores, asistente_planificacion, logistica_materias_primas, planificacion
+from .vistas.planificacion import _html_indicadores, _html_indicadores_cuadrantes, asistente_planificacion, logistica_materias_primas, planificacion
 from .vistas.portada import _area_ejecutiva, informe_mensual, inicio, portada
 from .vistas.zonas import _ZONAS_LOGISTICA, _ZONAS_PLANIFICACION, _zonas_categoria
 
@@ -32,6 +32,6 @@ __all__ = [
     "rotacion_materiales_pagina", "desglose_filas",
     # Usados por los comandos (calentar_cache, exportar_*_html, revisar_paginas, verificar_calculos)
     "q", "_categorias_disponibles", "_slug", "_zonas_categoria", "_ZONAS_PLANIFICACION", "_ZONAS_LOGISTICA",
-    "_area_ejecutiva", "_html_indicadores", "_contexto_consumo", "_contexto_consumo_especifico",
+    "_area_ejecutiva", "_html_indicadores", "_html_indicadores_cuadrantes", "_contexto_consumo", "_contexto_consumo_especifico",
     "_contexto_energia", "_contexto_entregas",
 ]

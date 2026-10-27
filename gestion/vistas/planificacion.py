@@ -19,13 +19,14 @@ from .. import asistente, ejecutivo
 from ..models import ConsultaAsistente
 from .comun import _construir_nav, _por_str
 from .plan_calidad import _contexto_calidad, _contexto_energia, _contexto_premios
+from .plan_cuadrantes import _paneles_cuadrantes, periodo_valido, periodos_cuadrantes
 from .plan_consumo import _contexto_consumo, _contexto_consumo_especifico, _contexto_proyeccion_sop
 from .plan_cumplimiento import _contexto_cobertura, _contexto_cumplimiento_mensual, _contexto_entregas, _contexto_plan_detalle, _contexto_plan_mensual
 from .plan_indicadores import _kpis_zona, _paneles_indicadores
-from .plan_precios import _contexto_inflacion, _contexto_precios_entrada
+from .plan_precios import _EVALUACIONES_PRECIOS, _contexto_evaluacion_precios, _contexto_inflacion, _contexto_precios_entrada
 from .plan_transporte import _contexto_transporte
 from .portada import _contexto_informe_area, _contexto_resumen_area
-from .zonas import ALCANCE_LOGISTICA, _PANELES_LOGISTICA, _PLANTILLAS_ZONA_LOGISTICA, _ZONAS_LOGISTICA, _ZONAS_PLANIFICACION
+from .zonas import ALCANCE_LOGISTICA, EXCLUSIONES_LOGISTICA, PLAN_PROVISIONAL_LOGISTICA, PROVEEDORES_LOGISTICA, _PANELES_LOGISTICA, _PLANTILLAS_ZONA_LOGISTICA, _ZONAS_LOGISTICA, _ZONAS_PLANIFICACION
 
 
 @login_required
@@ -55,7 +56,8 @@ def logistica_materias_primas(request):
     son las de Planificación: el alcance acota las consultas base (ver
     queries.alcance_materiales), así las dos páginas no se desfasan. Pedido
     por el usuario el 2026-10-16."""
-    with q.alcance_materiales(ALCANCE_LOGISTICA):
+    with q.alcance_materiales(ALCANCE_LOGISTICA, excluir=EXCLUSIONES_LOGISTICA, proveedores=PROVEEDORES_LOGISTICA,
+                              plan_extra=PLAN_PROVISIONAL_LOGISTICA):
         return _pagina_zonas(request, "logistica", "Logística de Materias Primas", _ZONAS_LOGISTICA,
                              _PANELES_LOGISTICA, zonas_paneles={"cumplimiento", "transporte"}, por_material=True,
                              plantillas_zona=_PLANTILLAS_ZONA_LOGISTICA)
@@ -74,6 +76,9 @@ def _pagina_zonas(request, slug, titulo, zonas, paneles, zonas_paneles=None, por
     plantillas_zona = plantillas_zona or {}
 
     def indicadores():
+        if slug == "planificacion":
+            # La copia de SharePoint (exportar_sitio_html) lleva todos los períodos del filtro Año.
+            return _html_indicadores_cuadrantes(request, estatico=request.headers.get("X-Uperu-Copia") == "1")
         return _html_indicadores(request, paneles=paneles, zonas=zonas_paneles, por_material=por_material)
 
     seccion, zona = request.GET.get("_seccion"), request.GET.get("_zona")
@@ -192,7 +197,7 @@ def _clave_planificacion(tipo, *partes):
     # con menos materiales y no debe tomar lo guardado por Planificación.
     # Con la fecha de metas.json: si se editan las metas, el Resumen y el
     # Informe por área (guardados ya dibujados) se recalculan como la Portada.
-    return ("planificacion", tipo, *partes, datetime.date.today().isoformat(), _HUELLA_VISTAS, q.alcance_actual(),
+    return ("planificacion", tipo, *partes, datetime.date.today().isoformat(), _HUELLA_VISTAS, q.clave_alcance(),
             ejecutivo._RUTA_METAS.stat().st_mtime_ns)
 
 
@@ -280,6 +285,66 @@ def _html_indicadores(request, mes_forzado=None, paneles=_PANELES_OVERVIEW, zona
         })
 
     return q._cache_obtener(_clave_planificacion("indicadores", valor_mes, _parametros_seccion(request, sufijos)), dibujar)
+
+
+def _html_indicadores_cuadrantes(request, estatico=False):
+    """HTML de la pestaña Indicadores de Planificación: los cuatro cuadrantes
+    (IPU, plazo medio de pago, valor del inventario e IRI) con la vista por
+    defecto de Precios e IPU, recortados por el filtro Año
+    (?anio_indicadores=2025; por defecto "2025 en adelante"). Pedidos del
+    usuario (2026-10-23 y 2026-10-24). Filtro Categoría (2026-10-26): Materias
+    Primas, Combustible Sólido y/o Combustible Líquido, uno o varios
+    (?seg_indicadores=MP&seg_indicadores=CL; por defecto los tres).
+    `estatico`: el HTML estático trae todas las combinaciones de Año y
+    Categoría ya dibujadas y el filtro muestra la elegida (graficos.js)."""
+    periodos = periodos_cuadrantes()
+    periodo_sel = periodo_valido(request.GET.get("anio_indicadores", ""))
+    codigos_sel = tuple(c for c in _SEGMENTOS_INDICADORES if c in request.GET.getlist("seg_indicadores")) \
+        or tuple(_SEGMENTOS_INDICADORES)
+
+    def paneles(periodo, codigos):
+        segmentos = tuple(_SEGMENTOS_INDICADORES[c] for c in codigos)
+        todos = len(segmentos) == len(_SEGMENTOS_INDICADORES)
+        con_periodo = copy.copy(request)
+        con_periodo.GET = request.GET.__class__(mutable=True)
+        con_periodo.GET["periodo_inflacion"] = periodo  # el IPU con el mismo período
+        if todos:
+            inf = _contexto_seccion(con_periodo, _SECCIONES_INDICADORES["planificacion_inflacion"])
+        else:
+            # El IPU de solo las categorías elegidas (las del IPU de Precios e IPU).
+            def calcular():
+                base = q.precios_entrada_sop_real()
+                return _contexto_evaluacion_precios(con_periodo, base[base["categoria"].isin(segmentos)],
+                                                    _EVALUACIONES_PRECIOS["inflacion"], "inflacion", unidad="auto")
+            inf = q._cache_obtener(_clave_planificacion("cuadrantes-ipu", periodo, codigos), calcular)
+        return _paneles_cuadrantes(inf, periodo, None if todos else segmentos)
+
+    combinaciones = [tuple(c for i, c in enumerate(_SEGMENTOS_INDICADORES) if n >> i & 1)
+                     for n in range(1, 2 ** len(_SEGMENTOS_INDICADORES))]
+
+    def dibujar():
+        vistas = [{"clave": _clave_vista_indicadores(v, c), "paneles": paneles(v, c)}
+                  for v, _ in periodos for c in combinaciones
+                  if estatico or (v == periodo_sel and c == codigos_sel)]
+        return render_to_string("gestion/planificacion/_indicadores_cuadrantes.html", {
+            "periodos": [{"valor": v, "texto": t} for v, t in periodos], "periodo_sel": periodo_sel,
+            "segmentos": [{"codigo": c, "nombre": s.capitalize(), "activo": c in codigos_sel}
+                          for c, s in _SEGMENTOS_INDICADORES.items()],
+            "clave_sel": _clave_vista_indicadores(periodo_sel, codigos_sel), "vistas": vistas, "estatico": estatico})
+
+    return q._cache_obtener(_clave_planificacion("cuadrantes", "estatico" if estatico else (periodo_sel, codigos_sel)),
+                            dibujar)
+
+
+# Filtro Categoría de Indicadores: código del parámetro -> segmento de Planificación.
+_SEGMENTOS_INDICADORES = {"MP": q.SEGMENTO_MATERIAS_PRIMAS, "CS": q.SEGMENTO_COMBUSTIBLE_SOLIDO,
+                          "CL": q.SEGMENTO_COMBUSTIBLE_LIQUIDO}
+
+
+def _clave_vista_indicadores(periodo, codigos):
+    """Clave de una vista dibujada: la misma que arma graficos.js con los
+    filtros del formulario (nombres en orden, valores en orden y unidos por coma)."""
+    return f"anio_indicadores={periodo}&seg_indicadores={','.join(sorted(codigos))}"
 
 
 def _html_kpis_zona(request, zona):

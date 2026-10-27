@@ -67,9 +67,11 @@
     <h2>Evaluación mensual</h2>
     <p class="nota">Toneladas que ingresaron a planta frente al plan de abastecimiento del S&amp;OP (Materias primas y Combustibles).</p>
     <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
-      <p>El plan viene del archivo mensual de Abastecimiento S&amp;OP. Los ingresos son los tickets de báscula (ZMM056) ya contabilizados en SAP: para estos materiales la báscula es la fuente de lo que realmente ingresó, no MB51.</p>
+      <p>El plan viene del archivo de Abastecimiento S&amp;OP de cada mes. Con S&amp;OP "El más reciente de cada mes", cada mes toma la última emisión que lo trae; al elegir una emisión, se compara contra ella.</p>
+      <p>Los ingresos son los tickets de báscula (ZMM056) ya contabilizados en SAP. El Carbón Importado y la Escoria japonesa, que llegan por barco, se miden con MB51: las toneladas puestas en destino en cada planta, en seco con el ajuste de humedad de cada barco.</p>
     </div></details>
     <form class="filtros">
+      <div class="campo"><label for="sop_plan">S&amp;OP</label><select id="sop_plan"></select></div>
       <div class="campo"><label for="mes_plan">Mes</label><select id="mes_plan"></select></div>
       <div class="campo"><label for="categoria_plan">Categoría</label><select id="categoria_plan"></select></div>
       <div class="campo"><label for="centro_plan">Centro</label><select id="centro_plan"></select></div>
@@ -80,6 +82,7 @@
     <h2>Detalle por material y evaluación diaria</h2>
     <p class="nota">Plan e ingresos de cada material y su avance día a día. Estos filtros no cambian la Evaluación mensual.</p>
     <form class="filtros">
+      <div class="campo"><label for="sop_detalle">S&amp;OP</label><select id="sop_detalle"></select></div>
       <div class="campo"><label for="mes_detalle">Mes</label><select id="mes_detalle"></select></div>
       <div class="campo"><label for="centro_detalle">Centro</label><select id="centro_detalle"></select></div>
       <div class="campo campo-multi"><label for="material_detalle-boton">Material</label><div class="filtro-multi"><select id="material_detalle" multiple hidden data-multi tabindex="-1" aria-hidden="true"></select></div></div>
@@ -101,6 +104,7 @@
     <h2>Cumplimiento mensual</h2>
     <p class="nota">Cumplimiento del plan de abastecimiento (real ÷ plan) mes a mes. Un mes sin plan o sin ingresos todavía no tiene barra.</p>
     <form class="filtros">
+      <div class="campo"><label for="sop_cumplmes">S&amp;OP</label><select id="sop_cumplmes"></select></div>
       <div class="campo"><label for="categoria_cumplmes">Categoría</label><select id="categoria_cumplmes"></select></div>
       <div class="campo"><label for="centro_cumplmes">Centro</label><select id="centro_cumplmes"></select></div>
     </form>
@@ -165,6 +169,7 @@
     <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
       <p><strong>Cobertura (días)</strong> = stock de cierre del mes elegido ÷ consumo diario promedio de los 12 meses que terminan en ese mes.</p>
       <p>El consumo sale de MB51: salidas del material al proceso (clases 2xx de costo, orden de producción y red, más Z01/Z04/353). Solo entran los materiales del Plan de Abastecimiento S&amp;OP.</p>
+      <p><strong>Atocongo como centro de acopio</strong> (Carbón Importado y Carbón Trujillo): la mayor parte de lo que recibe se reenvía a Condorcocha. Su stock se parte en lo <em>propio</em> y lo que está <em>en acopio para Condorcocha</em>, en la proporción de su consumo y sus reenvíos (641 a Condorcocha) de los mismos 12 meses. Lo propio se mide contra el consumo de Atocongo; el acopio, contra el de Condorcocha, y no suma a la cobertura de Condorcocha hasta que llega.</p>
     </div></details>
     <form class="filtros">
       <div class="campo"><label for="mes_cobertura">Mes</label><select id="mes_cobertura"></select></div>
@@ -367,9 +372,9 @@ function nombreCentro(c){ return NOMBRES_CENTRO[c] || c; }
 document.getElementById("fecha-generado").textContent = new Date(HOY+"T00:00:00").toLocaleDateString('es-PE',{day:'2-digit',month:'long',year:'numeric'});
 
 /* ---------- núcleo de cálculo (replica dashboard/queries.py) ---------- */
-function planVsRealPorMaterial(mes, {categoria, centro, material} = {}){
+function planVsRealPorMaterial(mes, {categoria, centro, material, sop} = {}){
   return DATA.plan_rows
-    .filter(r => r.mes === mes
+    .filter(r => r.mes === mes && (r.sop || "") === (sop || "")
       && (!categoria || r.categoria === categoria)
       && (!centro || r.centro === centro)
       && enSel(material, r.material_codigo))
@@ -395,8 +400,8 @@ function resumenPorCategoria(mes, opts){
   }));
 }
 
-function evaluacionDiaria(mes, {centro, material} = {}){
-  const base = planVsRealPorMaterial(mes, {centro, material});
+function evaluacionDiaria(mes, {centro, material, sop} = {}){
+  const base = planVsRealPorMaterial(mes, {centro, material, sop});
   const planTotal = base.reduce((s,f) => s + f.cantidad_plan, 0);
   const diasMes = diasEnMes(mes);
   const planDiario = diasMes ? planTotal/diasMes : 0;
@@ -432,14 +437,14 @@ const CATEGORIA_POR_MATERIAL = {};
 for(const r of DATA.plan_rows) if(!(r.material_codigo in CATEGORIA_POR_MATERIAL)) CATEGORIA_POR_MATERIAL[r.material_codigo] = r.categoria;
 
 function opcionesCategoriaCentro(mes){
-  const filas = DATA.plan_rows.filter(r => r.mes === mes);
+  const filas = DATA.plan_rows.filter(r => r.mes === mes && !r.sop);
   return {
     categorias: [...new Set(filas.map(f=>f.categoria))].sort(),
     centros: [...new Set(filas.map(f=>f.centro))].sort(),
   };
 }
 function opcionesMaterial(mes, centro){
-  const filas = DATA.plan_rows.filter(r => r.mes === mes && (!centro || r.centro === centro));
+  const filas = DATA.plan_rows.filter(r => r.mes === mes && !r.sop && (!centro || r.centro === centro));
   const mapa = new Map();
   for(const f of filas) if(!mapa.has(f.material_codigo)) mapa.set(f.material_codigo, f.texto_breve);
   return [...mapa.entries()].sort((a,b)=> a[0].localeCompare(b[0]));
@@ -461,6 +466,9 @@ function llenarSelect(sel, opciones, valorActual){
 }
 
 const mesesOpciones = DATA.meses.map(m => ({value:m, label:mesLabel(m)}));
+// Segmentador S&OP: "" = el más reciente de cada mes; con una emisión, solo los meses que ella planifica.
+const SOP_OPCIONES = DATA.sops || [{value:"", label:"El más reciente de cada mes"}];
+function mesesDeSop(sop){ return sop ? mesesOpciones.filter(o => o.value >= sop) : mesesOpciones; }
 const hoyMes = HOY.slice(0,7)+"-01";
 const mesesHastaHoy = DATA.meses.filter(m => m <= hoyMes);
 const MES_DEFECTO = mesesHastaHoy.length ? mesesHastaHoy[mesesHastaHoy.length-1] : DATA.meses[0];
@@ -580,7 +588,7 @@ function svgBarras(g){
     return html;
   }).join("");
   return `
-    <div class="chart-scroll"><div class="chart-wrap chart-barras">
+    <div class="chart-scroll" style="max-width:${g.ancho}px;"><div class="chart-wrap chart-barras">
       <svg class="chart-svg" viewBox="0 0 ${g.ancho} ${g.alto}" role="img" aria-label="Cumplimiento mensual de Abastecimiento">
         <line class="linea-meta" x1="0" y1="${g.y_meta}" x2="${g.ancho}" y2="${g.y_meta}"></line>
         ${rects}
@@ -596,20 +604,22 @@ function svgBarras(g){
 }
 
 /* ---------- sección 1: Evaluación mensual ---------- */
+const f1sop = document.getElementById("sop_plan");
+llenarSelect(f1sop, SOP_OPCIONES, "");
 const f1mes = document.getElementById("mes_plan");
 const f1cat = document.getElementById("categoria_plan");
 const f1centro = document.getElementById("centro_plan");
 
 function poblarFiltros1(mantenerCat, mantenerCentro){
-  llenarSelect(f1mes, mesesOpciones, f1mes.value || MES_DEFECTO);
+  llenarSelect(f1mes, mesesDeSop(f1sop.value), f1mes.value || MES_DEFECTO);
   const {categorias, centros} = opcionesCategoriaCentro(f1mes.value);
   llenarSelect(f1cat, [{value:"", label:"Todas"}, ...categorias.map(c=>({value:c,label:titulo(c)}))], mantenerCat ?? "");
   llenarSelect(f1centro, [{value:"", label:"Todos"}, ...centros.map(c=>({value:c,label:nombreCentro(c)}))], mantenerCentro ?? "");
 }
 
 function renderSeccion1(){
-  const mes = f1mes.value, categoria = f1cat.value || null, centro = f1centro.value || null;
-  const resumen = resumenPorCategoria(mes, {categoria, centro}).sort((a,b)=>b.cantidad_plan-a.cantidad_plan);
+  const mes = f1mes.value, categoria = f1cat.value || null, centro = f1centro.value || null, sop = f1sop.value;
+  const resumen = resumenPorCategoria(mes, {categoria, centro, sop}).sort((a,b)=>b.cantidad_plan-a.cantidad_plan);
   const totalPlan = resumen.reduce((s,f)=>s+f.cantidad_plan,0);
   const totalReal = resumen.reduce((s,f)=>s+f.cantidad_real,0);
 
@@ -638,16 +648,19 @@ function renderSeccion1(){
 }
 
 f1mes.addEventListener("change", () => { poblarFiltros1(null, null); renderSeccion1(); });
+f1sop.addEventListener("change", () => { poblarFiltros1(null, null); renderSeccion1(); });
 f1cat.addEventListener("change", renderSeccion1);
 f1centro.addEventListener("change", renderSeccion1);
 
 /* ---------- sección 2: Detalle + Evaluación diaria ---------- */
+const f2sop = document.getElementById("sop_detalle");
+llenarSelect(f2sop, SOP_OPCIONES, "");
 const f2mes = document.getElementById("mes_detalle");
 const f2centro = document.getElementById("centro_detalle");
 const f2material = document.getElementById("material_detalle");
 
 function poblarFiltros2(mantenerCentro, mantenerMaterial){
-  llenarSelect(f2mes, mesesOpciones, f2mes.value || MES_DEFECTO);
+  llenarSelect(f2mes, mesesDeSop(f2sop.value), f2mes.value || MES_DEFECTO);
   const {centros} = opcionesCategoriaCentro(f2mes.value);
   const centroSel = llenarSelect(f2centro, [{value:"", label:"Todos"}, ...centros.map(c=>({value:c,label:nombreCentro(c)}))], mantenerCentro ?? "");
   const materiales = opcionesMaterial(f2mes.value, centroSel || null);
@@ -655,8 +668,9 @@ function poblarFiltros2(mantenerCentro, mantenerMaterial){
 }
 
 function renderSeccion2(){
-  const mes = f2mes.value, centro = f2centro.value || null, material = f2material.value || null;
-  const detalle = planVsRealPorMaterial(mes, {centro, material});
+  const mes = f2mes.value, centro = f2centro.value || null, material = f2material.value || null, sop = f2sop.value;
+  // Sin plan ni ingresos no hay nada que evaluar: no se muestra (como views._contexto_plan_detalle).
+  const detalle = planVsRealPorMaterial(mes, {centro, material, sop}).filter(r => r.cantidad_plan || r.cantidad_real);
 
   const contDet = document.getElementById("detalle-contenido");
   if(!detalle.length){
@@ -675,8 +689,8 @@ function renderSeccion2(){
       const carros = ps.reduce((s,p)=>s+p.carros, 0);
       return `
         <tr>
-          <td>${r.material_codigo}</td>
-          <td>${r.texto_breve}${ps.length ? ` <button type="button" class="btn-proveedores" data-grupo="${i}" aria-expanded="${expandir}">${ps.length} proveedor${ps.length === 1 ? "" : "es"}</button>` : ""}</td>
+          <td class="fijo-1">${r.material_codigo}</td>
+          <td class="fijo-2">${r.texto_breve}${ps.length ? ` <button type="button" class="btn-proveedores" data-grupo="${i}" aria-expanded="${expandir}">${ps.length} proveedor${ps.length === 1 ? "" : "es"}</button>` : ""}</td>
           <td>${nombreCentro(r.centro)}</td>
           <td>${titulo(r.categoria)}</td><td>${titulo(r.familia)}</td>
           <td class="num">${numero(r.cantidad_plan)}</td><td class="num">${numero(r.cantidad_real)}</td>
@@ -685,33 +699,43 @@ function renderSeccion2(){
           <td class="num ${claseCumplimiento(r.cumplimiento_pct)}">${r.cumplimiento_pct!=null?numero(r.cumplimiento_pct,1)+'%':'—'}</td>
         </tr>` + ps.map(p => `
         <tr class="fila-hija" data-grupo="${i}"${expandir ? "" : " hidden"}>
-          <td></td><td class="celda-proveedor">${p.proveedor} <span class="texto-tenue">${nombreCentro(p.codigo) === p.codigo ? p.codigo + " · " : ""}${p.tipo}</span></td>
+          <td class="fijo-1"></td><td class="celda-proveedor fijo-2">${p.proveedor} <span class="texto-tenue">${p.codigo && nombreCentro(p.codigo) === p.codigo ? p.codigo + " · " : ""}${p.tipo}</span></td>
           <td></td><td></td><td></td><td class="num texto-tenue">—</td>
           <td class="num">${numero(p.real)}</td><td class="num">${numero(p.carros)}</td>
           <td class="num">${r.cantidad_real ? numero(p.real / r.cantidad_real * 100, 1)+"%" : ""}</td>
           <td class="num texto-tenue">—</td><td class="num texto-tenue">—</td>
         </tr>`).join("");
     }).join("");
+    // Total del detalle: el cumplimiento es el real ÷ el plan de todo lo listado.
+    const tPlan = detalle.reduce((s,r)=>s+r.cantidad_plan, 0), tReal = detalle.reduce((s,r)=>s+r.cantidad_real, 0);
+    const tCarros = detalle.reduce((s,r)=>s+(provs.get(r.material_codigo+"|"+r.centro) || []).reduce((a,p)=>a+p.carros, 0), 0);
+    const tDif = tReal - tPlan, tPct = tPlan ? tReal / tPlan * 100 : null;
+    const totalHtml = `<tfoot><tr class="fila-total">
+          <td class="fijo-1">Total</td><td class="fijo-2">${detalle.length} material${detalle.length === 1 ? "" : "es"}</td><td colspan="3"></td>
+          <td class="num">${numero(tPlan)}</td><td class="num">${numero(tReal)}</td><td class="num">${numero(tCarros)}</td><td class="num"></td>
+          <td class="num ${tDif>0?'dato-positivo':(tDif<0?'dato-negativo':'')}">${numero(tDif)}</td>
+          <td class="num ${claseCumplimiento(tPct)}">${tPct!=null?numero(tPct,1)+'%':'—'}</td>
+        </tr></tfoot>`;
     contDet.innerHTML = `
       <div class="bloque-cabecera">
         <h2 class="subtitulo">Detalle por material</h2>
         <button type="button" class="btn-link" data-proveedores-todos aria-pressed="${expandir}">${expandir ? "Ocultar proveedores" : "Ver proveedores de todos"}</button>
       </div>
       <p class="nota">Abre un material para ver sus ingresos por proveedor (tickets de báscula ZMM056); en los ingresos propios el proveedor es la
-        planta de origen. El plan por proveedor se completará cuando se cargue la tabla de distribución por proveedor.</p>
-      <div class="tabla-scroll">
-        <table class="tabla-con-hijas">
+        planta de origen. El Carbón Importado y la Escoria japonesa se miden con MB51 puesto en destino (secas, con su ajuste de humedad).</p>
+      <div class="tabla-marco">
+        <table class="tabla-con-hijas tabla-fija">
           <thead><tr>
-            <th>Material</th><th>Descripción / proveedor</th><th>Centro</th><th>Categoría</th><th>Familia</th>
+            <th class="fijo-1">Material</th><th class="fijo-2">Descripción / proveedor</th><th>Centro</th><th>Categoría</th><th>Familia</th>
             <th class="num" data-orden="desc">Plan (T)</th><th class="num">Real (T)</th><th class="num">Carros</th><th class="num">% del real</th>
             <th class="num">Diferencia (T)</th><th class="num">% Cumplimiento</th>
           </tr></thead>
-          <tbody>${filasHtml}</tbody>
+          <tbody>${filasHtml}</tbody>${totalHtml}
         </table>
       </div>`;
   }
 
-  const diario = evaluacionDiaria(mes, {centro, material});
+  const diario = evaluacionDiaria(mes, {centro, material, sop});
   const materialTitulo = !material ? "Todos los materiales" : (cuantosSel(material) > 1 ? `${cuantosSel(material)} materiales` :
     (detalle.find(d=>d.material_codigo===material)?.texto_breve || material));
   const centroTitulo = centro ? (nombreCentro(centro)) : "Todos los centros";
@@ -755,6 +779,7 @@ function renderSeccion2(){
 }
 
 f2mes.addEventListener("change", () => { poblarFiltros2(null, null); renderSeccion2(); });
+f2sop.addEventListener("change", () => { poblarFiltros2(null, null); renderSeccion2(); });
 f2centro.addEventListener("change", () => { poblarFiltros2(f2centro.value, null); renderSeccion2(); });
 f2material.addEventListener("change", renderSeccion2);
 
@@ -819,7 +844,7 @@ function renderSeccion3(){
         <tbody>
           ${filas.map(r => `
             <tr>
-              <td>${r.material_codigo}</td><td>${r.texto_breve}</td><td>${nombreCentro(r.centro)}</td>
+              <td>${r.material_codigo}</td><td>${r.texto_breve}${r.parte ? ` <span class="parte-acopio">· ${r.parte}</span>` : ""}</td><td>${nombreCentro(r.centro)}</td>
               <td>${titulo(r.categoria)}</td><td>${titulo(r.familia)}</td>
               <td class="num">${numero(r.stock_cierre)}</td>
               <td class="num">${numero(r.consumo_diario,1)}</td>
@@ -850,9 +875,9 @@ function poblarFiltros4(){
   llenarSelect(f4centro, [{value:"", label:"Todos"}, ...centros.map(c=>({value:c,label:nombreCentro(c)}))], f4centro.value ?? "");
 }
 
-function cumplimientoMensual({categoria, centro} = {}){
+function cumplimientoMensual({categoria, centro, sop} = {}){
   return DATA.meses.map(mes => {
-    const filas = planVsRealPorMaterial(mes, {categoria, centro});
+    const filas = planVsRealPorMaterial(mes, {categoria, centro, sop});
     const plan = filas.reduce((s,f)=>s+f.cantidad_plan,0);
     const real = filas.reduce((s,f)=>s+f.cantidad_real,0);
     const sinComparacion = mes > hoyMes || !plan;
@@ -866,8 +891,10 @@ function cumplimientoMensual({categoria, centro} = {}){
 
 function renderSeccion4(){
   const categoria = f4cat.value || null, centro = f4centro.value || null;
-  const filas = cumplimientoMensual({categoria, centro});
-  const g = barrasMensuales(filas.map(f=>[mesAbrev(f.mes), f.cumplimiento_pct]), {alto:240});
+  const filas = cumplimientoMensual({categoria, centro, sop: f4sop.value});
+  // Como la web: el gráfico llega hasta el mes en curso y su ancho sigue a la cantidad de meses.
+  const graficables = filas.filter(f => f.mes <= hoyMes);
+  const g = barrasMensuales(graficables.map(f=>[mesAbrev(f.mes), f.cumplimiento_pct]), {alto:240, ancho: Math.max(320, 72 * graficables.length + 40)});
 
   document.getElementById("cumplimiento-contenido").innerHTML = svgBarras(g) + `
     <div class="tabla-scroll">
@@ -888,6 +915,9 @@ function renderSeccion4(){
 }
 
 f4cat.addEventListener("change", renderSeccion4);
+const f4sop = document.getElementById("sop_cumplmes");
+llenarSelect(f4sop, SOP_OPCIONES, "");
+f4sop.addEventListener("change", renderSeccion4);
 f4centro.addEventListener("change", renderSeccion4);
 
 /* ---------- sección 5: Evolución de inventario (S&OP) ---------- */
@@ -1066,18 +1096,47 @@ function renderSeccion5(){
     const prom = salidas.length ? salidas.reduce((s,v)=>s+v,0) / salidas.length : 0;
     return prom > 0 ? Math.max(stock, 0) / prom : null;  // un quiebre (stock negativo) cubre 0 meses
   };
+  // Color por meses: mínimo y máximo (T) ÷ flujo promedio de todo el
+  // horizonte; las partes de un centro de acopio, sin color (replica
+  // views._fila_cobertura / _estado_cobertura).
+  const estadoCobertura = (stock, cob, mi, ma) => {
+    if(stock < 0) return "quiebre";
+    if(cob == null) return "sin_parametro";
+    if(mi != null && cob < mi) return "bajo_minimo";
+    if(ma != null && cob > ma) return "sobre_maximo";
+    return (mi != null || ma != null) ? "en_rango" : "sin_parametro";
+  };
+  const filaCobertura = (g, factor, flujo, parte) => {
+    const prom = flujo.length ? flujo.reduce((s,v)=>s+v,0) / flujo.length : 0;
+    const aMeses = v => (parte || nulo(v) || prom <= 0) ? null : v / prom;
+    const siguientes = i => { const s = flujo.slice(i+1, i+1+COB_SIGUIENTES); return s.length ? s : flujo.slice(i, i+1); };
+    return {material_codigo:g[0].material_codigo, texto_breve:g[0].texto_breve, centro:g[0].centro, parte,
+            minimo_meses: aMeses(g[0].stock_minimo), maximo_meses: aMeses(g[0].stock_maximo),
+            cobertura_inicial: coberturaMeses(g[0].stock_inicial * factor, flujo.slice(0, COB_SIGUIENTES)),
+            celdas: g.map((f,i) => {
+              const v = f.stock_final * factor, cob = coberturaMeses(v, siguientes(i));
+              return {valor:v, cobertura:cob, estado: estadoCobertura(v, cob, aMeses(f.stock_minimo), aMeses(f.stock_maximo))};
+            })};
+  };
+  // Centros de acopio (q.ACOPIO_COBERTURA): lo propio contra su consumo y lo
+  // en acopio contra el consumo del destino (de todo el S&OP, sin filtros).
+  const acopio = new Map(((DATA.acopio_proyeccion || {})[snapshot] || []).map(a => [a.material_codigo+"|"+a.centro, a]));
+  const consumoDe = new Map(PROY.filter(r=>r.snapshot===snapshot).map(r => [r.material_codigo+"|"+r.centro+"|"+r.mes, r.consumo]));
   const matriz = [...grupos.values()].map(g => {
     g.sort((a,b)=>a.mes.localeCompare(b.mes));
     const neg = g.find(f=>f.stock_final<0);
-    const salidas = g.map(f => f.consumo + f.traslado);
-    const siguientes = i => { const s = salidas.slice(i+1, i+1+COB_SIGUIENTES); return s.length ? s : salidas.slice(i, i+1); };
+    const a = acopio.get(g[0].material_codigo+"|"+g[0].centro);
+    const filasCobertura = a ? [
+      filaCobertura(g, a.propio, g.map(f => f.consumo), "propio"),
+      filaCobertura(g, 1 - a.propio, g.map(f => consumoDe.get(f.material_codigo+"|"+a.destino+"|"+f.mes) || 0), a.parte),
+    ] : [filaCobertura(g, 1, g.map(f => f.consumo + f.traslado), "")];
     return {material_codigo:g[0].material_codigo, texto_breve:g[0].texto_breve, centro:g[0].centro,
             stock_minimo:g[0].stock_minimo, stock_maximo:g[0].stock_maximo, stock_inicial:g[0].stock_inicial,
-            cobertura_inicial: coberturaMeses(g[0].stock_inicial, salidas.slice(0, COB_SIGUIENTES)),
-            celdas:g.map((f,i)=>({valor:f.stock_final, estado:f.estado, cobertura: coberturaMeses(f.stock_final, siguientes(i))})),
+            celdas:g.map(f=>({valor:f.stock_final, estado:f.estado})), filasCobertura,
             quiebre: neg ? neg.mes : null};
   }).sort((a,b) => (a.quiebre===null) - (b.quiebre===null) || (a.quiebre||"").localeCompare(b.quiebre||"") ||
                    a.centro.localeCompare(b.centro) || a.material_codigo.localeCompare(b.material_codigo));
+  const matrizCobertura = matriz.flatMap(f => f.filasCobertura);
 
   // Material, descripción, centro, mínimo y máximo fijos al desplazar los meses (.matriz-proyeccion en dashboard.css).
   const fijasCabecera = (mi, ma) => `<th class="col-fija fija-1">Material</th><th class="col-fija fija-2">Descripción</th>` +
@@ -1182,12 +1241,16 @@ function renderSeccion5(){
       </table>
     </div>
     <h3 class="subtitulo">Cobertura proyectada por material (meses)</h3>
-    <p class="nota">Cuántos meses alcanza el stock final de cada mes al ritmo de las salidas planificadas (consumo más traslados a otro centro) de los ${COB_SIGUIENTES} meses siguientes; un quiebre cubre 0 meses. Mismo color que la tabla en toneladas; mínimo y máximo en toneladas.</p>
+    <p class="nota">Cuántos meses alcanza el stock final de cada mes al ritmo de las salidas planificadas (consumo más traslados a otro centro) de los ${COB_SIGUIENTES} meses siguientes; un quiebre cubre 0 meses. El color compara esos meses con el mínimo y el máximo pasados a meses (mínimo y máximo en T ÷ salidas planificadas promedio de todo el horizonte). En Atocongo, el Carbón Importado y el Carbón Trujillo van en dos filas sin color: lo propio (contra su consumo) y lo que está en acopio para Condorcocha (contra el consumo de Condorcocha), en la proporción de su consumo y sus reenvíos de los 12 meses al cierre de partida.</p>
     <div class="tabla-scroll">
       <table class="matriz-proyeccion">
-        <thead><tr>${fijasCabecera("Mín. (T)", "Máx. (T)")}<th class="num">Inicial</th>
+        <thead><tr>${fijasCabecera("Mín. (meses)", "Máx. (meses)")}<th class="num">Inicial</th>
           ${meses.map(m=>`<th class="num">${mesCorto(m)}</th>`).join("")}</tr></thead>
-        <tbody>${matriz.map(f=>`<tr>${fijasFila(f)}<td class="num">${f.cobertura_inicial==null?'—':numero(f.cobertura_inicial,1)}</td>
+        <tbody>${matrizCobertura.map(f=>`<tr><td class="celda-codigo col-fija fija-1">${f.material_codigo}</td>
+          <td class="col-fija fija-2" title="${f.texto_breve}${f.parte ? " · "+f.parte : ""}">${f.texto_breve}${f.parte ? ` <span class="parte-acopio">· ${f.parte}</span>` : ""}</td>
+          <td class="col-fija fija-3">${nombreCentro(f.centro)}</td>
+          <td class="num col-fija fija-4">${f.minimo_meses==null?'—':numero(f.minimo_meses,1)}</td><td class="num col-fija fija-5">${f.maximo_meses==null?'—':numero(f.maximo_meses,1)}</td>
+          <td class="num">${f.cobertura_inicial==null?'—':numero(f.cobertura_inicial,1)}</td>
           ${f.celdas.map(c=>`<td class="num estado-${c.estado}" title="Stock final ${numero(c.valor)} T">${c.cobertura==null?'—':numero(c.cobertura,1)}</td>`).join("")}</tr>`).join("")}</tbody>
       </table>
     </div>`;
@@ -1469,7 +1532,7 @@ function evolucionConsumo(real, plan, mesParcial, {ancho=960, alto=300, padX=22,
   const pasoEje = Math.max(1, Math.ceil(meses.length/20));
   return {ancho, alto, base:base.toFixed(1), barras, puntos,
           linea: puntos.map((p,i) => `${i ? "L" : "M"}${p.x} ${p.y}`).join(" "),
-          eje: meses.map((m,i) => ({m,i})).filter(o => o.i % pasoEje === 0 || o.i === meses.length-1)
+          eje: meses.map((m,i) => ({m,i})).filter(o => etiquetaEjeVisible(o.i, meses.length, pasoEje))
                     .map(o => ({x_pct:(xDe(o.m)/ancho*100).toFixed(2), texto:mesCorto(o.m)}))};
 }
 function svgConsumo(g, snapshot){
@@ -1492,6 +1555,12 @@ function svgConsumo(g, snapshot){
   </div>`;
 }
 
+/* Etiqueta i de n del eje de meses (replica charts._etiqueta_eje_visible): una cada `paso` y siempre la
+   última; la regular pegada a la última se omite (se pisaban). */
+function etiquetaEjeVisible(i, n, paso){
+  if(i === n - 1) return true;
+  return i % paso === 0 && !(paso > 1 && n - 1 - i < paso * 0.6);
+}
 /* Líneas mensuales en una misma unidad (replica charts.lineas_mensuales). */
 function lineasMensuales(series, formato, {referencias=[], desdeCero=false, ancho=960, alto=280, padIzq=52, padDer=46, padArr=22, padAbj=24} = {}){
   series = series.filter(s => s.puntos.length);
@@ -1537,7 +1606,7 @@ function lineasMensuales(series, formato, {referencias=[], desdeCero=false, anch
   return {ancho, alto, x0:padIzq, x1:ancho - padDer, series:salida,
           grilla: marcasEje(piso, techo, 4).filter(v => v >= piso && v <= techo).map(v => ({y:yDe(v).toFixed(1), y_pct:(yDe(v)/alto*100).toFixed(2), texto:formato(v)})),
           referencias: referencias.map(r => ({y:yDe(r.valor).toFixed(1), texto:r.texto, clase:r.clase || ""})),
-          eje: meses.map((m,i) => ({m,i})).filter(o => o.i % pasoEje === 0 || o.i === meses.length-1)
+          eje: meses.map((m,i) => ({m,i})).filter(o => etiquetaEjeVisible(o.i, meses.length, pasoEje))
                     .map(o => ({x_pct:(xDe(o.m)/ancho*100).toFixed(2), texto:mesCorto(o.m)}))};
 }
 function svgLineas(g, titulo){
@@ -1896,10 +1965,10 @@ function kpisZona(zona){
   const k = [];
   if(zona === "cumplimiento"){
     const mes = f1mes.value || MES_DEFECTO;
-    const plan = planVsRealPorMaterial(mes, {categoria: f1cat.value || null, centro: f1centro.value || null});
+    const plan = planVsRealPorMaterial(mes, {categoria: f1cat.value || null, centro: f1centro.value || null, sop: f1sop.value});
     const tPlan = plan.reduce((s,f)=>s+f.cantidad_plan, 0), tReal = plan.reduce((s,f)=>s+f.cantidad_real, 0);
     const cumpl = tPlan ? tReal/tPlan*100 : null;
-    const cm = cumplimientoMensual({categoria: f4cat.value || null, centro: f4centro.value || null}).filter(f => f.cumplimiento_pct != null);
+    const cm = cumplimientoMensual({categoria: f4cat.value || null, centro: f4centro.value || null, sop: f4sop.value}).filter(f => f.cumplimiento_pct != null);
     k.push(kpi(pct(cumpl), `Cumplimiento del plan de abastecimiento · ${mesLabel(mes)}`, cumpl == null ? "" : (cumpl >= 95 ? "ok" : (cumpl < 80 ? "alerta" : ""))),
            kpi(`${numero(tReal)} T`, `Ingresos físicos (báscula) de ${numero(tPlan)} T planificadas`));
     if(cm.length > 1) k.push(kpi(pct(cm[cm.length-2].cumplimiento_pct), `Mes anterior con plan · ${mesLabel(cm[cm.length-2].mes)}`));
@@ -2187,19 +2256,20 @@ function renderSeccion9(){
     const t = tarjetas[0], g = df.slice().sort((a,b)=>ordenPy(a.mes,b.mes));
     const grafico = evolucionPrecio(g.map(r => [r.mes, r.precio, r.toneladas]));
     const detalle = g.map((r,i) => ({...r, variacion_pct: i ? (r.precio/g[i-1].precio - 1)*100 : null})).reverse();
+    const u = umbDe(t.material_codigo);
     cont.innerHTML = `
       <div class="metricas">
-        <div class="metrica"><span class="valor">S/ ${numero(t.precio_ultimo,2)}</span><span class="etiqueta">Último precio por T (${mesCorto(t.mes_ultimo)})</span></div>
+        <div class="metrica"><span class="valor">S/ ${numero(t.precio_ultimo,2)}</span><span class="etiqueta">Último precio por ${u} (${mesCorto(t.mes_ultimo)})</span></div>
         <div class="metrica"><span class="valor ${t.variacion_anual === null ? "" : claseVar(t.variacion_anual)}">${pctTxt(t.variacion_anual)}</span><span class="etiqueta">Variación en 12 meses${t.mes_base_anual ? ` (vs ${mesCorto(t.mes_base_anual)})` : ""}</span></div>
         <div class="metrica"><span class="valor">S/ ${numero(t.precio_promedio,2)}</span><span class="etiqueta">Promedio ponderado del período · mín. ${numero(t.precio_minimo,1)} – máx. ${numero(t.precio_maximo,1)}</span></div>
-        <div class="metrica"><span class="valor">${numero(t.toneladas)} T</span><span class="etiqueta">Compradas en el período · ${solesLargo(t.importe)}</span></div>
+        <div class="metrica"><span class="valor">${numero(t.toneladas)} ${u}</span><span class="etiqueta">Compradas en el período · ${solesLargo(t.importe)}</span></div>
       </div>
       ${grafico ? svgPrecio(grafico, {leyenda:`<div class="leyenda-curva">
-        <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>Precio de entrada (S/ por T)</span>
-        <span class="leyenda-item"><span class="leyenda-marca barra-toneladas"></span>Toneladas compradas en el mes (máx. ${grafico.tonelaje_maximo})</span></div>`}) : ""}
+        <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>Precio de entrada (S/ por ${u})</span>
+        <span class="leyenda-item"><span class="leyenda-marca barra-toneladas"></span>${u === "T" ? "Toneladas" : "Cantidad (" + u + ")"} compradas en el mes (máx. ${grafico.tonelaje_maximo})</span></div>`}) : ""}
       <h3 class="subtitulo">Detalle mensual</h3>
       <div class="tabla-scroll"><table>
-        <thead><tr><th>Mes</th><th class="num">Toneladas</th><th class="num">Importe (S/)</th><th class="num">Precio (S/ por T)</th>
+        <thead><tr><th>Mes</th><th class="num">${u === "T" ? "Toneladas" : "Cantidad (" + u + ")"}</th><th class="num">Importe (S/)</th><th class="num">Precio (S/ por ${u})</th>
           <th class="num">Var. vs compra anterior</th><th class="num">Entradas</th><th class="num">Proveedores</th></tr></thead>
         <tbody>${detalle.map(d => `<tr><td>${mesLabel(d.mes)}</td><td class="num">${numero(d.toneladas)}</td><td class="num">${numero(d.importe)}</td>
           <td class="num">${numero(d.precio,2)}</td>
@@ -2236,6 +2306,10 @@ const RAZON_ATIPICA = 2.0, ANIO_INICIO_INFLACION = 2025;
 // Precios de referencia de meses sin compra (queries.PRECIOS_REFERENCIA_IPU):
 // solo base de comparación, no compras.
 const PRECIOS_REFERENCIA_IPU = PCQ.precios_referencia || [];
+// Unidad de compra de cada material (el Petróleo Diesel en galones; el resto en T).
+const UMB_PRECIOS = PCQ.umb_precios || {};
+const umbDe = m => UMB_PRECIOS[m] || "T";
+const unidadComun = filas => filas.every(r => umbDe(r.material_codigo) === "T") ? "T" : null;
 function inflacionPrecios(df, desfase){
   const salida = [];
   for(const [, g] of agrupar(df, r => r.material_codigo+"|"+r.centro)){
@@ -2389,9 +2463,10 @@ function calcularInflacion(suf, sel){
     let baseTxt = mesCorto(r.mes_base);
     if(r.base_referencia) baseTxt += " (precio de referencia, sin compra)";
     else if(r.base_sustituida) baseTxt += r.mes_base > r.mes_referencia ? ` (primera compra de ${r.mes_base.slice(0,4)}; ${mesCorto(r.mes_referencia)} sin compra)` : ` (último registrado; ${mesCorto(r.mes_referencia)} sin compra)`;
+    const u = umbDe(r.material_codigo);
     let texto = `${r.texto_breve} (${nombreCentro(r.centro)}) · ${mesCorto(r.mes)}: ${fmtSigno1(r.variacion*100)}%\n` +
-      `${mesCorto(r.mes)}: S/ ${numero(r.precio,2)} por T\nvs ${baseTxt}: S/ ${numero(r.precio_base,2)} por T\n` +
-      `Bolsa: (S/ ${numero(r.precio,2)} − S/ ${numero(r.precio_base,2)}) × ${numero(r.toneladas)} T = ${r.bolsa >= 0 ? "+" : "−"}S/ ${numero(Math.abs(r.bolsa))}`;
+      `${mesCorto(r.mes)}: S/ ${numero(r.precio,2)} por ${u}\nvs ${baseTxt}: S/ ${numero(r.precio_base,2)} por ${u}\n` +
+      `Bolsa: (S/ ${numero(r.precio,2)} − S/ ${numero(r.precio_base,2)}) × ${numero(r.toneladas)} ${u} = ${r.bolsa >= 0 ? "+" : "−"}S/ ${numero(Math.abs(r.bolsa))}`;
     if(r.atipica) texto += "\nATÍPICA: el precio más que se duplica o cae a menos de la mitad (dato a revisar en MB51 o en los ajustes de la FBL3N); no suma en la bolsa ni en la selección.";
     return texto;
   };
@@ -2401,8 +2476,12 @@ function calcularInflacion(suf, sel){
     const texto = ev.desfase === 12
       ? `${nombre}IPU acumulado ${tramo} vs el mismo tramo del año anterior: ${fmtSigno1(d.acumulado*100)}%\nPagado: S/ ${numero(d.importe_acumulado)} · al precio del año anterior: S/ ${numero(d.base_acumulada)}\n`
       : `${nombre}IPU acumulado ${tramo} (variaciones de cada mes encadenadas): ${fmtSigno1(d.acumulado*100)}%\n`;
-    return texto + `Bolsa acumulada: ${d.bolsa_acumulada >= 0 ? "+" : "−"}S/ ${numero(Math.abs(d.bolsa_acumulada))} (${numero(d.toneladas_acumuladas)} T)`;
+    const u = nombre ? umbDe(mesMaterial.get(nombre) || "") : uSel;
+    return texto + `Bolsa acumulada: ${d.bolsa_acumulada >= 0 ? "+" : "−"}S/ ${numero(Math.abs(d.bolsa_acumulada))}` +
+      (u ? ` (${numero(d.toneladas_acumuladas)} ${u})` : "");
   };
+  // Unidad de la selección: "T", o ninguna si se mezclan T y galones (Combustible Líquido).
+  const uSel = unidadComun(inflacion), mesMaterial = new Map();
   const filas = agrupar(inflacion, r => r.material_codigo+"|"+r.centro).map(([k, g]) => {
     const porMes = new Map(g.map(r => [r.mes, r])), ultimo = g[g.length-1];
     const ipuMat = acumulado ? ipuPorMes(total_.filter(r => r.material_codigo+"|"+r.centro === k), ev.desfase) : null;
@@ -2411,7 +2490,9 @@ function calcularInflacion(suf, sel){
       if(!r) return null;
       if(acumulado && ipuMat.has(m)){
         const d = ipuMat.get(m);
-        return celda(d.acumulado*100, d.bolsa_acumulada, {sustituida:false, atipica:false, detalle:detalleAcumulado(m, d, ipuMat, `${r.texto_breve} (${nombreCentro(r.centro)}) · `)},
+        const nombreMat = `${r.texto_breve} (${nombreCentro(r.centro)}) · `;
+        mesMaterial.set(nombreMat, r.material_codigo);
+        return celda(d.acumulado*100, d.bolsa_acumulada, {sustituida:false, atipica:false, detalle:detalleAcumulado(m, d, ipuMat, nombreMat)},
                      d.toneladas_acumuladas ? d.importe_acumulado/d.toneladas_acumuladas : null);
       }
       return celda(r.variacion*100, r.bolsa, {sustituida:r.base_sustituida, atipica:r.atipica, detalle:detalleCelda(r)}, r.precio);
@@ -2428,7 +2509,7 @@ function calcularInflacion(suf, sel){
     const c = inflacionCanasta(inflacion.filter(r => r.mes === m));
     c.variacion = c.variacion || 0;
     const detalle = `${mesCorto(m)} vs ${baseTxt}: ${fmtSigno1(c.variacion*100)}%\nBolsa: ${c.bolsa >= 0 ? "+" : "−"}S/ ${numero(Math.abs(c.bolsa))}\n` +
-      `${c.materiales} material${c.materiales !== 1 ? "es" : ""} comprado${c.materiales !== 1 ? "s" : ""} · ${numero(c.toneladas)} T · S/ ${numero(c.importe)}`;
+      `${c.materiales} material${c.materiales !== 1 ? "es" : ""} comprado${c.materiales !== 1 ? "s" : ""}${uSel ? ` · ${numero(c.toneladas)} ${uSel}` : ""} · S/ ${numero(c.importe)}`;
     canasta.push(celda(c.variacion*100, c.bolsa, {detalle}));
     const d = ipu.get(m);
     if(!d){ ipuFila.push(null); continue; }
@@ -2446,7 +2527,7 @@ function calcularInflacion(suf, sel){
                   pct:d.acumulado*100, bolsa:d.bolsa_acumulada, toneladas:d.toneladas_acumuladas});
   }
   const tot = inflacionCanasta(inflacion); tot.variacion = tot.variacion || 0;
-  return {ev, enSoles, enPrecio, acumulado, meses, anios, filas, canasta, ipuFila,
+  return {ev, enSoles, enPrecio, acumulado, meses, anios, filas, canasta, ipuFila, uSel,
           grafico: evolucionIpu(puntos, enSoles ? solesCorto : null),
           grafico_precio: enPrecio && filas.length === 1
             ? evolucionPrecio(inflacion.map(r => [r.mes, r.precio, r.toneladas]), {base: inflacion.map(r => [r.mes, r.precio_base]), ancho:960, alto:320}) : null,
@@ -2471,9 +2552,9 @@ function renderInflacion(suf){
   cont.innerHTML = `
     <div class="metricas">
       <div class="metrica"><span class="valor ${claseVar(r.bolsa)}">${signoDe(r.bolsa)}S/ ${soloDif(r.bolsa)}</span>
-        <span class="etiqueta">Bolsa ${r.desde} a ${r.hasta} (${r.periodo_pct > 0 ? "+" : ""}${numero(r.periodo_pct,1)}% ponderado · ${numero(r.toneladas)} T)</span></div>
+        <span class="etiqueta">Bolsa ${r.desde} a ${r.hasta} (${r.periodo_pct > 0 ? "+" : ""}${numero(r.periodo_pct,1)}% ponderado${c.uSel ? ` · ${numero(r.toneladas)} ${c.uSel}` : ""})</span></div>
       ${r.por_anio.map(a => `<div class="metrica"><span class="valor ${claseVar(a.pct)}"><small class="prefijo-ipu">IPU</small> ${a.pct > 0 ? "+" : ""}${numero(a.pct,1)}%</span>
-        <span class="etiqueta">${a.anio}${a.anio_completo ? " (Ene–Dic)" : ` acumulado a ${a.hasta}`}${a.anio_base ? ` vs ${a.anio_base}` : ", variaciones mensuales encadenadas"} · bolsa ${signoDe(a.bolsa)}S/ ${soloDif(a.bolsa)} con toneladas de ${a.anio} (${numero(a.toneladas)} T)</span></div>`).join("")}
+        <span class="etiqueta">${a.anio}${a.anio_completo ? " (Ene–Dic)" : ` acumulado a ${a.hasta}`}${a.anio_base ? ` vs ${a.anio_base}` : ", variaciones mensuales encadenadas"} · bolsa ${signoDe(a.bolsa)}S/ ${soloDif(a.bolsa)} con ${c.uSel ? "toneladas" : "cantidades"} de ${a.anio}${c.uSel ? ` (${numero(a.toneladas)} ${c.uSel})` : ""}</span></div>`).join("")}
       <div class="metrica"><span class="valor ${claseVar(r.ultima_pct)}">${r.ultima_pct > 0 ? "+" : ""}${numero(r.ultima_pct,1)}%</span>
         <span class="etiqueta">${r.ultimo_mes} vs ${c.ev.base_titulo} · bolsa ${r.ultima_bolsa < 0 ? "−" : "+"}S/ ${soloDif(r.ultima_bolsa)}${c.un_material ? "" : ` · ${r.suben} ▲ / ${r.bajan} ▼ materiales en su última compra`}</span></div>
     </div>

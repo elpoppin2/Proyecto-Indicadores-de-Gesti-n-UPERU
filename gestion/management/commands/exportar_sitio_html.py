@@ -4,6 +4,7 @@ import os
 import re
 import time
 import unicodedata
+from html import escape
 from urllib.parse import quote, urlsplit
 
 from django.contrib.auth import get_user_model
@@ -45,7 +46,8 @@ _JS_ESTATICO = """
 (function () {
   var AVISO = 'Filtro disponible en el localhost: esta copia muestra la vista por defecto.';
   function bloquear(raiz) {
-    raiz.querySelectorAll('form.filtros select, form.filtros input, [data-buscar-servidor], .filtro-multi-boton')
+    // form[data-estatico] (Año de Indicadores) trae sus vistas dibujadas: sigue activo.
+    raiz.querySelectorAll('form.filtros:not([data-estatico]) select, form.filtros:not([data-estatico]) input, [data-buscar-servidor], .filtro-multi-boton')
       .forEach(function (c) { c.disabled = true; c.title = AVISO; });
   }
   window.uperuBloquearFiltros = bloquear;
@@ -63,7 +65,7 @@ _JS_ESTATICO = """
   document.addEventListener('DOMContentLoaded', function () { bloquear(document); });
   // Por si algo cambia un filtro igual (atajos de las tarjetas, detalle): no se pide nada al servidor.
   window.addEventListener('change', function (e) {
-    if (e.target.closest && e.target.closest('form.filtros')) e.stopImmediatePropagation();
+    if (e.target.closest && e.target.closest('form.filtros:not([data-estatico])')) e.stopImmediatePropagation();
   }, true);
   window.addEventListener('click', function (e) {
     var t = e.target.closest && e.target.closest('.filtro-multi-boton, [data-material-precios], [data-material-calidad], [data-filtrar], [data-reiniciar]');
@@ -89,6 +91,13 @@ class Command(BaseCommand):
         parser.add_argument("carpeta", help="Carpeta destino (se sobrescriben los archivos de la copia)")
         parser.add_argument("--con-descargas", action="store_true",
                             help="Generar también los Excel/PDF de los botones de descarga (carpeta Descargas)")
+        # Copias "a un corte" (pedido del usuario, 2026-10-26: cada categoría
+        # acumulada a setiembre 2026; ver el script que la arma sobre una base
+        # recortada a esa fecha).
+        parser.add_argument("--solo-categorias", action="store_true", help="Solo las páginas de las categorías")
+        parser.add_argument("--parametros", default="",
+                            help="Filtros para todas las páginas y pestañas (query string, p.ej. anio_compras=2026)")
+        parser.add_argument("--aviso", default="", help="Texto del aviso de la copia (en vez del de siempre)")
 
     def handle(self, *args, **options):
         carpeta = options["carpeta"]
@@ -101,6 +110,8 @@ class Command(BaseCommand):
         self.cliente.force_login(usuario)
         inicio = time.monotonic()
         self.generado = datetime.datetime.now()
+        self.parametros = options.get("parametros", "").lstrip("?&")
+        self.aviso = options.get("aviso", "")
 
         # Páginas: las de la barra de navegación (con sus nombres) más el informe mensual.
         portada = self._get(INICIO)
@@ -113,6 +124,9 @@ class Command(BaseCommand):
             archivos[ruta] = "Inicio - Indicadores Supply Chain.html" if ruta == INICIO else f"{nombre}.html"
         archivos["/informe-mensual/"] = "Informe mensual.html"
         archivos = {r: a for r, a in archivos.items() if r not in SIN_COPIA}
+        if options.get("solo_categorias"):
+            categorias = {f"/{views._slug(c)}/" for c in views._categorias_disponibles()}
+            archivos = {r: a for r, a in archivos.items() if r in categorias}
 
         # Qué se escribe: cada página suelta (solo se enlaza a sí misma) y, por
         # grupo, sus otras páginas en un archivo del grupo que enlaza a todas.
@@ -157,7 +171,11 @@ class Command(BaseCommand):
 
     # --- Pedidos al dashboard ------------------------------------------------
     def _get(self, url):
-        respuesta = self.cliente.get(url, HTTP_HOST="127.0.0.1")
+        # X-Uperu-Copia: las vistas que pueden traer sus filtros ya resueltos
+        # (Año de Indicadores de Planificación) los dibujan todos.
+        if getattr(self, "parametros", ""):
+            url += ("&" if "?" in url else "?") + self.parametros
+        respuesta = self.cliente.get(url, HTTP_HOST="127.0.0.1", HTTP_X_UPERU_COPIA="1")
         if respuesta.status_code != 200:
             raise CommandError(f"{url}: HTTP {respuesta.status_code}")
         return respuesta.content.decode("utf-8")
@@ -224,7 +242,8 @@ class Command(BaseCommand):
         if "/static/" in html:
             raise CommandError("Quedó una referencia a /static/ sin incrustar")
 
-        aviso = (f'<p class="aviso-copia">Copia del {self.generado:%d/%m/%Y %H:%M} con la vista por defecto de '
+        aviso = (f'<p class="aviso-copia">{escape(self.aviso)}</p>' if getattr(self, "aviso", "") else
+                 f'<p class="aviso-copia">Copia del {self.generado:%d/%m/%Y %H:%M} con la vista por defecto de '
                  f'cada pestaña. Los filtros y el detalle fila por fila funcionan en el localhost.</p>')
         html = html.replace("</header>", "</header>" + aviso, 1)
         html = html.replace("</head>", f"<style>{_CSS_ESTATICO}</style>\n</head>", 1)

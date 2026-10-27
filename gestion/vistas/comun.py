@@ -93,8 +93,12 @@ def _hasta_defecto(anio):
     """Mes "Hasta" por defecto de un año de compras: diciembre en un año
     cerrado y el mes en curso en el año actual, así la comparación contra el
     año anterior es de los mismos meses y no de un año parcial contra uno
-    completo."""
+    completo. El mes en curso es el de la última compra cargada si es anterior
+    a hoy (en una copia a un corte, p.ej. a setiembre, no dice "Ene–Oct")."""
     hoy = datetime.date.today()
+    ultima = q.ultima_fecha_compras()
+    if ultima and ultima < hoy:
+        hoy = ultima
     return hoy.month if anio == hoy.year else 12
 
 
@@ -372,6 +376,13 @@ def _fecha_corta(fecha):
 
 def _mes_corto(fecha):
     return f"{_MESES_ABREV_GUION[fecha.month]}-{fecha.year % 100:02d}"
+
+
+# Gráficos de líneas de los paneles de Indicadores: la misma proporción que
+# las columnas del IPU (480 x 200), así los paneles de una fila terminan a la
+# misma altura y las etiquetas (texto de tamaño fijo) no se pisan con los ejes
+# al dibujarse a media página (pulido de diseño, 2026-10-23).
+_PANEL_LINEAS = {"ancho": 480, "alto": 200, "pad_izq": 46, "pad_der": 30, "pad_arr": 26, "pad_abj": 26}
 
 
 def _soles_mm(valor):

@@ -72,15 +72,15 @@
   {% elif pr.un_material %}
     {% with t=pr.tarjetas.0 g=pr.grafico %}
       <div class="metricas">
-        <div class="metrica"><span class="valor">S/ {{ t.precio_ultimo|numero:2 }}</span><span class="etiqueta">Último precio por T ({{ t.mes_ultimo_corto }})</span></div>
+        <div class="metrica"><span class="valor">S/ {{ t.precio_ultimo|numero:2 }}</span><span class="etiqueta">Último precio por {{ t.unidad }} ({{ t.mes_ultimo_corto }})</span></div>
         <div class="metrica"><span class="valor {% if t.variacion_anual_pct > 0 %}dato-negativo{% elif t.variacion_anual_pct < 0 %}dato-positivo{% endif %}">{% if t.variacion_anual_pct is not None %}{% if t.variacion_anual_pct > 0 %}+{% endif %}{{ t.variacion_anual_pct|numero:1 }}%{% else %}—{% endif %}</span><span class="etiqueta">Variación en 12 meses{% if t.mes_base_anual_corto %} (vs {{ t.mes_base_anual_corto }}){% endif %}</span></div>
         <div class="metrica"><span class="valor">S/ {{ t.precio_promedio|numero:2 }}</span><span class="etiqueta">Promedio ponderado del período · mín. {{ t.precio_minimo|numero:1 }} – máx. {{ t.precio_maximo|numero:1 }}</span></div>
-        <div class="metrica"><span class="valor">{{ t.toneladas|numero:0 }} T</span><span class="etiqueta">Compradas en el período · {{ t.importe|soles }}</span></div>
+        <div class="metrica"><span class="valor">{{ t.toneladas|numero:0 }} {{ t.unidad }}</span><span class="etiqueta">Compradas en el período · {{ t.importe|soles }}</span></div>
       </div>
       {% if g %}
         {% include "gestion/_grafico_precio.html" with g=g aria="Evolución del precio de entrada" %}
         <div class="leyenda-curva">
-          <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>Precio de entrada (S/ por T)</span>
+          <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>Precio de entrada (S/ por {{ t.unidad }})</span>
           <span class="leyenda-item"><span class="leyenda-marca barra-toneladas"></span>Toneladas compradas en el mes (máx. {{ g.tonelaje_maximo }})</span>
         </div>
       {% endif %}
@@ -215,7 +215,7 @@
             <span class="tarjeta-precio-nombre">{{ t.texto_breve }}</span>
             <span class="tarjeta-precio-codigo">{{ t.material_codigo }} · {{ t.centro|centro }}{% if t.importado %} (importación){% endif %}</span>
           </span>
-          <span class="tarjeta-precio-valor">S/ {{ t.precio_ultimo|numero:2 }} <small>por T · {{ t.mes_ultimo_corto }}</small></span>
+          <span class="tarjeta-precio-valor">S/ {{ t.precio_ultimo|numero:2 }} <small>por {{ t.unidad }} · {{ t.mes_ultimo_corto }}</small></span>
           {% with m=t.minigrafico %}
             {% if m %}
               <svg class="minigrafico" viewBox="0 0 {{ m.ancho }} {{ m.alto }}" preserveAspectRatio="none" aria-hidden="true">
@@ -241,6 +241,10 @@
       <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
         <p><strong>Precio TCO</strong> = (importe de MB51 + ajustes de la FBL3N) ÷ toneladas del mes, con los importados puestos
         en planta (AT = Atocongo U001, CC = Condorcocha U002). Los materiales son los de los filtros de arriba.</p>
+        <p><strong>Importados (Carbón Importado, Escoria)</strong>: costo total puesto en planta, en toneladas secas. Lo que llega del
+        muelle (U004) entra al costo de su barco (MB51 + FBL3N) más el flete del traslado; lo que Condorcocha recibe de Atocongo, al
+        valor con que llega según SAP (valorización del inventario de Atocongo más el flete del traslado de cada mes).
+        Los meses sin compra en Atocongo toman el precio de Condorcocha menos ese flete.</p>
         <p><strong>IPU</strong> = lo pagado en el año ÷ lo que habrían costado esas toneladas al precio de un año antes − 1. La última
         fila es el IPU de todos los materiales de la tabla. Un material sin compra el año anterior no tiene contra qué compararse:
         no entra al IPU de ese año, ni en porcentaje ni en soles ("Sin base").</p>
@@ -249,7 +253,7 @@
         precio, que es su base del IPU; pasa el mouse para verlo.
         En amarillo, meses en que la FBL3N duplica o reduce a menos de la mitad el precio de MB51.</p>
       </div></details>
-      <div class="tabla-scroll">
+      <div class="tabla-scroll" data-scroll-grupo="tco">
         <table class="matriz-tco">
           <thead>
             <tr>
@@ -281,6 +285,42 @@
       </div>
       {% if mt.fuera_ipu %}
         <p class="nota">El IPU de cada año, en porcentaje y en soles, solo cuenta los materiales comprados también el año anterior. No entran por no tener compra el año anterior:{% for x in mt.fuera_ipu %} <strong>IPU {{ x.anio }}</strong> (sin compra en {{ x.anio_base }}): {{ x.materiales }}.{% endfor %}</p>
+      {% endif %}
+
+      {# Volúmenes con que pesa cada precio en el IPU (pedido del usuario, 2026-10-26): mismas filas y columnas que los precios, y su desplazamiento horizontal va junto (graficos.js, data-scroll-grupo). #}
+      <h3 class="subtitulo-tco">Volúmenes considerados en el IPU</h3>
+      <p class="nota">Cantidad de cada mes con que pesa su precio en el IPU, puestas en cada planta (en T; el Petróleo Diesel, en galones); en la columna de cada año, su total. Los importados, en toneladas secas; el Carbón Importado de Atocongo, solo la parte de cada barco que es de Atocongo. Pasa el mouse para ver de qué barco salió.</p>
+      <div class="tabla-scroll" data-scroll-grupo="tco">
+        <table class="matriz-tco matriz-volumen">
+          <thead>
+            <tr>
+              <th class="tco-fijo tco-f1">Código</th><th class="tco-fijo tco-f2">Item / Material</th><th class="tco-fijo tco-f3">Centro</th>
+              {% for c in mt.columnas %}<th class="num{% if c.tipo == 'ipu' %} tco-ipu{% endif %}">{% if c.tipo == 'ipu' %}Total {{ c.anio }}{% else %}{{ c.texto }}{% endif %}</th>{% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in mt.filas %}
+              <tr>
+                <td class="codigo-suave tco-fijo tco-f1">{{ f.material }}</td>
+                <td class="tco-fijo tco-f2" title="{{ f.texto }}">{{ f.texto }}</td>
+                <td class="tco-fijo tco-f3">{{ f.centro }}</td>
+                {% for v in f.volumenes %}
+                  {% if v.anio %}<td class="num tco-ipu">{% if v.total %}{{ v.total|numero:0 }}{% else %}—{% endif %}</td>
+                  {% else %}<td class="num{% if v.pendiente %} tco-pendiente{% endif %}"{% if v.titulo %} title="{{ v.titulo }}"{% endif %}>{% if v.t %}{{ v.t|numero:0 }}{% endif %}</td>{% endif %}
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="fila-total">
+              <td colspan="3" class="tco-fijo tco-f123">Total de los materiales de la tabla</td>
+              {% for v in mt.total_volumen %}<td class="num{% if forloop.counter0 in mt.indices_ipu %} tco-ipu{% endif %}">{% if v %}{{ v|numero:0 }}{% else %}—{% endif %}</td>{% endfor %}
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      {% if mt.hay_pendiente %}
+        <p class="nota"><span class="muestra-pendiente" aria-hidden="true"></span> Mes con toneladas del barco que siguen en Atocongo por trasladarse a Condorcocha: no cuentan en ninguna planta hasta que lleguen (pasa el mouse para ver cuántas).</p>
       {% endif %}
     </details>
   {% endif %}

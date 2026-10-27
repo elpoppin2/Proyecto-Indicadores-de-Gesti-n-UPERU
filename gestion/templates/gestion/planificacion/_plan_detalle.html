@@ -4,6 +4,14 @@
   <p class="nota">Plan e ingresos de cada material y su avance día a día. Estos filtros no cambian la Evaluación mensual.</p>
   <form class="filtros" method="get" data-target="sec-plan-detalle">
     <div class="campo">
+      <label for="sop_detalle">S&amp;OP</label>
+      <select name="sop_detalle" id="sop_detalle">
+        {% for o in planificacion_detalle.sops %}
+          <option value="{{ o.valor }}" {% if o.valor == planificacion_detalle.sop_sel %}selected{% endif %}>{{ o.texto }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
       <label for="mes_detalle">Mes</label>
       <select name="mes_detalle" id="mes_detalle">
         {% for f in planificacion_detalle.opciones_mes %}
@@ -29,14 +37,15 @@
   </div>
   {% if planificacion_detalle.filas %}
     <p class="nota">
-      Abre un material para ver sus ingresos por proveedor (en los propios, la planta de origen). El plan por proveedor
-      aparecerá cuando se cargue su tabla de distribución.
+      Abre un material para ver sus ingresos por proveedor (en los propios, la planta de origen). El Carbón Importado y la
+      Escoria japonesa se miden con MB51 puesto en destino (secas, con su ajuste de humedad), no con la balanza.
     </p>
-    <div class="tabla-scroll">
-      <table class="tabla-con-hijas">
+    {# Encabezado, material y descripción fijos al desplazar, y el total al pie (pedido del usuario, 2026-10-23). #}
+    <div class="tabla-marco">
+      <table class="tabla-con-hijas tabla-fija">
         <thead>
           <tr>
-            <th>Material</th><th>Descripción / proveedor</th><th>Centro</th><th>Categoría</th><th>Familia</th>
+            <th class="fijo-1">Material</th><th class="fijo-2">Descripción / proveedor</th><th>Centro</th><th>Categoría</th><th>Familia</th>
             <th class="num" data-orden="desc">Plan (T)</th>
             <th class="num">Real (T)</th>
             <th class="num">Carros</th>
@@ -48,8 +57,8 @@
         <tbody>
           {% for r in planificacion_detalle.filas %}
             <tr>
-              <td>{{ r.material_codigo }}</td>
-              <td>
+              <td class="fijo-1">{{ r.material_codigo }}</td>
+              <td class="fijo-2">
                 {{ r.texto_breve }}
                 {% if r.proveedores %}<button type="button" class="btn-proveedores" data-grupo="{{ r.grupo }}" aria-expanded="{% if planificacion_detalle.expandir %}true{% else %}false{% endif %}">{{ r.proveedores|length }} proveedor{{ r.proveedores|length|pluralize:"es" }}</button>{% endif %}
               </td>
@@ -65,8 +74,8 @@
             </tr>
             {% for p in r.proveedores %}
               <tr class="fila-hija" data-grupo="{{ r.grupo }}"{% if not planificacion_detalle.expandir %} hidden{% endif %}>
-                <td></td>
-                <td class="celda-proveedor">{{ p.proveedor }} <span class="texto-tenue">{% if p.codigo|centro == p.codigo %}{{ p.codigo }} · {% endif %}{{ p.tipo }}</span></td>
+                <td class="fijo-1"></td>
+                <td class="celda-proveedor fijo-2">{{ p.proveedor }} <span class="texto-tenue">{% if p.codigo and p.codigo|centro == p.codigo %}{{ p.codigo }} · {% endif %}{{ p.tipo }}</span></td>
                 <td></td><td></td><td></td>
                 <td class="num texto-tenue">—</td>
                 <td class="num">{{ p.real|numero:0 }}</td>
@@ -78,6 +87,21 @@
             {% endfor %}
           {% endfor %}
         </tbody>
+        {% with t=planificacion_detalle.total %}
+        <tfoot>
+          <tr class="fila-total">
+            <td class="fijo-1">Total</td>
+            <td class="fijo-2">{{ t.materiales }} material{{ t.materiales|pluralize:"es" }}</td>
+            <td colspan="3"></td>
+            <td class="num">{{ t.plan|numero:0 }}</td>
+            <td class="num">{{ t.real|numero:0 }}</td>
+            <td class="num">{{ t.carros|numero }}</td>
+            <td class="num"></td>
+            <td class="num {% if t.diferencia > 0 %}dato-positivo{% elif t.diferencia < 0 %}dato-negativo{% endif %}">{{ t.diferencia|numero:0 }}</td>
+            <td class="num {% if t.cumplimiento_pct >= 100 %}dato-positivo{% elif t.cumplimiento_pct < 80 %}dato-negativo{% endif %}">{% if t.cumplimiento_pct is not None %}{{ t.cumplimiento_pct|numero:1 }}%{% else %}—{% endif %}</td>
+          </tr>
+        </tfoot>
+        {% endwith %}
       </table>
     </div>
   {% else %}

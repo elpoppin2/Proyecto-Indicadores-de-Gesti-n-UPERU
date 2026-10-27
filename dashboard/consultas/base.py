@@ -173,7 +173,7 @@ def _cacheado(funcion):
     @functools.wraps(funcion)
     def envoltura(*args, **kwargs):
         clave = ("fn", funcion.__qualname__, repr(args), repr(sorted(kwargs.items())), datetime.date.today(),
-                 alcance_actual())
+                 clave_alcance())
         return _cache_obtener(clave, lambda: funcion(*args, **kwargs))
     return envoltura
 
@@ -186,15 +186,30 @@ def _cacheado(funcion):
 # y todo lo que se calcula encima queda acotado. Va en la clave de @_cacheado
 # y de la caché de vistas, así una página no pisa lo guardado por la otra.
 _ALCANCE_MATERIALES = contextvars.ContextVar("alcance_materiales", default=None)
+# Reglas propias del alcance (Logística, pedidos del usuario del 2026-10-23;
+# ver zonas.py): (excluir, proveedores, plan_extra).
+# - excluir: meses que se dejan fuera de un (material, centro): (material,
+#   centro, mes) con mes = día 1 (Carbón Importado de set-26).
+# - proveedores: los únicos proveedores (código de la ZMM056) cuyos ingresos
+#   cuentan para un material: (material, (códigos...)) (Puzolana Ayacucho:
+#   solo J&G Exmicom).
+# - plan_extra: plan provisional que se suma al del S&OP: (material, centro,
+#   mes, toneladas) (Puzolana Ayacucho en Condorcocha, set-26).
+_REGLAS_ALCANCE = contextvars.ContextVar("reglas_alcance", default=((), (), ()))
 
 
 @contextlib.contextmanager
-def alcance_materiales(pares):
+def alcance_materiales(pares, excluir=(), proveedores=None, plan_extra=()):
     token = _ALCANCE_MATERIALES.set(tuple(sorted(pares)) if pares else None)
+    reglas = (tuple(sorted(excluir)),
+              tuple(sorted((m, tuple(sorted(c))) for m, c in (proveedores or {}).items())),
+              tuple(sorted(plan_extra)))
+    token_reglas = _REGLAS_ALCANCE.set(reglas)
     try:
         yield
     finally:
         _ALCANCE_MATERIALES.reset(token)
+        _REGLAS_ALCANCE.reset(token_reglas)
 
 
 def alcance_actual():
@@ -202,16 +217,53 @@ def alcance_actual():
     return _ALCANCE_MATERIALES.get()
 
 
-def _en_alcance(df, centro=None):
+def clave_alcance():
+    """El alcance vigente con sus reglas, para las claves de caché."""
+    reglas = _REGLAS_ALCANCE.get()
+    return (_ALCANCE_MATERIALES.get(), reglas) if any(reglas) else _ALCANCE_MATERIALES.get()
+
+
+def _sql_proveedores_alcance(material="material_codigo", proveedor="proveedor_codigo"):
+    """Condición SQL (con su AND) que deja fuera los ingresos de la ZMM056
+    de proveedores no admitidos por el alcance; "" si no hay regla."""
+    partes = [f"({material} = {_texto_sql(m)} AND COALESCE({proveedor}, '') NOT IN "
+              f"({','.join(_texto_sql(c) for c in codigos)}))"
+              for m, codigos in _REGLAS_ALCANCE.get()[1]]
+    return f" AND NOT ({' OR '.join(partes)})" if partes else ""
+
+
+def _plan_extra_alcance(mes):
+    """Plan provisional del alcance para `mes`: [(material, centro, toneladas)]."""
+    mes = _mes_fecha(mes)
+    return [(m, c, t) for m, c, x, t in _REGLAS_ALCANCE.get()[2] if x == mes]
+
+
+def _en_alcance(df, centro=None, mes=None):
     """Filas de `df` (material_codigo + centro, o el `centro` dado si la
-    consulta ya viene de un solo centro) dentro del alcance vigente."""
+    consulta ya viene de un solo centro) dentro del alcance vigente, sin los
+    meses excluidos (el `mes` dado si la consulta es de un solo mes, si no la
+    columna "mes" de `df`)."""
     pares = _ALCANCE_MATERIALES.get()
     if pares is None or df.empty:
         return df
     pares = set(pares)
-    centros = [centro] * len(df) if centro else df["centro"]
+    centros = [centro] * len(df) if centro else list(df["centro"])
     dentro = [par in pares for par in zip(df["material_codigo"], centros)]
+    excluir = set(_REGLAS_ALCANCE.get()[0])
+    if excluir and (mes is not None or "mes" in df.columns):
+        meses = [mes] * len(df) if mes is not None else list(df["mes"])
+        dentro = [d and (m, c, _mes_fecha(x)) not in excluir
+                  for d, m, c, x in zip(dentro, df["material_codigo"], centros, meses)]
     return df[dentro].reset_index(drop=True)
+
+
+def _mes_fecha(valor):
+    """Día 1 del mes de `valor` (date, datetime o texto 'AAAA-MM-DD')."""
+    if isinstance(valor, str):
+        valor = datetime.date.fromisoformat(valor[:10])
+    if isinstance(valor, datetime.datetime):
+        valor = valor.date()
+    return valor.replace(day=1)
 
 
 def formato_soles(valor):

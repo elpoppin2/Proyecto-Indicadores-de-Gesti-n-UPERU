@@ -70,8 +70,14 @@ class Command(BaseCommand):
         ))
 
     def _importar_archivo(self, archivo, mes_snapshot):
+        # Cada archivo es una emisión completa del S&OP: reemplaza todo lo de
+        # su mes de emisión (si el archivo corregido ya no trae un material o
+        # un mes, no queda el valor anterior).
+        celdas = list(leer_matriz_mensual(archivo))
+        if celdas:
+            PlanAbastecimientoSOP.objects.filter(mes_snapshot=mes_snapshot).delete()
         total = 0
-        for celda in leer_matriz_mensual(archivo):
+        for celda in celdas:
             PlanAbastecimientoSOP.objects.update_or_create(
                 material_codigo=celda["material_codigo"],
                 centro_destino=celda["centro"],

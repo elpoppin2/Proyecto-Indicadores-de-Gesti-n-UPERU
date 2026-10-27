@@ -22,7 +22,6 @@ class Command(BaseCommand):
         "Genera un HTML estático y autocontenido de la pestaña Planificación (mismo diseño "
         "que el localhost, con los datos embebidos) para compartirlo sin servidor ni login."
     )
-    MESES_INDICADORES = 12  # meses del filtro Mes de Indicadores que trae el estático
 
     def add_arguments(self, parser):
         parser.add_argument("salida", help="Ruta del archivo .html a escribir (se sobrescribe)")
@@ -36,11 +35,15 @@ class Command(BaseCommand):
         if not meses:
             raise CommandError("No hay Plan de Abastecimiento cargado")
 
+        # Plan vs real con el S&OP más reciente de cada mes (sop "") y con cada
+        # emisión del S&OP en los meses que planifica (segmentador S&OP).
         plan_rows = []
-        for m in meses:
-            df = q.plan_vs_real_abastecimiento_por_material(m)
+        sops = q.sops_abastecimiento_disponibles()
+        for sop, m in [(None, m) for m in meses] + [(s, m) for s in sops for m in meses if m >= s]:
+            df = q.plan_vs_real_abastecimiento_por_material(m, sop=sop)
             for _, r in df.iterrows():
                 plan_rows.append({
+                    "sop": sop.isoformat() if sop else "",
                     "mes": m.isoformat(), "material_codigo": r["material_codigo"],
                     "texto_breve": r["texto_breve"], "centro": r["centro"],
                     "categoria": r["categoria"], "familia": r["familia"],
@@ -55,7 +58,7 @@ class Command(BaseCommand):
                 proveedor_rows.append({
                     "mes": m.isoformat(), "material_codigo": r.material_codigo, "centro": r.centro,
                     "proveedor": r.proveedor or "(sin proveedor)", "codigo": r.proveedor_codigo,
-                    "tipo": "Propio" if str(r.tipo_operacion) == "5" else "Terceros",
+                    "tipo": {"5": "Propio", "MB51": "Importado"}.get(str(r.tipo_operacion), "Terceros"),
                     "real": round(float(r.cantidad_real), 3), "carros": int(r.carros),
                 })
 
@@ -75,19 +78,17 @@ class Command(BaseCommand):
         catalogo = q.catalogo_materiales()[["material_codigo", "categoria"]]
         daily_rows = []
         for m in meses:
-            fi, ff = q._limites_mes(m)
-            real = q._query(f"""
-                SELECT {q.FECHA_INGRESO_EFECTIVA} AS fecha, material_codigo AS material_codigo, centro AS centro,
-                       SUM(cantidad) AS cantidad_real, COUNT(*) AS carros
-                FROM gestion_ingresofisicosop
-                WHERE {q.FECHA_INGRESO_EFECTIVA} BETWEEN %s AND %s AND tipo_operacion IN ({q._IN_TIPOS_OPERACION_RECEPCION})
-                GROUP BY {q.FECHA_INGRESO_EFECTIVA}, material_codigo, centro
-            """, [fi, ff])
+            # Balanza, salvo los importados por barco (MB51 puesto en destino), como la web.
+            real = q.ingresos_diarios_abastecimiento(m)
             if real.empty:
                 continue
+            plan = q.plan_abastecimiento_por_material(m)
             real = real.merge(catalogo, on="material_codigo", how="left")
-            real = q._con_categoria_efectiva_planificacion(real, q.plan_abastecimiento_por_material(m))
+            real = q._con_categoria_efectiva_planificacion(real, plan)
             real = real[real["categoria"].isin(q.CATEGORIAS_PLANIFICACION_SOP)]
+            # Solo los materiales del S&OP del mes, como la evaluación diaria de la web.
+            pares = set(zip(plan["material_codigo"], plan["centro"]))
+            real = real[[k in pares for k in zip(real["material_codigo"], real["centro"])]]
             for _, r in real.iterrows():
                 daily_rows.append({
                     "mes": m.isoformat(), "fecha": _fecha_iso(r["fecha"]),
@@ -105,7 +106,7 @@ class Command(BaseCommand):
                 cobertura_rows.append({
                     "mes": mes_key.isoformat(), "fecha_stock": fecha_stock.isoformat(),
                     "material_codigo": r["material_codigo"], "texto_breve": r["texto_breve"],
-                    "centro": r["centro"], "categoria": r["categoria"], "familia": r["familia"],
+                    "centro": r["centro"], "categoria": r["categoria"], "familia": r["familia"], "parte": r["parte"],
                     "stock_cierre": round(float(r["stock_cierre"]), 3),
                     "consumo_diario": round(float(r["consumo_diario"]), 4),
                     "consumo_mensual": round(float(r["consumo_mensual"]), 3),
@@ -117,11 +118,19 @@ class Command(BaseCommand):
         # HTML solo filtra y suma (ver sección 5 de la plantilla).
         proyeccion_rows = []
         proyeccion_inicial = {}
+        acopio_proyeccion = {}
         diagnostico_rows = []
         for snapshot in q.snapshots_sop_disponibles():
             fecha_inicial = q.fecha_inventario_inicial_sop(snapshot)
             if fecha_inicial:
                 proyeccion_inicial[snapshot.isoformat()] = fecha_inicial.isoformat()
+            # Centros de acopio: parte propia de su stock (replica
+            # views._contexto_proyeccion_sop / q.participacion_propia_acopio).
+            acopio_proyeccion[snapshot.isoformat()] = [
+                {"material_codigo": m, "centro": c, "destino": d, "propio": round(p, 6),
+                 "parte": f"acopio para {q.nombre_centro(d).title()}"}
+                for (m, c), (p, d) in q.participacion_propia_acopio(fecha_inicial).items()
+            ]
             for r in q.proyeccion_inventario_sop(snapshot).itertuples():
                 proyeccion_rows.append({
                     "snapshot": snapshot.isoformat(), "mes": r.mes.isoformat(),
@@ -216,7 +225,10 @@ class Command(BaseCommand):
             "factor_rows": factor_rows, "produccion_rows": produccion_rows,
             "energia_rows": energia_rows,
             "proyeccion_rows": proyeccion_rows, "proyeccion_inicial": proyeccion_inicial,
+            "acopio_proyeccion": acopio_proyeccion,
             "diagnostico_rows": diagnostico_rows, "estados_stock": q.ESTADOS_STOCK,            "meses": [m.isoformat() for m in meses],
+            "sops": [{"value": "", "label": "El más reciente de cada mes"}]
+                    + [{"value": s.isoformat(), "label": f"S&OP {q.formato_mes_anio(s)}"} for s in sops],
             "meses_inventario": {k.isoformat(): v.isoformat() for k, v in sorted(meses_inv.items())},
             "centros_desc": q.descripcion_centros_planificacion(), "nombres_centro": q.NOMBRES_CENTRO,
             "plan_rows": plan_rows, "daily_rows": daily_rows, "cobertura_rows": cobertura_rows,
@@ -238,27 +250,15 @@ class Command(BaseCommand):
         import base64
         with open(os.path.join(ESTATICOS, "img", "unacem-logo.svg"), "rb") as f:
             logo = "data:image/svg+xml;base64," + base64.b64encode(f.read()).decode("ascii")
-        # Gráficos de la pestaña Indicadores: los dibuja el mismo código del
-        # localhost (vista por defecto de cada pestaña, sin filtros), así
-        # quedan idénticos. El filtro Mes trae ya dibujados los últimos
-        # MESES_INDICADORES meses (cada uno en un <template>; el JS del
-        # estático cambia entre ellos): todos inflarían demasiado el archivo.
+        # Pestaña Indicadores: los cuatro cuadrantes (IPU, plazo medio de pago,
+        # valor del inventario e IRI) que dibuja el mismo código del localhost,
+        # al último dato (pedido del usuario, 2026-10-23; antes un gráfico por
+        # indicador con filtro Mes).
         import re
         from django.test import RequestFactory
         from gestion import views
-        nota_web = "con los filtros de su pestaña"
-
-        def indicadores_de(mes):
-            html = views._html_indicadores(RequestFactory().get("/planificacion/"), mes_forzado=mes)
-            if nota_web not in html:
-                raise CommandError("Cambió el texto de la nota de Indicadores: actualizar el exportador")
-            html = html.replace(nota_web, "con la vista por defecto de cada pestaña")
-            return re.sub(r"\n\s+", "\n", html)  # sin la sangría de la plantilla
-
-        indicadores = indicadores_de("")
-        meses_opciones = re.findall(r'<option value="(\d{4}-\d{2}-\d{2})"', indicadores)[:self.MESES_INDICADORES]
-        indicadores += "\n" + "\n".join(
-            f'<template id="indicadores-mes-{m}">{indicadores_de(m)}</template>' for m in meses_opciones)
+        indicadores = views._html_indicadores_cuadrantes(RequestFactory().get("/planificacion/"), estatico=True)
+        indicadores = re.sub(r"\n\s+", "\n", indicadores)  # sin la sangría de la plantilla
         # "</" escapado: un texto de SAP con "</script>" no puede cortar el <script> de los datos.
         datos_json = json.dumps(datos, ensure_ascii=False).replace("</", "<\\/")
         html = (plantilla.replace("/*__DASHBOARD_CSS__*/", css)
@@ -302,6 +302,9 @@ class Command(BaseCommand):
              "entradas": int(r.entradas), "proveedores": int(r.proveedores)}
             for r in q.precios_entrada_sop_real().itertuples()
         ]
+        # Unidad de compra de los que no van en T (Petróleo Diesel en galones, Combustible Líquido).
+        umb_precios = {m: u for m, u in q.precios_entrada_sop_real()[["material_codigo", "unidad_medida_base"]]
+                       .drop_duplicates().itertuples(index=False) if u and u != "T"}
 
         def sumas_calidad(df, con_simple):
             """Columnas auxiliares por parámetro para sumar por grupo."""
@@ -395,8 +398,11 @@ class Command(BaseCommand):
                         float(r["toneladas"]), float(r["importe"]), float(r["premio"]), valores,
                     ])
         return {
-            "precios": precios_rows,
-            "precios_referencia": [[m, c, d.isoformat(), h.isoformat(), p] for m, c, d, h, p in q.PRECIOS_REFERENCIA_IPU],
+            "precios": precios_rows, "umb_precios": umb_precios,
+            # Más las tomadas de otro centro (Carbón Importado en Atocongo = Condorcocha − flete), mes a mes.
+            "precios_referencia": [[m, c, d.isoformat(), h.isoformat(), p] for m, c, d, h, p in q.PRECIOS_REFERENCIA_IPU]
+            + [[r.material_codigo, r.centro, r.mes.isoformat(), r.mes.isoformat(), r.precio]
+               for r in q.referencias_desde_otro_centro().itertuples()],
             "materiales": [m for _, m in sorted(materiales.values(), key=lambda x: x[0])],
             "proveedores": sorted(proveedores, key=proveedores.get),
             "calidad": calidad_rows, "premios": premios_rows, "premios_docs": premios_docs,

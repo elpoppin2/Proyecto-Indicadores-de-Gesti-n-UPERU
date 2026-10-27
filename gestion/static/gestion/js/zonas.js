@@ -43,6 +43,7 @@
      Familia y el Centro de Inventario con los de Precios e IPU. */
   var GRUPOS = [
     ['mes_indicadores', 'mes_plan', 'mes_detalle', 'mes_consumo', 'mes_factor', 'mes_cobertura', 'sop_proyeccion'],
+    ['sop_plan', 'sop_detalle', 'sop_cumplmes'],
     ['anio_compras', 'anio_cxp'],
     ['mes_compras_desde', 'mes_cxp_desde'],
     ['mes_compras_hasta', 'mes_cxp_hasta'],
@@ -161,7 +162,18 @@
       c._boton = boton;
     }
     var texto = resumen(select);
-    if (c._boton.textContent !== texto) c._boton.textContent = texto;  // sin cambios, sin mutación (observador)
+    if (c._boton.textContent !== texto) {  // sin cambios, sin mutación (observador)
+      var habia = c._boton.textContent;
+      var rotulo = c._boton.querySelector('.filtro-multi-texto');
+      if (!rotulo) { c._boton.textContent = ''; rotulo = document.createElement('span'); rotulo.className = 'filtro-multi-texto'; c._boton.appendChild(rotulo); }
+      rotulo.textContent = texto;
+      // transitions-dev 04: el resumen nuevo entra en su lugar ("Todos" -> "3 materiales").
+      if (habia) {
+        c._boton.classList.remove('is-swapping');
+        void c._boton.offsetWidth;
+        c._boton.classList.add('is-swapping');
+      }
+    }
     var titulo = elegidas(select).map(descripcion).join(', ');
     if (c._boton.title !== titulo) c._boton.title = titulo;
   }
@@ -198,9 +210,18 @@
   // --- Panel (uno solo, en <body>: dentro de una sección con
   // content-visibility quedaba recortado) ---------------------------------
   var panel = null, actual = null;
+  // transitions-dev 05 (menú desplegable): el panel crece desde el botón al
+  // abrir y se encoge un poco al cerrar; se quita del DOM al terminar.
+  function msVariable(nombre, defecto) {
+    var v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(nombre));
+    return isFinite(v) ? v : defecto;
+  }
   function cerrar(devolverFoco) {
     if (!panel) return;
-    panel.remove();
+    var saliente = panel;
+    saliente.classList.remove('is-open');
+    saliente.classList.add('is-closing');
+    setTimeout(function () { saliente.remove(); }, msVariable('--dropdown-close-dur', 150));
     panel = null;
     if (actual) {
       actual._boton.setAttribute('aria-expanded', 'false');
@@ -219,7 +240,7 @@
     actual = c;
     var select = c.querySelector('select[data-multi]');
     var grupos = gruposDe(select);
-    panel = crear('div', 'filtro-multi-panel');
+    panel = crear('div', 'filtro-multi-panel t-dropdown');
     panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-label', 'Elegir materiales');
 
@@ -364,6 +385,9 @@
     filtrar();
     document.body.appendChild(panel);
     ubicar();
+    var entrante = panel;
+    void entrante.offsetHeight; // parte de la escala previa antes de abrir
+    entrante.classList.add('is-open');
     c._boton.setAttribute('aria-expanded', 'true');
     buscar.focus();
   }
@@ -376,9 +400,11 @@
     var abajo = window.innerHeight - r.bottom - 12;
     if (abajo >= 300 || abajo >= r.top) {
       panel.style.top = (r.bottom + 4) + 'px'; panel.style.bottom = '';
+      panel.dataset.origin = 'top-left';
       panel.style.maxHeight = Math.max(abajo, 220) + 'px';
     } else {
       panel.style.bottom = (window.innerHeight - r.top + 4) + 'px'; panel.style.top = '';
+      panel.dataset.origin = 'bottom-left';
       panel.style.maxHeight = (r.top - 12) + 'px';
     }
   }
@@ -684,7 +710,12 @@
         var nueva = new DOMParser().parseFromString(html, 'text/html').querySelector('.franja-kpis');
         if (!nueva || nueva.outerHTML === franja.outerHTML) return;
         if (!reducido) nueva.classList.add('seccion-actualizada');
+        var antes = Array.prototype.map.call(franja.querySelectorAll('.kpi-valor'), function (v) { return v.textContent.trim(); });
         franja.replaceWith(nueva);
+        // Solo las cifras que cambiaron entran dígito a dígito (graficos.js).
+        if (window.uperuAnimarCifra) nueva.querySelectorAll('.kpi-valor').forEach(function (v, i) {
+          if (v.textContent.trim() !== antes[i]) window.uperuAnimarCifra(v);
+        });
       })
       .catch(function () {});
   }

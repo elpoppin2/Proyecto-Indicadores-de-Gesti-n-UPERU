@@ -9,6 +9,10 @@
     <p><strong>Cobertura (días)</strong> = stock de cierre del mes elegido ÷ consumo diario promedio de los 12 meses que terminan en ese mes.</p>
     <p>El consumo sale de MB51: salidas del material al proceso (clases 2xx de costo, orden de producción y red, más Z01/Z04/353).
     Solo entran los materiales del Plan de Abastecimiento S&amp;OP.</p>
+    <p><strong>Atocongo como centro de acopio</strong> (Carbón Importado y Carbón Trujillo): la mayor parte de lo que recibe se
+    reenvía a Condorcocha. Su stock se parte en lo <em>propio</em> y lo que está <em>en acopio para Condorcocha</em>, en la
+    proporción de su consumo y sus reenvíos (641 a Condorcocha) de los mismos 12 meses. Lo propio se mide contra el consumo de
+    Atocongo; el acopio, contra el de Condorcocha, y no suma a la cobertura de Condorcocha hasta que llega.</p>
   </div></details>
   <form class="filtros" method="get" data-target="sec-cobertura">
     <div class="campo">
@@ -59,7 +63,7 @@
           {% for r in planificacion_cobertura.filas %}
             <tr>
               <td>{{ r.material_codigo }}</td>
-              <td>{{ r.texto_breve }}</td>
+              <td>{{ r.texto_breve }}{% if r.parte %} <span class="parte-acopio">· {{ r.parte }}</span>{% endif %}</td>
               <td>{{ r.centro|centro }}</td>
               <td>{{ r.categoria }}</td>
               <td>{{ r.familia }}</td>

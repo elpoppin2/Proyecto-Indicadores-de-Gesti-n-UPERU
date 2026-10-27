@@ -342,8 +342,18 @@ def _panel_salud_inventario(panel, vacio, cob, centro):
     }
     estados = [("quiebre", "Quiebre"), ("bajo_minimo", "Bajo mínimo"), ("en_rango", "En rango"),
                ("sobre_maximo", "Sobre máximo"), ("sin_parametro", "Sin mín/máx")]
-    por_centro = {}
+    # El mín/máx es del stock físico: lo propio y lo en acopio de un centro de
+    # acopio se juntan (el consumo, solo el del centro: el de la fila de
+    # acopio es el del destino).
+    fisico = {}
     for f in cob["filas"]:
+        k = (f["material_codigo"], f["centro"])
+        a = fisico.setdefault(k, {**f, "stock_cierre": 0.0, "consumo_diario": 0.0})
+        a["stock_cierre"] += f["stock_cierre"]
+        if not str(f.get("parte") or "").startswith("acopio"):
+            a["consumo_diario"] += f["consumo_diario"] or 0.0
+    por_centro = {}
+    for f in fisico.values():
         minimo, maximo = limites.get((f["material_codigo"], f["centro"]), (float("nan"), float("nan")))
         estado = q._estado_stock(f["stock_cierre"], minimo, maximo)
         a = por_centro.setdefault(f["centro"], {"estados": {e: [] for e, _ in estados}, "stock": 0.0, "diario": 0.0})
@@ -618,10 +628,12 @@ def _paneles_indicadores(request, c, mes=None, zonas=None, por_material=False):
         vacio("inventario", titulo)
     else:
         filas = [{
-            "nombre": _nombre_material(f["texto_breve"]), "sub": centro(f["centro"]), "valor": f["cobertura_dias"],
+            "nombre": _nombre_material(f["texto_breve"]),
+            "sub": centro(f["centro"]) + (f" · {f['parte']}" if f.get("parte") else ""), "valor": f["cobertura_dias"],
             "texto": f"{f['cobertura_dias']:z,.0f} d",
             "clase": "mal" if f["cobertura_dias"] < _COBERTURA_RIESGO else "regular" if f["cobertura_dias"] < _COBERTURA_AJUSTADA else "neutra",
-            "detalle": f"{f['texto_breve']} ({centro(f['centro'])})\nStock {f['stock_cierre']:z,.0f} T · consumo {f['consumo_mensual']:z,.0f} T/mes\n"
+            "detalle": f"{f['texto_breve']} ({centro(f['centro'])}{', ' + f['parte'] if f.get('parte') else ''})\n"
+                       f"Stock {f['stock_cierre']:z,.0f} T · consumo {f['consumo_mensual']:z,.0f} T/mes\n"
                        f"Cobertura {f['cobertura_dias']:z,.0f} días ({f['cobertura_meses']:z,.1f} meses)",
         } for f in con_dias[:_PANEL_FILAS]]
         panel("inventario", titulo, str(cob["en_riesgo"]),

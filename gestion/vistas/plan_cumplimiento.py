@@ -9,31 +9,47 @@ from .. import charts
 from .comun import _RAZON_SOCIAL, _mes_corto, _nombre_corto, _opciones_categoria_centro, _opciones_material, _por_materiales, _por_str, _selector_categoria_centro, _selector_material
 
 
-def _meses_plan():
+def _meses_plan(sop=None):
     """Meses con Plan de Abastecimiento y el mes por defecto. El Plan proyecta
     ~16 meses hacia adelante, así que el último mes de la lista casi siempre es
     futuro sin ingresos reales: por defecto va el mes actual si está en el
     rango, si no el último mes pasado con datos (el selector GET sigue
-    permitiendo elegir un mes futuro a propósito)."""
+    permitiendo elegir un mes futuro a propósito). Con una emisión del S&OP
+    elegida, solo los meses que ella planifica (desde su mes de emisión)."""
     meses = q.meses_planificacion_disponibles()
+    if sop:
+        meses = [m for m in meses if m >= sop]
     hoy_mes = datetime.date.today().replace(day=1)
     hasta_hoy = [m for m in meses if m <= hoy_mes]
     return meses, (hasta_hoy[-1] if hasta_hoy else (meses[0] if meses else None))
 
 
+def _selector_sop(request, sufijo):
+    """Segmentador S&OP (pedido del usuario, 2026-10-23: cada S&OP mensual se
+    carga aparte y se comparan): "" = el más reciente que trae cada mes, o
+    una emisión. Devuelve (opciones, valor elegido, fecha o None)."""
+    sops = q.sops_abastecimiento_disponibles()
+    opciones = [{"valor": "", "texto": "El más reciente de cada mes"}] + [
+        {"valor": s.isoformat(), "texto": f"S&OP {q.formato_mes_anio(s)}"} for s in sops]
+    valor = request.GET.get(f"sop_{sufijo}", "")
+    sop = next((s for s in sops if s.isoformat() == valor), None)
+    return opciones, (sop.isoformat() if sop else ""), sop
+
+
 def _opciones_plan(request):
-    """Mes de la Evaluación mensual y sus opciones de Categoría/Centro (las
-    mismas que usa Cumplimiento mensual)."""
-    meses, mes_defecto = _meses_plan()
+    """Mes y S&OP de la Evaluación mensual y sus opciones de Categoría/Centro
+    (las mismas que usa Cumplimiento mensual)."""
+    sops, sop_sel, sop = _selector_sop(request, "plan")
+    meses, mes_defecto = _meses_plan(sop)
     mes = _por_str(request.GET.get("mes_plan"), meses) or mes_defecto
-    base = q.plan_vs_real_abastecimiento_por_material(mes)
+    base = q.plan_vs_real_abastecimiento_por_material(mes, sop=sop)
     categorias, centros = _opciones_categoria_centro(base)
-    return meses, mes, base, categorias, centros
+    return meses, mes, base, categorias, centros, {"sops": sops, "sop_sel": sop_sel, "sop": sop}
 
 
 def _contexto_plan_mensual(request):
     """Evaluación mensual: Mes/Categoría/Centro propios."""
-    meses, mes_plan_sel, base_plan, categorias_plan_op, centros_plan_op = _opciones_plan(request)
+    meses, mes_plan_sel, base_plan, categorias_plan_op, centros_plan_op, s = _opciones_plan(request)
     categoria_plan_sel, centro_plan_sel = _selector_categoria_centro(
         request, "plan", categorias_plan_op, centros_plan_op
     )
@@ -41,6 +57,7 @@ def _contexto_plan_mensual(request):
         mes_plan_sel,
         categoria=None if categoria_plan_sel == "Todas" else categoria_plan_sel,
         centro=None if centro_plan_sel == "Todos" else centro_plan_sel,
+        sop=s["sop"],
     )
     totales_plan = base_plan
     if categoria_plan_sel != "Todas":
@@ -48,7 +65,7 @@ def _contexto_plan_mensual(request):
     if centro_plan_sel != "Todos":
         totales_plan = totales_plan[totales_plan["centro"] == centro_plan_sel]
     return {
-        "mes": mes_plan_sel, "opciones_mes": meses,
+        "mes": mes_plan_sel, "opciones_mes": meses, "sops": s["sops"], "sop_sel": s["sop_sel"],
         "categorias": categorias_plan_op, "categoria_sel": categoria_plan_sel,
         "centros": centros_plan_op, "centro_sel": centro_plan_sel,
         "resumen": resumen,
@@ -63,22 +80,30 @@ def _contexto_cumplimiento_mensual(request):
     Real a la vez (los meses pasados no tienen Plan retroactivo, los futuros
     no tienen Real todavía) — se va completando solo con cada snapshot nuevo
     de Plan de Abastecimiento. Pedido por el usuario."""
-    _, _, _, categorias_plan_op, centros_plan_op = _opciones_plan(request)
+    _, _, _, categorias_plan_op, centros_plan_op, _ = _opciones_plan(request)
     categoria_cm_sel, centro_cm_sel = _selector_categoria_centro(
         request, "cumplmes", categorias_plan_op, centros_plan_op
     )
+    sops, sop_sel, sop = _selector_sop(request, "cumplmes")
     cumplimiento_mensual = q.cumplimiento_mensual_abastecimiento(
         categoria=None if categoria_cm_sel == "Todas" else categoria_cm_sel,
         centro=None if centro_cm_sel == "Todos" else centro_cm_sel,
+        sop=sop,
     )
+    # El gráfico llega hasta el mes en curso (los meses futuros no tienen real
+    # y dejaban 14 columnas vacías) y su ancho sigue a la cantidad de meses:
+    # dos meses no ocupan todo el ancho de la página (pulido, 2026-10-23). La
+    # tabla de abajo sigue con todos los meses del plan.
+    hoy_mes = datetime.date.today().replace(day=1)
     puntos_cumplimiento = [
-        (q.formato_mes_anio_abrev(f["mes"]), f["cumplimiento_pct"]) for f in cumplimiento_mensual
+        (q.formato_mes_anio_abrev(f["mes"]), f["cumplimiento_pct"]) for f in cumplimiento_mensual if f["mes"] <= hoy_mes
     ]
     return {
         "categorias": categorias_plan_op, "categoria_sel": categoria_cm_sel,
-        "centros": centros_plan_op, "centro_sel": centro_cm_sel,
+        "centros": centros_plan_op, "centro_sel": centro_cm_sel, "sops": sops, "sop_sel": sop_sel,
         "filas": cumplimiento_mensual,
-        "grafico": charts.barras_mensuales(puntos_cumplimiento, alto=240, meta=100),
+        "grafico": charts.barras_mensuales(puntos_cumplimiento, ancho=max(320, 72 * len(puntos_cumplimiento) + 40),
+                                           alto=240, meta=100) if puntos_cumplimiento else None,
     }
 
 
@@ -89,9 +114,14 @@ def _contexto_plan_detalle(request):
     es Centro -> Material. El Material se acota al Centro elegido (no se
     ofrecen combinaciones sin datos, que antes mostraban un gráfico vacío).
     Definido por el usuario."""
-    meses, mes_defecto = _meses_plan()
+    sops, sop_sel, sop = _selector_sop(request, "detalle")
+    meses, mes_defecto = _meses_plan(sop)
     mes_detalle_sel = _por_str(request.GET.get("mes_detalle"), meses) or mes_defecto
-    base_detalle = q.plan_vs_real_abastecimiento_por_material(mes_detalle_sel)
+    base_detalle = q.plan_vs_real_abastecimiento_por_material(mes_detalle_sel, sop=sop)
+    # Sin plan ni ingresos en el mes no hay nada que evaluar (p.ej. la Caliza
+    # Terceros HCIM en set-26): no se muestra ni se ofrece en el filtro
+    # (pedido del usuario, 2026-10-23).
+    base_detalle = base_detalle[(base_detalle["cantidad_plan"] != 0) | (base_detalle["cantidad_real"] != 0)]
     _, centros_det_op = _opciones_categoria_centro(base_detalle)
     centro_det_sel = request.GET.get("centro_detalle", "Todos")
     if centro_det_sel not in centros_det_op:
@@ -113,7 +143,7 @@ def _contexto_plan_detalle(request):
     # arriba) repartido entre los días calendario del mes vs Ingresos Físicos
     # reales día a día, con ambos acumulados.
     diario = q.evaluacion_diaria_abastecimiento(
-        mes_detalle_sel, centro=filtro_centro_det, material=filtro_material_det
+        mes_detalle_sel, centro=filtro_centro_det, material=filtro_material_det, sop=sop
     )
     # Título "Material - Centro" (ej. "Caliza Andina - Atocongo") del
     # gráfico/tabla: sin esto, el bloque que baja el botón "Descargar /
@@ -157,17 +187,24 @@ def _contexto_plan_detalle(request):
         f["carros"] = int(g["carros"].sum()) if g is not None else 0
         f["proveedores"] = [] if g is None else [{
             "proveedor": r.proveedor or "(sin proveedor)", "codigo": r.proveedor_codigo,
-            "tipo": "Propio" if str(r.tipo_operacion) == "5" else "Terceros",
+            "tipo": {"5": "Propio", "MB51": "Importado"}.get(str(r.tipo_operacion), "Terceros"),
             "real": float(r.cantidad_real), "carros": int(r.carros),
             "participacion": r.cantidad_real / f["cantidad_real"] * 100 if f["cantidad_real"] else None,
         } for r in g.itertuples()]
+    # Total del detalle (pedido del usuario, 2026-10-23): el cumplimiento es
+    # el real ÷ el plan de todo lo listado, como la Evaluación mensual.
+    total_plan = sum(f["cantidad_plan"] for f in filas)
+    total_real = sum(f["cantidad_real"] for f in filas)
+    total = {"materiales": len(filas), "plan": total_plan, "real": total_real,
+             "carros": sum(f["carros"] for f in filas), "diferencia": total_real - total_plan,
+             "cumplimiento_pct": total_real / total_plan * 100 if total_plan else None} if filas else None
 
     return {
-        "mes": mes_detalle_sel, "opciones_mes": meses,
+        "mes": mes_detalle_sel, "opciones_mes": meses, "sops": sops, "sop_sel": sop_sel,
         "centros": centros_det_op, "centro_sel": centro_det_sel,
         "materiales": materiales_det_op, "material_sel": material_det_sel,
         "titulo_curva": f"{material_titulo} - {centro_titulo}",
-        "filas": filas, "expandir": len(filas) == 1,
+        "filas": filas, "total": total, "expandir": len(filas) == 1,
         "diario": diario,
         "curva_s": curva_s,
     }

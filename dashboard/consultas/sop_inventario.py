@@ -4,8 +4,8 @@ import datetime
 
 import pandas as pd
 
-from .base import _cacheado, _lista_materiales, _query, _sumar_meses
-from .importados import CODIGOS_ANTERIORES
+from .base import NOMBRES_CENTRO, _cacheado, _lista_materiales, _query, _sumar_meses
+from .importados import CODIGOS_ANTERIORES, _reenvios_acopio
 from .inventario import MESES_CONSUMO_COBERTURA, _ventana_consumo, catalogo_materiales, fechas_inventario_disponibles
 from .sop_base import (
     _FILTRO_CLASE_MOVIMIENTO_CONSUMO_SOP, _MATERIALES_CONSUMO_VIA_OTRO, materiales_planificados_sop,
@@ -21,6 +21,103 @@ from .sop_base import (
 #   planifica en ese centro (p.ej. Puzolana Junín en Condorcocha, recién
 #   comprada): con su stock y sin cobertura.
 _COBERTURA_OCULTOS = {("14-00000037", "U001")}
+
+# Centros de acopio en la cobertura (regla del usuario, 2026-10-26): Atocongo
+# recibe el Carbón Importado (barcos) y el Carbón Trujillo (compra local) y
+# reenvía la mayor parte a Condorcocha; contar todo su stock contra su propio
+# consumo inflaba su cobertura (Importado 56 meses, Trujillo 37 a set-26). Su
+# stock se parte en lo propio y lo que está en acopio para el destino, en la
+# proporción de su consumo y sus reenvíos (641 al destino, neto de 642) de los
+# mismos 12 meses de la cobertura. Lo propio se mide contra su consumo; el
+# acopio va en una fila aparte, contra el consumo del destino, y no suma a
+# ninguna planta hasta que llega. (material, centro de acopio) -> destino.
+ACOPIO_COBERTURA = {
+    ("06-00000003", "U001"): "U002",  # Carbón Importado
+    ("06-00001601", "U001"): "U002",  # Carbón Trujillo
+}
+
+
+def _reenvios_acopio_por_mes():
+    """T que cada par de ACOPIO_COBERTURA reenvió a su destino, por mes:
+    {(material, centro de acopio, 'AAAA-MM'): T}."""
+    df = _reenvios_acopio(sorted({m for m, _ in ACOPIO_COBERTURA}))
+    return {(r.material_codigo, r.origen, str(r.mes)[:7]): float(r.toneladas) for r in df.itertuples()
+            if ACOPIO_COBERTURA.get((r.material_codigo, r.origen)) == r.centro}
+
+
+def _meses_entre(fecha_inicio, fecha_fin):
+    """Meses calendario ('AAAA-MM') de fecha_inicio a fecha_fin."""
+    meses, m = [], fecha_inicio.replace(day=1)
+    while m <= fecha_fin:
+        meses.append(f"{m:%Y-%m}")
+        m = _sumar_meses(m, 1)
+    return meses
+
+
+def _reenvios_en_ventana(por_mes, fecha_inicio, fecha_fin):
+    """{(material, centro de acopio): T reenviadas entre las fechas}."""
+    meses = set(_meses_entre(fecha_inicio, fecha_fin))
+    total = {}
+    for (material, acopio, mes), t in por_mes.items():
+        if mes in meses:
+            total[(material, acopio)] = total.get((material, acopio), 0.0) + t
+    return total
+
+
+def _parte_propia(consumo, reenviado):
+    """Fracción del stock del centro de acopio que es suya: su consumo sobre
+    sus salidas (consumo + reenvíos); None si no reenvió nada."""
+    consumo = max(float(consumo or 0.0), 0.0)
+    if reenviado <= 0:
+        return None
+    return consumo / (consumo + reenviado)
+
+
+def _separar_acopio(df, reenvios):
+    """Parte la fila de cada centro de acopio (ACOPIO_COBERTURA) en lo propio
+    y una fila aparte con lo que está en acopio para el destino (con el
+    consumo del destino). `df`: material_codigo, centro, stock_cierre,
+    consumo_total, _planificado; agrega la columna `parte`."""
+    df = df.assign(parte="")
+    nuevas = []
+    for (material, acopio), destino in ACOPIO_COBERTURA.items():
+        fila = (df["material_codigo"] == material) & (df["centro"] == acopio)
+        if not fila.any():
+            continue
+        propia = _parte_propia(df.loc[fila, "consumo_total"].iloc[0], reenvios.get((material, acopio), 0.0))
+        if propia is None:
+            continue
+        stock = float(df.loc[fila, "stock_cierre"].iloc[0])
+        en_destino = df.loc[(df["material_codigo"] == material) & (df["centro"] == destino), "consumo_total"]
+        df.loc[fila, "stock_cierre"] = stock * propia
+        df.loc[fila, "parte"] = "propio"
+        nuevas.append({"material_codigo": material, "centro": acopio, "stock_cierre": stock * (1 - propia),
+                       "consumo_total": float(en_destino.iloc[0]) if not en_destino.empty else 0.0,
+                       "_planificado": True,
+                       "parte": f"acopio para {NOMBRES_CENTRO.get(destino, destino).title()}"})
+    return pd.concat([df, pd.DataFrame(nuevas)], ignore_index=True) if nuevas else df
+
+
+def participacion_propia_acopio(fecha_stock):
+    """Para la proyección S&OP: {(material, centro de acopio): (fracción
+    propia, destino)} con la misma regla que la cobertura (consumo y reenvíos
+    de los 12 meses que terminan en `fecha_stock`)."""
+    if not fecha_stock:
+        return {}
+    fecha_inicio, fecha_fin = _ventana_consumo(fecha_stock)
+    reenvios = _reenvios_en_ventana(_reenvios_acopio_por_mes(), fecha_inicio, fecha_fin)
+    resultado = {}
+    for (material, acopio), destino in ACOPIO_COBERTURA.items():
+        consumo = _query(f"""
+            SELECT -SUM(cantidad) AS consumo_total FROM gestion_movimientomaterial
+            WHERE material_codigo = %s AND +centro = %s AND {_FILTRO_CLASE_MOVIMIENTO_CONSUMO_SOP}
+                  AND fecha_contabilizacion BETWEEN %s AND %s
+        """, [material, acopio, fecha_inicio, fecha_fin])
+        propia = _parte_propia(consumo["consumo_total"].iloc[0] if not consumo.empty else 0.0,
+                               reenvios.get((material, acopio), 0.0))
+        if propia is not None:
+            resultado[(material, acopio)] = (propia, destino)
+    return resultado
 
 
 def _con_anteriores(materiales):
@@ -59,7 +156,7 @@ def cobertura_stock_planificacion(fecha_stock=None, centro=None, material=None):
     cargada si no se indica) ÷ Consumo promedio de los MESES_CONSUMO_COBERTURA (12) meses
     calendario que terminan en `fecha_stock` (ver _FILTRO_CLASE_MOVIMIENTO_CONSUMO_SOP)."""
     columnas = [
-        "material_codigo", "texto_breve", "centro", "categoria", "familia",
+        "material_codigo", "texto_breve", "centro", "categoria", "familia", "parte",
         "stock_cierre", "consumo_diario", "consumo_mensual", "cobertura_dias", "cobertura_meses",
     ]
     if fecha_stock is None:
@@ -114,8 +211,9 @@ def cobertura_stock_planificacion(fecha_stock=None, centro=None, material=None):
         """, [mat_real, centro_real, fecha_inicio, fecha_fin])
         extras[origen] = float(extra["consumo_total"].iloc[0] or 0.0) if not extra.empty else 0.0
     consumo = _sumar_consumo_via_otro(consumo, extras)
+    reenvios = _reenvios_en_ventana(_reenvios_acopio_por_mes(), fecha_inicio, fecha_fin)
 
-    df = _armar_cobertura(stock, consumo, dias_ventana, catalogo)
+    df = _armar_cobertura(stock, consumo, dias_ventana, catalogo, reenvios)
     if centro:
         df = df[df["centro"] == centro]
     if material:
@@ -167,6 +265,7 @@ def cobertura_stock_planificacion_por_mes(fechas_stock):
         GROUP BY mes, material_codigo, centro
     """, [_ventana_consumo(fechas[0])[0], _ventana_consumo(fechas[-1])[1]])
 
+    reenvios_mes = _reenvios_acopio_por_mes()
     resultado = {}
     for fecha_stock in fechas:
         fecha_inicio, fecha_fin = _ventana_consumo(fecha_stock)
@@ -190,7 +289,8 @@ def cobertura_stock_planificacion_por_mes(fechas_stock):
         consumo = _sumar_consumo_via_otro(consumo, extras)
         stock = stock_todos[stock_todos["fecha"] == fecha_stock.isoformat()].drop(columns="fecha")
         resultado[fecha_stock] = _armar_cobertura(
-            stock, consumo, (fecha_fin - fecha_inicio).days + 1, catalogo
+            stock, consumo, (fecha_fin - fecha_inicio).days + 1, catalogo,
+            _reenvios_en_ventana(reenvios_mes, fecha_inicio, fecha_fin),
         ).reset_index(drop=True)
     return resultado
 
@@ -211,12 +311,14 @@ def _sumar_consumo_via_otro(consumo, extras):
     return consumo
 
 
-def _armar_cobertura(stock, consumo, dias_ventana, catalogo):
+def _armar_cobertura(stock, consumo, dias_ventana, catalogo, reenvios=None):
     """Parte común de cobertura_stock_planificacion y su versión por mes: con
     el stock y el consumo total de la ventana por material/centro, calcula las
-    coberturas y agrega descripción/categoría/familia del maestro."""
+    coberturas y agrega descripción/categoría/familia del maestro. `reenvios`:
+    T reenviadas por los centros de acopio en la ventana (ver
+    ACOPIO_COBERTURA); `parte` = "" | "propio" | "acopio para <destino>"."""
     columnas = [
-        "material_codigo", "texto_breve", "centro", "categoria", "familia",
+        "material_codigo", "texto_breve", "centro", "categoria", "familia", "parte",
         "stock_cierre", "consumo_diario", "consumo_mensual", "cobertura_dias", "cobertura_meses",
     ]
     stock = _a_codigo_vigente(stock, "stock_cierre")
@@ -228,6 +330,7 @@ def _armar_cobertura(stock, consumo, dias_ventana, catalogo):
     df = df.assign(_planificado=[k in planificados for k in zip(df["material_codigo"], df["centro"])])
     df["stock_cierre"] = df["stock_cierre"].fillna(0.0).astype(float)
     df["consumo_total"] = df["consumo_total"].fillna(0.0).astype(float)
+    df = _separar_acopio(df, reenvios or {})
     df["consumo_diario"] = df["consumo_total"] / dias_ventana
     df["cobertura_dias"] = (df["stock_cierre"] / df["consumo_diario"]).where(df["consumo_diario"] > 0)
     # Mismo cálculo en meses (igual criterio que rotacion_inventario_por_material:
@@ -268,11 +371,12 @@ def _armar_cobertura(stock, consumo, dias_ventana, catalogo):
 # ---------------------------------------------------------------------------
 
 def snapshots_sop_disponibles():
-    """Meses de emisión del S&OP con Plan de Abastecimiento y/o de Consumos."""
+    """Meses de emisión del S&OP con Plan de Consumos: los que se pueden
+    proyectar. Los cierres de enero a agosto 2026 (armados del OTIF del
+    usuario, 2026-10-26) solo traen el abastecimiento de su mes, para el
+    cumplimiento."""
     df = _query("""
-        SELECT mes_snapshot AS mes FROM gestion_planabastecimientosop
-        UNION
-        SELECT mes_snapshot AS mes FROM gestion_planconsumosop
+        SELECT DISTINCT mes_snapshot AS mes FROM gestion_planconsumosop
         ORDER BY mes
     """)
     return [datetime.date.fromisoformat(str(m)[:10]) for m in df["mes"]]

@@ -143,7 +143,9 @@ def _filtrar(df, material=None, centro=None, categoria=None, proveedor=None):
     if centro:
         df = df[df["centro"] == centro]
     if categoria and "categoria" in df.columns:
-        df = df[df["categoria"] == categoria]
+        # En los precios del IPU, Combustibles va en dos: sólido y líquido.
+        df = df[[c == categoria or (categoria == "COMBUSTIBLES" and str(c).startswith("COMBUSTIBLE"))
+                 for c in df["categoria"]]]
     if material:
         codigos = _codigos_material(df, material)
         if not codigos:
@@ -240,9 +242,9 @@ def cobertura_stock(mes=None, centro=None, material=None, categoria=None):
     df, nota = _filtrar(q.cobertura_stock_planificacion(fecha_stock=meses_inv[mes]), material, centro, categoria)
     df = df.sort_values("cobertura_dias", na_position="last")
     salida = {
-        "fecha_stock": meses_inv[mes], "criterio": "Cobertura = stock de cierre ÷ consumo promedio de los 12 meses que terminan en ese mes (MB51, clases 2xx + Z01/Z04/353).",
+        "fecha_stock": meses_inv[mes], "criterio": "Cobertura = stock de cierre ÷ consumo promedio de los 12 meses que terminan en ese mes (MB51, clases 2xx + Z01/Z04/353). En Atocongo, Carbón Importado y Trujillo se parten en lo propio (contra su consumo) y lo que está en acopio para Condorcocha (contra el consumo de Condorcocha), en proporción a su consumo y sus reenvíos de 12 meses.",
         "materiales": [{
-            "material": r.material_codigo, "descripcion": r.texto_breve, "centro": r.centro,
+            "material": r.material_codigo, "descripcion": r.texto_breve + (f" ({r.parte})" if r.parte else ""), "centro": r.centro,
             "stock_t": r.stock_cierre, "consumo_mensual_t": r.consumo_mensual,
             "cobertura_dias": r.cobertura_dias, "cobertura_meses": r.cobertura_meses,
             "en_riesgo_menos_30_dias": bool(r.cobertura_dias < 30) if not pd.isna(r.cobertura_dias) else None,

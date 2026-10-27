@@ -4,7 +4,7 @@ import pandas as pd
 
 from .base import _limites_mes, _query_directo, _texto_sql
 from .compras import CATEGORIA_COMPRA_CONSOLIDADA_LC, CLASE_MOVIMIENTO_ENTRADA_MERCANCIA, _IN_CLASES_DOCUMENTO_FILL_RATE
-from .importados import _CLASES_ENTRADA_COMPRA
+from .importados import _CLASES_ENTRADA_COMPRA, _sql_centro_destino
 from .inventario import FILTRO_CLASE_MOVIMIENTO_CONSUMO, FILTRO_EXCLUYE_LOTE_USADO_REPUESTOS
 from .reglas import CATEGORIA_MATERIAL_EFECTIVA, FILTRO_BAJO_CONTRATO_LC, FILTRO_CATEGORIA_VALIDA_LC, FILTRO_COMPRAS_VALIDAS_LC, PROVEEDOR_EFECTIVO_LC, VALOR_COMPRA_EXPR_LC
 from .sop_base import FECHA_INGRESO_EFECTIVA, _IN_TIPOS_OPERACION_RECEPCION
@@ -24,7 +24,7 @@ def lineas_compra_detalle(fecha_inicio, fecha_fin, categoria=None):
                lc.fecha_documento AS fecha_documento, lc.doc_compra AS pedido, lc.pos_doc_compra AS posicion,
                lc.clase_documento AS clase_documento, lc.material_codigo AS material_codigo,
                lc.texto_breve AS texto_breve, {PROVEEDOR_EFECTIVO_LC} AS proveedor,
-               lc.grupo_compras AS grupo_compras, lc.centro AS centro, lc.cantidad_pedido AS cantidad_pedido,
+               lc.grupo_compras AS grupo_compras, {_sql_centro_destino('lc.centro', 'lc.almacen')} AS centro, lc.cantidad_pedido AS cantidad_pedido,
                lc.unidad_medida_pedido AS unidad, lc.precio_neto AS precio_neto, lc.moneda AS moneda,
                lc.tipo_cambio AS tipo_cambio, lc.valor_neto AS valor_neto, {VALOR_COMPRA_EXPR_LC} AS valor,
                lc.contrato AS contrato,
@@ -124,7 +124,7 @@ def entradas_compra_detalle(materiales, fecha_inicio, fecha_fin):
     return _query_directo(f"""
         SELECT fecha_contabilizacion AS fecha, documento_material AS documento,
                posicion_documento_material AS posicion, clase_movimiento AS clase_movimiento,
-               material_codigo AS material_codigo, descripcion_material AS texto_breve, centro AS centro,
+               material_codigo AS material_codigo, descripcion_material AS texto_breve, {_sql_centro_destino()} AS centro,
                proveedor AS proveedor, pedido AS pedido, posicion AS posicion_pedido,
                cantidad AS cantidad, unidad_medida_entrada AS unidad, importe_moneda_local AS importe
         FROM gestion_movimientomaterial
