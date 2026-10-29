@@ -26,7 +26,7 @@ from .plan_indicadores import _kpis_zona, _paneles_indicadores
 from .plan_precios import _EVALUACIONES_PRECIOS, _contexto_evaluacion_precios, _contexto_inflacion, _contexto_precios_entrada
 from .plan_transporte import _contexto_transporte
 from .portada import _contexto_informe_area, _contexto_resumen_area
-from .zonas import ALCANCE_LOGISTICA, EXCLUSIONES_LOGISTICA, PLAN_PROVISIONAL_LOGISTICA, PROVEEDORES_LOGISTICA, _PANELES_LOGISTICA, _PLANTILLAS_ZONA_LOGISTICA, _ZONAS_LOGISTICA, _ZONAS_PLANIFICACION
+from .zonas import ALCANCE_LOGISTICA, EXCLUSIONES_LOGISTICA, PLAN_PROVISIONAL_LOGISTICA, PROVEEDORES_LOGISTICA, _PANELES_LOGISTICA, _PLANTILLAS_ZONA_LOGISTICA, _PLANTILLAS_ZONA_PLANIFICACION, _ZONAS_LOGISTICA, _ZONAS_PLANIFICACION
 
 
 @login_required
@@ -45,7 +45,7 @@ def planificacion(request):
     Cada sección tiene sus segmentadores independientes (parámetros GET con
     su sufijo propio: mes_plan, centro_consumo, material_factor...)."""
     return _pagina_zonas(request, "planificacion", "Planificación", _ZONAS_PLANIFICACION, _PANELES_OVERVIEW,
-                         asistente_visible=True)
+                         plantillas_zona=_PLANTILLAS_ZONA_PLANIFICACION, asistente_visible=True)
 
 
 @login_required

@@ -10,7 +10,7 @@ from django.http import Http404
 from .. import desglose, ejecutivo
 from ..templatetags.dashboard_extras import corte as _texto_corte
 from .categoria_pestanas import _mes_sop_categoria, _mes_variacion, _periodo_cuentas, _seleccion_precios, _tramo_plazo
-from .comun import _categorias_disponibles, _mes_corto, _por_familia_centro, _por_str, _rango_en_anio, _segmentadores_compras, _segmentadores_inventario, _slug, _texto_rango
+from .comun import _categorias_disponibles, _mes_corto, alcance_categoria, _por_familia_centro, _por_str, _rango_en_anio, _segmentadores_compras, _segmentadores_inventario, _slug, _texto_rango
 from .plan_precios import _nota_base
 
 
@@ -323,5 +323,6 @@ def desglose_filas(request, slug, clave):
         (k, v) for k, v in request.GET.items()
         if k not in desglose.PARAMETROS_UI and (not k.startswith("f_") or k in desglose.FILTROS_DE_PERIODO)
     ))
-    return desglose.responder(request, clave, lambda: constructor(request, categoria), (clave, categoria, base),
-                              f"detalle_{clave}_{slug}")
+    with alcance_categoria(request, categoria):
+        return desglose.responder(request, clave, lambda: constructor(request, categoria), (clave, categoria, base),
+                                  f"detalle_{clave}_{slug}")

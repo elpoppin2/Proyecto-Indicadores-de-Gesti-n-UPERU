@@ -124,11 +124,11 @@ def mes_defecto():
 
 # --- Proveedor único --------------------------------------------------------
 
-def proveedor_unico(inicio, fin, categoria=None, meses_minimos=3, excluir=("CAPEX",)):
+def proveedor_unico(inicio, fin, categoria=None, meses_minimos=3, excluir=()):
     """Dependencia de proveedor único: de los materiales RECURRENTES (con
     compra en al menos `meses_minimos` meses del período), cuánto del valor
     se compra a un solo proveedor. Se mide sobre recurrentes porque un
-    repuesto o un equipo de CAPEX comprado una vez es casi siempre de un
+    repuesto o un equipo de un proyecto comprado una vez es casi siempre de un
     solo fabricante (95% de los códigos), y ahí no hay alternativa que
     gestionar. `categoria`: una categoría o varias (tupla). Devuelve el % del
     valor, los totales, el detalle por categoría y los materiales de más valor."""
@@ -198,19 +198,22 @@ def _evaluar_otif(df, dias, tolerancia):
     return df.assign(motivo=motivos)
 
 
-def _pct_valor(df, columna):
-    total = float(df["valor"].sum())
-    return float(df.loc[df[columna], "valor"].sum() / total * 100) if total else None
+def _pct_lineas(df, columna):
+    """% de las líneas que cumplen `columna` (cada línea de pedido cuenta igual)."""
+    return float(df[columna].mean() * 100) if len(df) else None
 
 
 def otif(inicio, fin, categoria=None):
-    """OTIF (On Time In Full) ponderado por valor de las líneas de pedido de
-    Repuestos y Suministros Industriales (o de `categoria`) con fecha de
-    entrega prometida en el período, definido por el usuario el 2026-10-04:
-    a tiempo = hasta 5 días después de la fecha prometida; completo = ±5% de
-    lo pedido; por valor. Una línea se evalúa recién cuando venció su plazo
-    con tolerancia. Devuelve el % OTIF, a tiempo y completo, el detalle por
-    categoría y proveedor, la evolución mensual y las fallas de más valor."""
+    """OTIF (On Time In Full) de las líneas de pedido de Repuestos y
+    Suministros Industriales (o de `categoria`) con fecha de entrega
+    prometida en el período, definido por el usuario el 2026-10-04: a tiempo
+    = hasta 5 días después de la fecha prometida; completo = ±5% de lo
+    pedido. Desde el 2026-10-28 (pedido del usuario) el % es de líneas de
+    pedido cumplidas (cada línea cuenta igual), no del valor, y cada mes
+    reúne las líneas con fecha prometida en ese mes. Una línea se evalúa
+    recién cuando venció su plazo con tolerancia. Devuelve el % OTIF, a
+    tiempo y completo, el detalle por categoría y proveedor, la evolución
+    mensual y las fallas de más valor."""
     config = cargar_metas()
     supuestos, meta = config["supuestos"], config["metas"]["otif_pct"]["meta"]
     dias, tolerancia = supuestos["otif_dias_tolerancia"], supuestos["otif_cantidad_tolerancia_pct"] / 100
@@ -229,34 +232,35 @@ def otif(inicio, fin, categoria=None):
     df = _evaluar_otif(df, dias, tolerancia)
 
     def resumen(g):
-        return {"otif": _pct_valor(g, "otif"), "a_tiempo": _pct_valor(g, "a_tiempo"), "completo": _pct_valor(g, "completo"),
-                "lineas": int(len(g)), "valor": float(g["valor"].sum()),
-                "valor_falla": float(g.loc[~g["otif"], "valor"].sum())}
+        return {"otif": _pct_lineas(g, "otif"), "a_tiempo": _pct_lineas(g, "a_tiempo"),
+                "completo": _pct_lineas(g, "completo"), "lineas": int(len(g)), "lineas_otif": int(g["otif"].sum()),
+                "valor": float(g["valor"].sum()), "valor_falla": float(g.loc[~g["otif"], "valor"].sum())}
 
     # Por proveedor y por mes, agrupado en pandas (antes, un resumen() por
-    # proveedor: ~500 grupos y ~3 s por cálculo de la portada). Mismo
-    # resultado: % por valor, atraso promedio de las líneas que llegaron tarde.
+    # proveedor: ~500 grupos y ~3 s por cálculo de la portada): % de líneas,
+    # atraso promedio de las líneas que llegaron tarde.
     tarde = ~df["a_tiempo"] & df["primera_entrada"].notna()
     atraso = [(p - f).days if t else float("nan")
               for p, f, t in zip(df["primera_entrada"], df["fecha_entrega"], tarde)]
-    pesos = df.assign(v_otif=df["valor"].where(df["otif"], 0.0), v_tiempo=df["valor"].where(df["a_tiempo"], 0.0),
-                      v_completo=df["valor"].where(df["completo"], 0.0), atraso=pd.Series(atraso, index=df.index, dtype=float),
-                      mes=[f.replace(day=1) for f in df["fecha_entrega"]])
-    por_proveedor = pesos.groupby("proveedor").agg(
-        valor=("valor", "sum"), v_otif=("v_otif", "sum"), v_tiempo=("v_tiempo", "sum"),
-        v_completo=("v_completo", "sum"), lineas=("valor", "size"), atraso=("atraso", "mean"),
+    marcas = df.assign(n_otif=df["otif"].astype(int), n_tiempo=df["a_tiempo"].astype(int),
+                       n_completo=df["completo"].astype(int), v_falla=df["valor"].where(~df["otif"], 0.0),
+                       atraso=pd.Series(atraso, index=df.index, dtype=float),
+                       mes=[f.replace(day=1) for f in df["fecha_entrega"]])
+    por_proveedor = marcas.groupby("proveedor").agg(
+        valor=("valor", "sum"), v_falla=("v_falla", "sum"), n_otif=("n_otif", "sum"), n_tiempo=("n_tiempo", "sum"),
+        n_completo=("n_completo", "sum"), lineas=("valor", "size"), atraso=("atraso", "mean"),
     ).sort_values("valor", ascending=False, kind="stable")
 
     def pct(parte, total):
         return float(parte / total * 100) if total else None
 
-    proveedores = [{"proveedor": nombre, "otif": pct(r.v_otif, r.valor), "a_tiempo": pct(r.v_tiempo, r.valor),
-                    "completo": pct(r.v_completo, r.valor), "lineas": int(r.lineas), "valor": float(r.valor),
-                    "valor_falla": float(r.valor - r.v_otif), "atraso": None if pd.isna(r.atraso) else float(r.atraso)}
+    proveedores = [{"proveedor": nombre, "otif": pct(r.n_otif, r.lineas), "a_tiempo": pct(r.n_tiempo, r.lineas),
+                    "completo": pct(r.n_completo, r.lineas), "lineas": int(r.lineas), "valor": float(r.valor),
+                    "valor_falla": float(r.v_falla), "atraso": None if pd.isna(r.atraso) else float(r.atraso)}
                    for nombre, r in por_proveedor.iterrows()]
     fallas = df[~df["otif"]].sort_values("valor", ascending=False).head(15)
-    por_mes = pesos.groupby("mes")[["valor", "v_otif"]].sum()
-    serie = [(m, pct(r.v_otif, r.valor)) for m, r in por_mes.iterrows()]
+    por_mes = marcas.groupby("mes").agg(lineas=("valor", "size"), n_otif=("n_otif", "sum"))
+    serie = [(m, pct(r.n_otif, r.lineas)) for m, r in por_mes.iterrows()]
     return {
         **resumen(df), "pendientes": pendientes, "dias": dias, "tolerancia": supuestos["otif_cantidad_tolerancia_pct"],
         "categorias": [{"categoria": c, **resumen(g)} for c, g in df.groupby("categoria")],
@@ -264,7 +268,8 @@ def otif(inicio, fin, categoria=None):
         "fallas": [{"pedido": r.pedido, "posicion": r.posicion, "material_codigo": r.material_codigo,
                     "texto_breve": r.texto_breve, "proveedor": r.proveedor, "fecha_entrega": r.fecha_entrega,
                     "valor": r.valor, "motivo": r.motivo, "categoria": r.categoria} for r in fallas.itertuples()],
-        "serie": serie, "spark": _sparkline(serie),
+        "serie": serie, "serie_lineas": [(m, int(r.lineas), int(r.n_otif)) for m, r in por_mes.iterrows()],
+        "spark": _sparkline(serie),
         "grafico": charts.barras_mensuales([(_mes_corto(m), v) for m, v in serie], alto=220, meta=meta),
     }
 
@@ -279,13 +284,14 @@ def contexto(mes, area=None):
     sus categorías, con los enlaces a sus pestañas), para el Resumen y el
     Informe mensual de cada área (pedido del usuario, 2026-10-21)."""
     clave = ("ejecutivo", mes.isoformat(), _HUELLA, os.stat(_RUTA_METAS).st_mtime_ns, datetime.date.today(),
-             tuple(area["categorias"]) if area else None)
+             tuple(area["categorias"]) if area else None, q.clave_alcance(),
+             json.dumps(q.regla_local("metas_categoria", {}), sort_keys=True))
     return q._cache_obtener(clave, lambda: _calcular(mes, cargar_metas(), area))
 
 
 def area_categoria(categoria, url, zonas):
     """Área de una página de categoría: sus enlaces van a sus pestañas."""
-    nombre = categoria if categoria == "CAPEX" else categoria.capitalize()  # como en la barra de navegación
+    nombre = categoria.capitalize()  # como en la barra de navegación
     return {"nombre": nombre, "categorias": (categoria,), "url": url, "zonas": set(zonas)}
 
 
@@ -340,8 +346,8 @@ def _calcular(mes, config, area=None):
 
     url_overview = reverse("overview")
 
-    # 1-2. Compras del año y % bajo contrato (sin CAPEX ni Empaques: la
-    # fórmula de contrato no los alcanza y se ajustan a mano).
+    # 1-2. Compras del año y % bajo contrato (sin Empaques: la fórmula de
+    # contrato no los alcanza y se ajustan a mano).
     df = del_area(q.compras_por_categoria_contrato_rango(inicio, fin))
     df_ant = del_area(q.compras_por_categoria_contrato_rango(inicio_ant, fin_ant))
     total, total_ant = float(df["valor_total"].sum()), float(df_ant["valor_total"].sum())
@@ -364,17 +370,17 @@ def _calcular(mes, config, area=None):
     contrato_pct = contrato / base_contrato * 100 if base_contrato else None
     fuera = base_contrato - contrato
     estado = _estado(contrato_pct, metas["contrato_pct"])
-    # Un área de solo CAPEX o Empaques no tiene este indicador (la fórmula no los alcanza).
+    # Un área de solo Empaques no tiene este indicador (la fórmula no la alcanza).
     if not area or categorias_area - excluidas:
         kpi("contrato", "Compras bajo contrato", _pct(contrato_pct),
-            f"{tramo} · sin CAPEX ni Empaques (se ajustan a mano)" if not area else tramo,
+            f"{tramo} · sin Empaques (se ajusta a mano)" if not area else tramo,
             estado, _texto_meta(metas["contrato_pct"], lambda v: f"{v:z.0f}%"),
             f"{soles(fuera)} comprados fuera de contrato", enlace=enlace("compras", f"{url_overview}#sec-compras"),
             valor=contrato_pct)
         if contrato_pct is not None:
             mensaje(estado, fuera * supuestos["ahorro_contrato_marco_pct"] / 100,
                     f"El {_pct(contrato_pct, decimales=0)} de las compras se hace bajo contrato "
-                    f"({soles(fuera)} fuera de contrato en {tramo}{'' if area else ', sin CAPEX ni Empaques'}).")
+                    f"({soles(fuera)} fuera de contrato en {tramo}{'' if area else ', sin Empaques'}).")
 
     # 3. Plazo medio de pago, con su equivalente en caja.
     if area:
@@ -432,7 +438,7 @@ def _calcular(mes, config, area=None):
     resumen_categorias = {}
     valor_inv = valor_obs = 0.0
     inv = del_area(q.inventario_por_material(corte)) if corte else pd.DataFrame()
-    # Un área sin inventario (CAPEX, servicios) no tiene estos indicadores.
+    # Un área sin inventario (servicios) no tiene estos indicadores.
     if corte and not inv.empty:
         valor_inv = float(inv["valor_total"].sum())
         dic = next((c for c in reversed(cortes) if c.year == mes.year - 1 and c.month == 12), None)
@@ -483,7 +489,7 @@ def _calcular(mes, config, area=None):
             resumen_categorias.setdefault(cat, {})["inventario"] = float(g["valor_total"].sum())
             resumen_categorias[cat]["doh"] = float(g["valor_total"].sum()) / c_mes * _DIAS_MES if c_mes > 0 else None
 
-    # OTIF de Repuestos y Suministros Industriales (del año, por valor), con
+    # OTIF de Repuestos y Suministros Industriales (del año, por línea de pedido), con
     # su evolución de los últimos 12 meses.
     # Un área sin categorías con OTIF (todas menos Repuestos y Suministros) no lo muestra.
     cfg = metas["otif_pct"]
@@ -506,7 +512,7 @@ def _calcular(mes, config, area=None):
         if estado != "ok":
             problema = "la puntualidad" if otif_anio["a_tiempo"] < otif_anio["completo"] else "las cantidades"
             mensaje(estado, otif_anio["valor_falla"],
-                    f"Solo el {otif_anio['otif']:z.0f}% del valor de {nombre_otif} llegó a tiempo y completo en "
+                    f"Solo el {otif_anio['otif']:z.0f}% de las líneas de pedido de {nombre_otif} llegó a tiempo y completo en "
                     f"{tramo} (meta {cfg['meta']:z.0f}%); el problema es {problema} "
                     f"(a tiempo {otif_anio['a_tiempo']:z.0f}%, completo {otif_anio['completo']:z.0f}%).")
     elif categorias_otif:
@@ -536,14 +542,14 @@ def _calcular(mes, config, area=None):
     elif categorias_sop:
         kpi("sop", "Cumplimiento del plan de abastecimiento", "—", f"Sin plan S&OP de {q.formato_mes_anio(mes)}")
 
-    # 8. Dependencia de proveedor único (materiales recurrentes, 12 meses; sin CAPEX).
+    # 8. Dependencia de proveedor único (materiales recurrentes, 12 meses).
     unico = proveedor_unico(inicio_12, fin, categoria=area["categorias"] if area else None,
                             meses_minimos=supuestos["meses_compra_recurrente"])
     cfg = metas["proveedor_unico_pct"]
     estado = _estado(unico["pct"], cfg)
     if not area or unico["pct"] is not None:
         kpi("unico", "Dependencia de proveedor único", _pct(unico["pct"], decimales=0),
-            f"De las compras recurrentes de {_tramo(inicio_12, fin)}" + ("" if area else " (sin CAPEX)"),
+            f"De las compras recurrentes de {_tramo(inicio_12, fin)}",
             estado, _texto_meta(cfg, lambda v: f"{v:z.0f}%"),
             f"{soles(unico['valor_unico'])} en {unico['materiales_unicos']:,} materiales con un solo proveedor",
             enlace=enlace("compras", f"{url_overview}#sec-unico"), valor=unico["pct"])
@@ -589,6 +595,9 @@ def _calcular(mes, config, area=None):
                 resumen_categorias.setdefault(cat, {})["ipu"] = canasta["variacion"] * 100
     for r in unico["por_categoria"]:
         resumen_categorias.setdefault(r["categoria"], {})["unico"] = r["pct"]
+    for r in (otif_anio or {}).get("categorias", []):
+        resumen_categorias.setdefault(r["categoria"], {})["otif"] = r["otif"]
+    _semaforo_categorias(resumen_categorias, mes.year, inv)
     categorias = [{"categoria": c, "slug": c.lower().replace(" ", "-"), **v} for c, v in sorted(resumen_categorias.items())
                   if (v.get("compras") or v.get("inventario")) and en_area(c)]
 
@@ -620,6 +629,54 @@ def _calcular(mes, config, area=None):
         "enlace_compras": enlace("compras", f"{url_overview}#bloque-compras"),
         "con_inventario": bool(corte) and not inv.empty,
     }
+
+
+# --- Semáforo del Resumen por categoría -----------------------------------
+
+# Metas por categoría que entiende el semáforo (datos_locales/reglas_locales.json,
+# "metas_categoria" -> categoría -> clave -> {"2026": valor}): clave -> (columna
+# del Resumen por categoría, sentido, formato). Sin tolerancia: cumple o no,
+# como los cuadrantes de la categoría. Pedido del usuario, 2026-10-28: la
+# Portada como vista de gerencia; las metas de cada categoría se irán cargando.
+_METAS_CATEGORIA = {
+    "contrato_pct": ("contrato", "mayor", lambda v: f"{v:z.0f}%"),
+    "pmp_dias": ("pmp", "mayor", lambda v: f"{v:z.0f} d"),
+    "ipu_pct": ("ipu", "menor", lambda v: f"{v:+z.1f}%"),
+    "otif_pct": ("otif", "mayor", lambda v: f"{v:z.0f}%"),
+    "inventario": ("inventario", "menor", soles),
+    "inventario_sin_obsoletos": ("inventario", "menor", soles),
+    "dias_inventario": ("doh", "menor", lambda v: f"{v:z,.0f} d"),
+    "proveedor_unico_pct": ("unico", "menor", lambda v: f"{v:z.0f}%"),
+}
+
+
+def _semaforo_categorias(resumen_categorias, anio, inv):
+    """Agrega a cada fila del Resumen por categoría `estados`: columna ->
+    {estado, texto} contra la meta de `anio` de la categoría. La meta del
+    inventario sin obsoletos se compara con el valor sin los materiales S8
+    del corte (`inv`), que queda en la fila como `inventario_limpio`."""
+    metas = q.regla_local("metas_categoria", {})
+    s8 = None
+    for cat, fila in resumen_categorias.items():
+        fila["estados"] = {}
+        for clave, por_anio in metas.get(cat, {}).items():
+            if clave not in _METAS_CATEGORIA or str(anio) not in por_anio:
+                continue
+            columna, sentido, formato = _METAS_CATEGORIA[clave]
+            meta = float(por_anio[str(anio)])
+            valor = fila.get(columna)
+            texto = "Meta " + ("sin obsoletos " if clave == "inventario_sin_obsoletos" else "") + formato(meta)
+            if clave == "inventario_sin_obsoletos":
+                if inv.empty:
+                    continue
+                s8 = set(q.materiales_obsoletos()) if s8 is None else s8
+                limpio = inv[(inv["categoria"] == cat) & ~inv["material_codigo"].isin(s8)]
+                valor = fila["inventario_limpio"] = float(limpio["valor_total"].sum())
+                texto = f"Sin obsoletos {soles(valor)} · meta {soles(meta)}"
+            if valor is None:
+                continue
+            estado = _estado(valor, {"meta": meta, "sentido": sentido})
+            fila["estados"][columna] = {"estado": estado, "texto": f"{texto} · {_TEXTO_ESTADO[estado].lower()}"}
 
 
 # --- Cartera de oportunidades --------------------------------------------
@@ -712,7 +769,7 @@ def _cartera(mes, inicio_12, fin, inicio_anio, corte, supuestos, inflacion, ipu_
                   "base": float(r.valor), "valor": float(r.valor) * ahorro_pct / 100} for r in mat.itertuples()]
     palanca("contrato", "Contratos marco", "Ahorro", sum(i["valor"] for i in items),
             "Negociar contrato marco para los materiales que se compran todos los meses sin contrato "
-            "(sin CAPEX ni Empaques).", items,
+            "(sin Empaques).", items,
             f"Supuesto: un contrato marco ahorra el {ahorro_pct}% (editable en metas.json).")
 
     # 5. Precio sobre la inflación de su categoría (año en curso).

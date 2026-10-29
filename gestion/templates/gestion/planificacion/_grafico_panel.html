@@ -22,6 +22,37 @@
         <span></span>
       </div>
     </div>
+  {% elif p.tipo == "tabla" %}
+    {# Desglose del IPU por categoría (Overview) o por material (Planificación): g.actual / g.anterior son las cabeceras del período elegido. Con p.desplazable, la tabla se desplaza dentro de la altura del panel (CSS .tabla-panel-marco). #}
+    {% if p.desplazable %}<div class="tabla-panel-marco">{% endif %}
+    <div class="tabla-scroll tabla-panel">
+      <table>
+        <thead>
+          <tr><th>{{ g.columna }}</th><th class="num">{{ g.actual }}</th><th class="num">{{ g.anterior }}</th><th class="num">% Ahorro / Sobrecosto</th><th class="num">% IPU</th></tr>
+        </thead>
+        <tbody>
+          {% for f in g.filas %}
+            <tr class="con-detalle" data-detalle="{{ f.detalle }}">
+              <td>{% if g.columna == "Categoría" %}{{ f.nombre|nombre_visible }}{% else %}{{ f.nombre }}{% endif %}</td>
+              <td class="num">{{ f.actual }}</td>
+              <td class="num">{{ f.anterior }}</td>
+              <td class="num {{ f.aporte.clase }}">{{ f.aporte.texto }}</td>
+              <td class="num {{ f.ipu.clase }}">{{ f.ipu.texto|default:"—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="fila-total con-detalle" data-detalle="{{ g.total.detalle }}">
+            <td>Total</td>
+            <td class="num">{{ g.total.actual }}</td>
+            <td class="num">{{ g.total.anterior }}</td>
+            <td class="num {{ g.total.aporte.clase }}">{{ g.total.aporte.texto }}</td>
+            <td class="num {{ g.total.ipu.clase }}">{{ g.total.ipu.texto }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    {% if p.desplazable %}</div>{% endif %}
   {% elif p.tipo == "columnas" %}
     {% include "gestion/planificacion/_grafico_columnas.html" with g=g titulo=p.titulo %}
   {% elif p.tipo == "pilas" %}

@@ -14,6 +14,9 @@ _ZONAS_PLANIFICACION = [
     ("inventario", "Inventario", "Cobertura y proyección S&OP", ["sec-cobertura", "sec-proyeccion"]),
     ("precios", "Precios e IPU", "Precios de entrada e inflación", ["sec-precios", "sec-inflacion", "sec-inflacion-mensual"]),
     ("calidad", "Calidad y energía", "Análisis, premios y costo por Gcal", ["sec-calidad", "sec-premios", "sec-energia"]),
+    # Pedido del usuario (2026-10-29): escenarios futuros de stock y precios y
+    # su efecto en el IPU y los indicadores. Por ahora, en preparación.
+    ("simulacion", "Simulación", "Stock y precios proyectados", []),
     # Pedido del usuario (2026-10-21): cada área con su resumen e informe mensual.
     ("resumen", "Resumen ejecutivo", "Metas, mensajes y oportunidades del mes", ["sec-resumen-area"]),
     ("informe", "Informe mensual", "Para imprimir o guardar en PDF", ["sec-informe-area"]),
@@ -56,11 +59,12 @@ _ZONAS_LOGISTICA = [
     ("fletes", "Fletes", "Costo de transporte", []),
 ]
 _PLANTILLAS_ZONA_LOGISTICA = {"fletes": "gestion/logistica/_fletes.html"}
+_PLANTILLAS_ZONA_PLANIFICACION = {"simulacion": "gestion/planificacion/_simulacion.html"}
 _PANELES_LOGISTICA = ("planificacion", "logistica_transporte")
 
 
 # ---------------------------------------------------------------------------
-# Páginas de categoría (CAPEX, Combustibles, Repuestos...), organizadas en
+# Páginas de categoría (Combustibles, Repuestos, Empaques...), organizadas en
 # pestañas como Planificación. Pedido por el usuario: "que cada uno tenga las
 # pestañas de indicadores, inventario, precio e IPU, cuenta por pagar y demás
 # pestañas de acuerdo a cada categoría". La página trae solo Indicadores;
@@ -73,8 +77,8 @@ _PANELES_LOGISTICA = ("planificacion", "logistica_transporte")
 # Pestañas: clave, nombre, descripción, secciones (también los bloques
 # internos con filtro propio, p.ej. sec-inventario-top) y a qué categorías
 # aplican: None = todas, "inventario" = solo las que tienen inventario (no
-# CAPEX ni servicios), "sop" = solo las del S&OP (Materias Primas y
-# Combustibles).
+# los servicios), "sop" = solo las del S&OP (Materias Primas y
+# Combustibles), "ipu" = las que tienen IPU (no CATEGORIAS_SIN_IPU).
 _ZONAS_CATEGORIA = [
     ("indicadores", "Indicadores", "Resumen de la categoría", ["sec-indicadores-categoria"], None),
     ("compras", "Compras", "Proveedores, Fill Rate y Lead Time",
@@ -84,7 +88,7 @@ _ZONAS_CATEGORIA = [
       "sec-criticos", "sec-variacion"], "inventario"),
     ("abastecimiento", "Abastecimiento S&OP", "Plan vs ingresos por centro",
      ["sec-sop-categoria", "sec-sop-mensual"], "sop"),
-    ("precios", "Precios e IPU", "Precio de compra e inflación", ["sec-ipu-categoria", "sec-inflacion-categoria"], None),
+    ("precios", "Precios e IPU", "Precio de compra e inflación", ["sec-ipu-categoria", "sec-inflacion-categoria"], "ipu"),
     ("cuentas", "Cuentas por pagar", "Plazo de pago (PMP)",
      ["bloque-cuentas", "sec-pmp", "sec-plazos", "sec-dispersion-cxp", "sec-proveedores-cxp", "sec-deuda"], None),
     # Pedido del usuario (2026-10-21): cada área con su resumen e informe mensual.
@@ -94,6 +98,7 @@ _ZONAS_CATEGORIA = [
 
 
 def _zonas_categoria(categoria, tiene_inventario):
-    aplica = {None: True, "inventario": tiene_inventario, "sop": categoria in q.CATEGORIAS_PLANIFICACION_SOP}
+    aplica = {None: True, "inventario": tiene_inventario, "sop": categoria in q.CATEGORIAS_PLANIFICACION_SOP,
+              "ipu": categoria not in q.CATEGORIAS_SIN_IPU}
     return [{"clave": c, "nombre": n, "descripcion": d, "secciones": " ".join(s)}
             for c, n, d, s, condicion in _ZONAS_CATEGORIA if aplica[condicion]]

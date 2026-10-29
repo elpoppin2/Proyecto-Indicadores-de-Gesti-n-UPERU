@@ -359,12 +359,19 @@ def precios_entrada_sop_real():
     return con_precio_real(precios_entrada_sop())
 
 
+# Categorías fuera del IPU (pedido del usuario, 2026-10-28): Servicios
+# Administrativos solo tenía equipos de oficina y TI con código, no sus
+# servicios, y se quitó de todos los IPU (Overview, su página, resumen).
+CATEGORIAS_SIN_IPU = ("SERVICIOS ADMINISTRATIVOS",)
+
+
 @_cacheado
 def precios_entrada_materiales_real():
     """precios_entrada_materiales (todos los materiales, pestañas de cada
     categoría y resumen ejecutivo) con el precio real. Desde 2026-10-14 todo
-    el IPU usa el precio real (pedido del usuario)."""
-    return con_precio_real(precios_entrada_materiales())
+    el IPU usa el precio real (pedido del usuario). Sin CATEGORIAS_SIN_IPU."""
+    df = con_precio_real(precios_entrada_materiales())
+    return df[~df["categoria"].isin(CATEGORIAS_SIN_IPU)].reset_index(drop=True)
 
 
 def ajustes_fbl3n_detalle(materiales, desde=None, hasta=None):

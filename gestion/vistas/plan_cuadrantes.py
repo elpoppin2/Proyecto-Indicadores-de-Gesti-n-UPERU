@@ -5,7 +5,7 @@ import datetime
 import pandas as pd
 from dashboard import queries as q
 
-from .. import charts
+from .. import charts, ejecutivo
 from .comun import _MESES_ABREV_GUION, _PANEL_LINEAS, _cortes_inventario, _mes_corto, _serie_inventario, _soles_eje, _soles_mm
 from .zonas import _ZONAS_PLANIFICACION
 
@@ -22,6 +22,7 @@ CATEGORIAS_CUADRANTES = q.CATEGORIAS_PLANIFICACION_SOP
 # meses al período y compara contra el año anterior.
 ANIO_INICIO = 2025
 _IRI_MESES = 12
+_MATERIALES_DESGLOSE = 15  # filas de la tabla del desglose del IPU por material (el resto, en una)
 _MESES_IRI_HISTORIA = 48  # meses que se intentan calcular (quedan los que tienen 12 meses de datos)
 
 
@@ -183,26 +184,65 @@ def cuadrante_pmp(categorias, periodo, nota, con_caja=False, segmentos=None):
     }
 
 
-def cuadrante_inventario(categorias, periodo, texto_categorias, segmentos=None):
+def _serie_sin_obsoletos(cortes, categorias):
+    """Valor del inventario de `categorias` en cada corte sin los materiales
+    obsoletos (estado S8 del maestro, q.materiales_obsoletos): (fecha, valor)."""
+    obsoletos = set(q.materiales_obsoletos())
+    serie = []
+    for c in cortes:
+        inv = q.inventario_por_material(c)
+        inv = inv[inv["categoria"].isin(categorias) & ~inv["material_codigo"].isin(obsoletos)]
+        serie.append((c, float(inv["valor_total"].sum())))
+    return serie
+
+
+def meta_del_periodo(metas, anios):
+    """(año, meta) del último año de `anios` con meta en `metas` ({"2026": valor}), o (None, None)."""
+    con_meta = sorted(int(a) for a in (metas or {}) if int(a) in anios)
+    return (con_meta[-1], metas[str(con_meta[-1])]) if con_meta else (None, None)
+
+
+def cuadrante_inventario(categorias, periodo, texto_categorias, segmentos=None, sin_obsoletos=False, metas=None):
     """Valor del inventario al cierre de cada mes del período, contra el
-    cierre del año anterior (p.ej. Dic-25 para "Solo 2026")."""
+    cierre del año anterior (p.ej. Dic-25 para "Solo 2026"). `sin_obsoletos`:
+    una segunda línea sin los materiales S8 (Suministros Industriales, pedido
+    del usuario 2026-10-28); `metas` ({"2026": S/}): la meta de ese valor sin
+    obsoletos, como línea horizontal y como estado del panel."""
     titulo = "Valor del inventario"
     todos = _serie_inventario_categorias(_cortes_inventario(), categorias, segmentos)
     valores = [(f, v) for f, v in todos if _en_periodo(f, periodo)]
     if not valores:
         return _vacio(titulo, "Sin inventario registrado en el período.")
     cierre_previo = next((x for x in reversed(todos) if x[0].year == _anio_base(periodo)), None)
+    series = [{"nombre": "Valor", "clase": "serie-0",
+               "puntos": [(f.replace(day=1), v, f"Al {f:%d/%m/%Y}\nS/ {v:z,.0f}") for f, v in valores]}]
+    sub = f"Al {valores[-1][0]:%d/%m/%Y} · {texto_categorias}"
+    tono = "neutro"
+    estado = (f"{(valores[-1][1] / cierre_previo[1] - 1) * 100:+z.1f}% vs {_mes_corto(cierre_previo[0])}"
+              if cierre_previo and cierre_previo[1] else "")
+    nota = ("Valor del inventario (MB5B) al cierre de cada mes del período (el mes en curso, a su último corte), "
+            "contra el cierre del año anterior.")
+    leyenda, referencias = [], []
+    if sin_obsoletos:
+        limpio = _serie_sin_obsoletos([f for f, _ in valores], categorias)
+        series.append({"nombre": "Sin obsoletos", "clase": "serie-1",
+                       "puntos": [(f.replace(day=1), v, f"Al {f:%d/%m/%Y}\nSin obsoletos (S8): S/ {v:z,.0f}")
+                                  for f, v in limpio]})
+        sub += f" · sin obsoletos (S8): {_soles_mm(limpio[-1][1])}"
+        leyenda = [("linea-0", "Valor total"), ("linea-1", "Sin obsoletos (S8)")]
+        nota += " Sin obsoletos: sin los materiales con estado S8 en el maestro (ZMM060)."
+        anio_meta, meta = meta_del_periodo(metas, {f.year for f, _ in valores})
+        if meta:
+            referencias = [{"valor": meta, "texto": f"Meta {anio_meta}", "clase": "ref-meta"}]
+            leyenda.append(("ref-meta", f"Meta {anio_meta} sin obsoletos: {_soles_mm(meta)}"))
+            diferencia = limpio[-1][1] - meta
+            tono = "alerta" if diferencia > 0 else "ok"
+            estado = f"{'+' if diferencia >= 0 else '−'}{_soles_mm(abs(diferencia))} vs meta {anio_meta}"
     return {
-        "titulo": titulo, "cifra": _soles_mm(valores[-1][1]), "sub": f"Al {valores[-1][0]:%d/%m/%Y} · {texto_categorias}",
-        "tipo": "lineas", "g": charts.lineas_mensuales(
-            [{"nombre": "Valor", "clase": "serie-0",
-              "puntos": [(f.replace(day=1), v, f"Al {f:%d/%m/%Y}\nS/ {v:z,.0f}") for f, v in valores]}],
-            _mes_corto, _soles_eje, max_etiquetas_eje=6, **_PANEL_LINEAS),
-        "tono": "neutro",
-        "estado": (f"{(valores[-1][1] / cierre_previo[1] - 1) * 100:+z.1f}% vs {_mes_corto(cierre_previo[0])}"
-                   if cierre_previo and cierre_previo[1] else ""),
-        "nota": "Valor del inventario (MB5B) al cierre de cada mes del período (el mes en curso, a su último corte), "
-                "contra el cierre del año anterior.",
+        "titulo": titulo, "cifra": _soles_mm(valores[-1][1]), "sub": sub,
+        "tipo": "lineas", "g": charts.lineas_mensuales(series, _mes_corto, _soles_eje, referencias=referencias,
+                                                       max_etiquetas_eje=6, **_PANEL_LINEAS),
+        "tono": tono, "estado": estado, "nota": nota, "leyenda": leyenda,
     }
 
 
@@ -234,9 +274,112 @@ def cuadrante_iri(categorias, periodo, segmentos=None):
     }
 
 
+def cuadrante_desglose(fuente, periodo, filas, titulo, columna, max_filas=None):
+    """Tabla del desglose del IPU en el `periodo` del filtro Año (pedido del
+    usuario, 2026-10-28, como el RESUMEN INTEGRAL de su Excel de IPU): por
+    cada fila de `filas` ({nombre, importe, base_importe[, cantidad]}: por
+    categoría en el Overview, por material en Planificación), el valor de
+    compra del período, el mismo a precios del año anterior, % ahorro /
+    sobrecosto (aporte al IPU total: su diferencia ÷ el valor al precio
+    anterior de todas, suma el IPU total) y % IPU de la fila. Con
+    `max_filas`, las de mayor impacto (|diferencia|) y el resto junto.
+    `fuente`: contexto de Precios e IPU (resumen y periodo_sel)."""
+    base_total = sum(f["base_importe"] for f in filas)
+    if not fuente or not fuente.get("resumen") or not base_total or (periodo and fuente.get("periodo_sel") != periodo):
+        return _vacio(titulo, "Sin compras con base de comparación en el período.")
+    r = fuente["resumen"]
+    if periodo == "desde":
+        actual, anterior = f"Valor de compra {r['desde']}–{r['hasta']}", "A precios del año anterior"
+        tramo = f"{r['desde']} a {r['hasta']} vs los mismos meses del año anterior"
+        referencia = "del año anterior"
+    else:
+        anio = int(periodo)
+        actual, anterior = f"Valor de compra {anio}", f"Valor de compra {anio - 1}"
+        tramo = f"{anio} acumulado a {r['por_anio'][-1]['hasta']} vs el mismo tramo de {anio - 1}"
+        referencia = f"de {anio - 1}"
+
+    def pct(valor):
+        # Rojo = sobrecosto (el precio subió), verde = ahorro.
+        clase = "dato-negativo" if valor > 0.005 else "dato-positivo" if valor < -0.005 else ""
+        return {"texto": f"{valor:+z.2f}%", "clase": clase}
+
+    def fila(nombre, importe, base, extra=""):
+        bolsa = importe - base
+        return {"nombre": nombre, "actual": _soles_mm(importe), "anterior": _soles_mm(base),
+                "aporte": pct(bolsa / base_total * 100), "ipu": pct((importe / base - 1) * 100) if base else None,
+                "detalle": f"{nombre}: {'sobrecosto' if bolsa > 0 else 'ahorro'} de {_soles_mm(abs(bolsa))}" + extra}
+
+    elegidas, resto = filas, []
+    if max_filas and len(filas) > max_filas + 1:
+        por_impacto = sorted(filas, key=lambda f: -abs(f["importe"] - f["base_importe"]))
+        elegidas, resto = por_impacto[:max_filas], por_impacto[max_filas:]
+        # Primero lo que más costó, al final lo que más ahorró.
+        elegidas = sorted(elegidas, key=lambda f: -(f["importe"] - f["base_importe"]))
+    filas_tabla = [fila(f["nombre"], f["importe"], f["base_importe"], f" · {f['cantidad']}" if f.get("cantidad") else "")
+                   for f in elegidas]
+    if resto:
+        filas_tabla.append(fila(f"Resto ({len(resto)} materiales)", sum(f["importe"] for f in resto),
+                                sum(f["base_importe"] for f in resto)))
+    importe_total = sum(f["importe"] for f in filas)
+    bolsa_total = importe_total - base_total
+    tono, _ = tono_ipu((importe_total / base_total - 1) * 100)
+    return {
+        "titulo": titulo, "cifra": f"{'+' if bolsa_total >= 0 else '−'}{_soles_mm(abs(bolsa_total))}",
+        "sub": f"{'Sobrecosto' if bolsa_total > 0 else 'Ahorro'} por precio · {tramo}",
+        "tipo": "tabla", "tono": tono, "estado": {"alerta": "Sobrecosto", "ok": "Ahorro"}.get(tono, "Estable"),
+        "g": {"columna": columna, "actual": actual, "anterior": anterior, "filas": filas_tabla,
+              "total": fila("Total", importe_total, base_total)},
+        "nota": f"Valor {referencia}: lo mismo comprado a los precios {referencia}. % Ahorro / Sobrecosto: aporte al "
+                "IPU total (la columna suma el IPU); % IPU: variación de precio de la fila."
+                + (f" Los {len(elegidas)} de mayor impacto; el resto, en una fila." if resto else ""),
+    }
+
+
+def cuadrante_cumplimiento(periodo, segmentos=None):
+    """Cumplimiento del plan de abastecimiento S&OP de cada mes cerrado del
+    `periodo` (cada mes contra su propio S&OP): toneladas ingresadas ÷
+    planificadas, con la meta de metas.json. Pedido del usuario
+    (2026-10-28): en los cuadrantes de Planificación, debajo del inventario.
+    `segmentos`: los del filtro Categoría (None = todos)."""
+    titulo = "Cumplimiento del plan de abastecimiento"
+    hoy_mes = datetime.date.today().replace(day=1)
+    serie = []
+    for mes in q.meses_con_sop_propio():
+        if mes >= hoy_mes or not _en_periodo(mes, periodo):
+            continue
+        det = q.plan_vs_real_abastecimiento_por_material(mes)
+        if segmentos:
+            det = _en_segmentos(det, segmentos)
+        plan, real = float(det["cantidad_plan"].sum()), float(det["cantidad_real"].sum())
+        if plan:
+            serie.append((mes, plan, real))
+    if not serie:
+        return _vacio(titulo, "Sin plan S&OP de meses cerrados en el período.")
+    plan_total, real_total = sum(p for _, p, _ in serie), sum(r for _, _, r in serie)
+    pct = real_total / plan_total * 100
+    cfg = ejecutivo.cargar_metas()["metas"]["cumplimiento_sop_pct"]
+    estado = ejecutivo._estado(pct, cfg)
+    meta_txt = f"Meta {cfg['meta']:z.0f}%" + ("" if cfg.get("confirmada") else " (propuesta)")
+    g = charts.lineas_mensuales(
+        [{"nombre": "Cumplimiento", "clase": "serie-0",
+          "puntos": [(m, r / p * 100, f"{q.formato_mes_anio(m)}\nCumplimiento {r / p * 100:z.1f}%\n"
+                                      f"{r:z,.0f} T ingresadas de {p:z,.0f} T planificadas") for m, p, r in serie]}],
+        _mes_corto, lambda v: f"{v:z.0f}%", referencias=[{"valor": cfg["meta"], "texto": meta_txt, "clase": "ref-meta"}],
+        max_etiquetas_eje=6, **_PANEL_LINEAS)
+    return {
+        "titulo": titulo, "cifra": f"{pct:z.1f}%",
+        "sub": f"{_mes_corto(serie[0][0])}–{_mes_corto(serie[-1][0])} · {real_total:z,.0f} T ingresadas de "
+               f"{plan_total:z,.0f} T planificadas · {_texto_segmentos(segmentos)}",
+        "tipo": "lineas", "g": g, "tono": estado,
+        "estado": ejecutivo._TEXTO_ESTADO[estado], "leyenda": [("linea-0", "Cumplimiento del mes"), ("ref-meta", meta_txt)],
+        "nota": "Ingresos (MB51) de cada mes cerrado ÷ lo planificado en el S&OP de ese mes. El mes en curso entra al cerrarse.",
+    }
+
+
 def _paneles_cuadrantes(inf, periodo="desde", segmentos=None):
-    """Los cuatro paneles de Planificación (IPU, plazo medio de pago, valor
-    del inventario e IRI), con el formato de _panel_indicador.html,
+    """Los paneles de Planificación (IPU y su desglose por material, valor
+    del inventario, cumplimiento del plan, plazo medio de pago e IRI; hasta
+    el 2026-10-28 eran cuatro), con el formato de _panel_indicador.html,
     recortados al `periodo` del filtro Año ("desde" o un año). `inf`:
     contexto de la sección Inflación de precios (interanual) con ese mismo
     Período y sus demás filtros por defecto. `segmentos`: los de
@@ -285,10 +428,17 @@ def _paneles_cuadrantes(inf, periodo="desde", segmentos=None):
                     "la línea acumula desde enero."},
             leyenda=[("col-sube", "El mes sube"), ("col-baja", "El mes baja"), ("linea-ipu", "IPU acumulado del año")])
 
-    # 2-4. Plazo medio de pago, valor del inventario e IRI de las categorías de Planificación juntas.
+    # Pedidos del usuario (2026-10-28 y 29): al lado del IPU, su desglose por
+    # los materiales de mayor impacto, del alto del gráfico y con scroll
+    # propio. Debajo, en dos columnas: valor del inventario | plazo medio de
+    # pago y cumplimiento del plan (bajo el inventario) | IRI.
+    agregar("precios", cuadrante_desglose(inf, periodo, (inf or {}).get("por_material") or [],
+                                          "Desglose del IPU por material", "Material", max_filas=_MATERIALES_DESGLOSE))
+    paneles[-1]["desplazable"] = True
+    agregar("inventario", cuadrante_inventario(CATEGORIAS_CUADRANTES, periodo, texto, segmentos=segmentos))
     agregar("", cuadrante_pmp(CATEGORIAS_CUADRANTES, periodo, f"Días de pago pactados en las órdenes de compra de "
                                                              f"{texto}, ponderados por valor.", segmentos=segmentos),
             zona_nombre="Cuentas por pagar")
-    agregar("inventario", cuadrante_inventario(CATEGORIAS_CUADRANTES, periodo, texto, segmentos=segmentos))
+    agregar("cumplimiento", cuadrante_cumplimiento(periodo, segmentos))
     agregar("inventario", cuadrante_iri(CATEGORIAS_CUADRANTES, periodo, segmentos=segmentos))
     return paneles

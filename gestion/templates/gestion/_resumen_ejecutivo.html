@@ -125,11 +125,13 @@
   {% if not e.area or e.categorias|length > 1 %}
   <section class="bloque" id="{{ cuerpo_id }}-categorias">
     <h2>Resumen por categoría</h2>
-    <p class="nota">{{ e.tramo }}.{% if not e.area %} Elige una categoría para ver su detalle.{% endif %} Bajo contrato no aplica a CAPEX ni Empaques. Días de inventario = valor del inventario ÷ consumo valorizado promedio de 12 meses.</p>
+    <p class="nota">{{ e.tramo }}.{% if not e.area %} Elige una categoría para ver su detalle.{% endif %} Bajo contrato no aplica a Empaques. Días de inventario = valor del inventario ÷ consumo valorizado promedio de 12 meses. OTIF: líneas de pedido que llegaron a tiempo y completas (solo Repuestos y Suministros Industriales).</p>
+    {# Semáforo por categoría (ejecutivo._semaforo_categorias; pedido del usuario, 2026-10-28): con color, la celda contra la meta del año de esa categoría; sin color, todavía sin meta. #}
+    <p class="nota leyenda-semaforo"><span class="muestra-celda celda-ok">En meta</span> <span class="muestra-celda celda-alerta">Fuera de meta</span> Contra la meta {{ e.mes.year }} de la categoría. Sin color: la categoría aún no tiene meta para ese indicador.</p>
     <div class="tabla-scroll">
-      <table>
+      <table class="tabla-semaforo">
         <thead>
-          <tr><th>Categoría</th><th class="num">Compras</th><th class="num">Var. vs año anterior</th><th class="num">Bajo contrato</th><th class="num">PMP</th><th class="num">Inventario</th><th class="num">Días de inventario</th><th class="num">IPU</th><th class="num">Proveedor único</th></tr>
+          <tr><th>Categoría</th><th class="num">Compras</th><th class="num">Var. vs año anterior</th><th class="num">Bajo contrato</th><th class="num">PMP</th><th class="num">IPU</th><th class="num">OTIF</th><th class="num">Inventario</th><th class="num">Días de inventario</th><th class="num">Proveedor único</th></tr>
         </thead>
         <tbody>
           {% for f in e.categorias %}
@@ -137,12 +139,13 @@
               <td>{% if e.area %}{{ f.categoria }}{% else %}<a class="enlace-tabla" href="{% url 'categoria_detalle' slug=f.slug %}">{{ f.categoria }}</a>{% endif %}</td>
               <td class="num">{{ f.compras|soles_mm|default:"—" }}</td>
               <td class="num {% if f.variacion > 0 %}dato-positivo{% elif f.variacion < 0 %}dato-negativo{% endif %}">{% if f.variacion is not None %}{% if f.variacion > 0 %}+{% endif %}{{ f.variacion|numero:1 }}%{% else %}—{% endif %}</td>
-              <td class="num">{% if f.contrato is not None %}{{ f.contrato|numero:0 }}%{% else %}<span class="texto-tenue" title="La fórmula de contrato no aplica a esta categoría">n.a.</span>{% endif %}</td>
-              <td class="num">{% if f.pmp is not None %}{{ f.pmp|numero:0 }} d{% else %}—{% endif %}</td>
-              <td class="num">{{ f.inventario|soles_mm|default:"—" }}</td>
-              <td class="num">{% if f.doh %}{{ f.doh|numero:0 }}{% else %}—{% endif %}</td>
-              <td class="num {% if f.ipu > 0 %}dato-negativo{% elif f.ipu < 0 %}dato-positivo{% endif %}">{% if f.ipu is not None %}{% if f.ipu > 0 %}+{% endif %}{{ f.ipu|numero:1 }}%{% else %}—{% endif %}</td>
-              <td class="num">{% if f.unico is not None %}{{ f.unico|numero:0 }}%{% else %}—{% endif %}</td>
+              {% with s=f.estados.contrato %}<td class="num{% if s %} celda-{{ s.estado }}{% endif %}">{% if f.contrato is not None %}{{ f.contrato|numero:0 }}%{% else %}<span class="texto-tenue" title="La fórmula de contrato no aplica a esta categoría">n.a.</span>{% endif %}{% if s %}<span class="celda-meta-texto">{{ s.texto }}</span>{% endif %}</td>{% endwith %}
+              {% with s=f.estados.pmp %}<td class="num{% if s %} celda-{{ s.estado }}{% endif %}">{% if f.pmp is not None %}{{ f.pmp|numero:0 }} d{% else %}—{% endif %}{% if s %}<span class="celda-meta-texto">{{ s.texto }}</span>{% endif %}</td>{% endwith %}
+              {% with s=f.estados.ipu %}<td class="num{% if s %} celda-{{ s.estado }}{% elif f.ipu > 0 %} dato-negativo{% elif f.ipu < 0 %} dato-positivo{% endif %}">{% if f.ipu is not None %}{% if f.ipu > 0 %}+{% endif %}{{ f.ipu|numero:1 }}%{% else %}—{% endif %}{% if s %}<span class="celda-meta-texto">{{ s.texto }}</span>{% endif %}</td>{% endwith %}
+              {% with s=f.estados.otif %}<td class="num{% if s %} celda-{{ s.estado }}{% endif %}">{% if f.otif is not None %}{{ f.otif|numero:1 }}%{% else %}<span class="texto-tenue" title="El OTIF se mide en Repuestos y Suministros Industriales">n.a.</span>{% endif %}{% if s %}<span class="celda-meta-texto">{{ s.texto }}</span>{% endif %}</td>{% endwith %}
+              {% with s=f.estados.inventario %}<td class="num{% if s %} celda-{{ s.estado }}{% endif %}">{{ f.inventario|soles_mm|default:"—" }}{% if s %}<span class="celda-meta-texto">{{ s.texto }}</span>{% endif %}</td>{% endwith %}
+              {% with s=f.estados.doh %}<td class="num{% if s %} celda-{{ s.estado }}{% endif %}">{% if f.doh %}{{ f.doh|numero:0 }}{% else %}—{% endif %}{% if s %}<span class="celda-meta-texto">{{ s.texto }}</span>{% endif %}</td>{% endwith %}
+              {% with s=f.estados.unico %}<td class="num{% if s %} celda-{{ s.estado }}{% endif %}">{% if f.unico is not None %}{{ f.unico|numero:0 }}%{% else %}—{% endif %}{% if s %}<span class="celda-meta-texto">{{ s.texto }}</span>{% endif %}</td>{% endwith %}
             </tr>
           {% endfor %}
         </tbody>

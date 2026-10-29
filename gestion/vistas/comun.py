@@ -43,6 +43,28 @@ def _categorias_disponibles():
     return q.categorias_dashboard(anios[-1])
 
 
+# Filtro Solicitante de las categorías (pedido del usuario, 2026-10-28: en
+# Suministros Industriales, separar lo que piden GEP y Proyectos). Acota
+# todas las consultas de compras de la página (q.alcance_solicitantes).
+CATEGORIAS_FILTRO_SOLICITANTE = {"SUMINISTROS INDUSTRIALES"}
+_OPCIONES_SOLICITANTE = [("", "Todos"), ("gep", "GEP y Proyectos"), ("sin_gep", "Sin GEP ni Proyectos")]
+
+
+def filtro_solicitante(request, categoria):
+    """El filtro Solicitante de `categoria` (opciones y elegido), o None si no lo tiene."""
+    if categoria not in CATEGORIAS_FILTRO_SOLICITANTE:
+        return None
+    sel = request.GET.get("solicitante", "")
+    sel = sel if sel in q.ALCANCES_SOLICITANTES else ""
+    return {"sel": sel, "opciones": [{"valor": v, "texto": t} for v, t in _OPCIONES_SOLICITANTE]}
+
+
+def alcance_categoria(request, categoria):
+    """Contexto con el alcance de solicitantes del filtro de `categoria` (sin filtro, todos)."""
+    f = filtro_solicitante(request, categoria)
+    return q.alcance_solicitantes(f["sel"] if f else None)
+
+
 def _construir_nav(slug_activo):
     """Barra de navegación compartida por todas las páginas: PORTADA (resumen
     ejecutivo) primero, luego OVERVIEW, Planificación (S&OP, no es una

@@ -209,12 +209,12 @@
     <div class="bloque">
       <h2>Metodología</h2>
       <p class="nota">
-        <strong>Compras</strong>: órdenes de compra por fecha del documento, en soles (tipo de cambio × valor neto). <strong>Bajo contrato</strong>: pedidos marco 47xx/40xx o con contrato; no aplica a CAPEX ni Empaques.
+        <strong>Compras</strong>: órdenes de compra por fecha del documento, en soles (tipo de cambio × valor neto). <strong>Bajo contrato</strong>: pedidos marco 47xx/40xx o con contrato; no aplica a Empaques.
         <strong>PMP</strong>: días de cada condición de pago ponderados por valor. <strong>IPU</strong>: precio real de compra (MB51 + ajustes de valor de la FBL3N) del mes contra el mismo mes del año anterior, acumulado desde enero y ponderado por cantidad.
         <strong>Inventario</strong>: valor MB5B al último corte del mes; días de inventario = valor ÷ consumo valorizado promedio de 12 meses. <strong>Consumo</strong>: salidas MB51 clases 2xx, Z01, Z04 y 353.
-        <strong>Inmovilizado</strong>: stock sin consumo en 3 años. <strong>Proveedor único</strong>: materiales comprados en {{ e.supuestos.meses_compra_recurrente }} meses o más de los últimos 12 a un solo proveedor, sin CAPEX.
+        <strong>Inmovilizado</strong>: stock sin consumo en 3 años. <strong>Proveedor único</strong>: materiales comprados en {{ e.supuestos.meses_compra_recurrente }} meses o más de los últimos 12 a un solo proveedor.
         <strong>Críticos en riesgo</strong>: materiales marcados críticos con menos de 1 mes de cobertura.
-        <strong>OTIF</strong>: pedidos ZNAC/ZIMP de Repuestos y Suministros, por valor; a tiempo = hasta {{ e.supuestos.otif_dias_tolerancia }} días después de la fecha prometida; completo = ±{{ e.supuestos.otif_cantidad_tolerancia_pct }}% de lo pedido.
+        <strong>OTIF</strong>: líneas de pedido ZNAC/ZIMP de Repuestos y Suministros (cada línea cuenta igual); a tiempo = hasta {{ e.supuestos.otif_dias_tolerancia }} días después de la fecha prometida; completo = ±{{ e.supuestos.otif_cantidad_tolerancia_pct }}% de lo pedido.
         Las metas y supuestos están en metas.json; las marcadas "propuesta" están pendientes de confirmar.
       </p>
     </div>

@@ -110,6 +110,30 @@ class CategoriaServicio(models.Model):
         return f"{self.grupo_compras} - {self.categoria_servicio}"
 
 
+class Solicitante(models.Model):
+    """Solicitantes de compra (columna Solicitante del ME2N) con su área y
+    gerencia: archivo USUARIOS.xlsx de "INFORMACIÓN SOLICITANTES". Sirve para
+    separar lo que piden GEP y Proyectos (filtro de Suministros Industriales,
+    pedido del usuario el 2026-10-28)."""
+
+    codigo = models.CharField(max_length=40, primary_key=True, verbose_name="Solicitante")
+    descripcion = models.CharField(max_length=255, blank=True)
+    area = models.CharField(max_length=100, blank=True)
+    gerencia = models.CharField(max_length=100, blank=True)
+    gerencia_fix = models.CharField(max_length=100, blank=True)
+    gerencia_general = models.CharField(max_length=100, blank=True)
+    centro = models.CharField(max_length=40, blank=True)
+    gep_proyectos = models.BooleanField(default=False, verbose_name="GEP o Proyectos")
+
+    class Meta:
+        verbose_name = "Solicitante"
+        verbose_name_plural = "Solicitantes"
+        ordering = ["codigo"]
+
+    def __str__(self):
+        return f"{self.codigo} - {self.descripcion}"
+
+
 class LineaCompra(models.Model):
     """Líneas de pedido/solicitud de compra (archivos ME2N_SUPPLY_<año>.csv)."""
 

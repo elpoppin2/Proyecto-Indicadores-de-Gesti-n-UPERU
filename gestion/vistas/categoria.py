@@ -12,7 +12,8 @@ from django.utils.safestring import mark_safe
 
 from .categoria_indicadores import _cat_indicadores
 from .categoria_pestanas import _cat_abastecimiento, _cat_compras, _cat_cuentas, _cat_inventario, _cat_precios_zona
-from .comun import _ROTACION_PAGINA_TAM, _centros_por_nombre, _construir_nav, _por_str, _rotacion_materiales_filtrado, _segmentadores_compras, _segmentadores_inventario, _slug
+from .comun import (_ROTACION_PAGINA_TAM, _centros_por_nombre, _construir_nav, _por_str, _rotacion_materiales_filtrado,
+                    _segmentadores_compras, _segmentadores_inventario, _slug, alcance_categoria, filtro_solicitante)
 from .portada import _contexto_informe_area, _contexto_resumen_area
 from .zonas import _zonas_categoria
 
@@ -44,11 +45,15 @@ def categoria_detalle(request, slug):
     categoria = mapa_slug.get(slug)
     if categoria is None:
         raise Http404("Categoría no encontrada")
+    with alcance_categoria(request, categoria):
+        return _categoria_detalle(request, slug, categoria, categorias_nav)
 
+
+def _categoria_detalle(request, slug, categoria, categorias_nav):
     fechas_inv = q.fechas_inventario_disponibles()
     sin_datos = not fechas_inv and not q.anios_compras_disponibles()
-    # Categorías que alguna vez tienen inventario (CAPEX, Servicios Administrativos
-    # y Servicios Industriales son solo de compras/servicios y nunca lo tienen):
+    # Categorías que alguna vez tienen inventario (Servicios Administrativos y
+    # Servicios Industriales son solo de compras/servicios y nunca lo tienen):
     # sin pestaña Inventario ni Fill Rate.
     tiene_inventario = bool(fechas_inv) and categoria in set(q.categorias_inventario_disponibles())
     zonas = _zonas_categoria(categoria, tiene_inventario)
@@ -63,7 +68,8 @@ def categoria_detalle(request, slug):
             return HttpResponse("")
         return HttpResponse(_html_zona_categoria(request, categoria, slug, zona, tiene_inventario))
 
-    contexto = {"categoria": categoria, "categorias_nav": categorias_nav, "slug": slug}
+    contexto = {"categoria": categoria, "categorias_nav": categorias_nav, "slug": slug,
+                "filtro_solicitante": filtro_solicitante(request, categoria)}
     if sin_datos:
         contexto["sin_datos"] = True
         return render(request, "gestion/categoria_detalle.html", contexto)
@@ -89,7 +95,11 @@ def exportar_excel(request, slug=None):
         categoria = mapa_slug.get(slug)
         if categoria is None:
             raise Http404("Categoría no encontrada")
+    with alcance_categoria(request, categoria):
+        return _exportar_excel(request, categoria)
 
+
+def _exportar_excel(request, categoria):
     fechas_inv = q.fechas_inventario_disponibles()
 
     # Los mismos segmentadores que la página: período de compras (Año,

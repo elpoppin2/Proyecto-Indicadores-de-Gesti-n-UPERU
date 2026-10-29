@@ -9,6 +9,19 @@ from .base import _cacheado, _query
 from .reglas import CATEGORIAS_EXCLUIDAS_INVENTARIO, CATEGORIA_INVENTARIO_EFECTIVA, CATEGORIA_MATERIAL_EFECTIVA, CONSOLIDACION_CATEGORIAS_INVENTARIO, FAMILIA_MATERIAL_EFECTIVA, FILTRO_CATEGORIA_INVENTARIO_VALIDA, FILTRO_INVENTARIO_CON_CATEGORIA
 
 
+# Materiales obsoletos (pedido del usuario, 2026-10-28, valor del inventario
+# de Suministros Industriales "sin obsoletos"): estado de material S8 en el
+# maestro de materiales (ZMM060).
+ESTADO_MATERIAL_OBSOLETO = "S8"
+
+
+@_cacheado
+def materiales_obsoletos():
+    """Códigos de los materiales con estado ESTADO_MATERIAL_OBSOLETO en el maestro."""
+    df = _query("SELECT codigo FROM gestion_material WHERE estado_material = %s", [ESTADO_MATERIAL_OBSOLETO])
+    return tuple(sorted(df["codigo"]))
+
+
 @_cacheado
 def catalogo_materiales():
     """Maestro de materiales (ZMM060) con su categoría y familia efectivas. Es la

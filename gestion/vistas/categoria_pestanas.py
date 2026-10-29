@@ -85,7 +85,7 @@ def _cat_compras(request, categoria, tiene_inventario):
         contexto["fill_rate"] = next((r for r in fill_rate_todas if r["categoria"] == categoria), None)
     lead_time_todas = q.lead_time_por_categoria_rango(rango["fecha_ini"], rango["fecha_fin"])
     contexto["lead_time"] = next((r for r in lead_time_todas if r["categoria"] == categoria), None)
-    contexto["unico"] = None if categoria == "CAPEX" else _proveedor_unico_periodo(sc, categoria)
+    contexto["unico"] = _proveedor_unico_periodo(sc, categoria)
     if con_otif:
         contexto["otif"] = ejecutivo.otif(rango["fecha_ini"], rango["fecha_fin"], categoria)
     return contexto
@@ -234,9 +234,9 @@ def _seleccion_precios(request, categoria):
     Familia, Centro, Material en cascada y Período) y los datos que dejan:
     base (compras de la categoría), df (filtrado), inflacion_total (todas
     las comparaciones) e inflacion (las del período). Lo usan la pestaña y
-    su detalle fila por fila."""
+    su detalle fila por fila. `categoria`: una o varias (tupla, el Overview)."""
     base = q.precios_entrada_materiales_real()
-    base = base[base["categoria"] == categoria]
+    base = base[base["categoria"].isin(categoria if isinstance(categoria, tuple) else (categoria,))]
     evaluacion_sel = request.GET.get("evaluacion_ipu", "interanual")
     if evaluacion_sel not in _EVALUACIONES_IPU_CATEGORIA:
         evaluacion_sel = "interanual"
@@ -292,11 +292,11 @@ def _cat_precios(request, categoria, tiene_inventario):
         "materiales": materiales_op, "material_sel": material_sel,
         "periodos": [], "periodo_sel": "desde",
         "resumen": None, "grafico": None, "puntos": [], "tablas": [], "aviso": "", "detalle": [], "grafico_precio": None,
+        "por_categoria": [],
     }
     if base.empty:
-        pr["aviso"] = ("Esta categoría no tiene compras de materiales con entrada de mercancía (MB51) para medir su "
-                       "precio unitario; las compras de servicios o proyectos se evaluarán cuando se defina con qué "
-                       "dato medirlas.")
+        pr["aviso"] = ("El IPU se mide con el precio unitario de materiales con código y entrada de mercancía (MB51); "
+                       "las compras de servicios se evaluarán cuando se defina con qué dato medirlas.")
         return {"pr": pr}
     inflacion_total, inflacion = s["inflacion_total"], s["inflacion"]
     if inflacion_total.empty:
@@ -348,6 +348,13 @@ def _cat_precios(request, categoria, tiene_inventario):
     ).reset_index()
     materiales["bolsa"] = materiales["importe"] - materiales["base_importe"]
     materiales["pct"] = (materiales["importe"] / materiales["base_importe"] - 1) * 100
+    if isinstance(categoria, tuple):
+        # Varias categorías (Overview): lo pagado y su valor al precio base por
+        # categoría, para el desglose del IPU.
+        por_cat = validas.assign(base_importe=validas["precio_base"] * validas["toneladas"]).groupby("categoria").agg(
+            importe=("importe", "sum"), base_importe=("base_importe", "sum")).reset_index()
+        pr["por_categoria"] = [{"categoria": r.categoria, "importe": float(r.importe), "base_importe": float(r.base_importe)}
+                               for r in por_cat.sort_values("importe", ascending=False).itertuples()]
 
     # Todos los materiales que subieron (y los que bajaron), con su total:
     # lo pagado, lo que habría costado al precio base y la variación

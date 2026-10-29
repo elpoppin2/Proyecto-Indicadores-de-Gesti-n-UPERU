@@ -218,9 +218,42 @@ def alcance_actual():
 
 
 def clave_alcance():
-    """El alcance vigente con sus reglas, para las claves de caché."""
+    """El alcance vigente con sus reglas (y el de solicitantes), para las claves de caché."""
     reglas = _REGLAS_ALCANCE.get()
-    return (_ALCANCE_MATERIALES.get(), reglas) if any(reglas) else _ALCANCE_MATERIALES.get()
+    clave = (_ALCANCE_MATERIALES.get(), reglas) if any(reglas) else _ALCANCE_MATERIALES.get()
+    solicitantes = _ALCANCE_SOLICITANTES.get()
+    return (clave, ("solicitantes", solicitantes)) if solicitantes else clave
+
+
+# Alcance de solicitantes (pedido del usuario, 2026-10-28, Suministros
+# Industriales): mientras rige (`with alcance_solicitantes("gep"):`), las
+# compras (todo lo que usa FILTRO_COMPRAS_VALIDAS_LC: compras, plazo de pago,
+# proveedores, OTIF, lead time) quedan solo con las de solicitantes de GEP o
+# Proyectos ("gep") o sin ellas ("sin_gep"); ver gestion_solicitante.
+ALCANCES_SOLICITANTES = ("gep", "sin_gep")
+_ALCANCE_SOLICITANTES = contextvars.ContextVar("alcance_solicitantes", default=None)
+
+
+@contextlib.contextmanager
+def alcance_solicitantes(modo):
+    token = _ALCANCE_SOLICITANTES.set(modo if modo in ALCANCES_SOLICITANTES else None)
+    try:
+        yield
+    finally:
+        _ALCANCE_SOLICITANTES.reset(token)
+
+
+def alcance_solicitantes_actual():
+    return _ALCANCE_SOLICITANTES.get()
+
+
+def _sql_solicitantes_alcance(columna="lc.solicitante"):
+    """Condición SQL (con su AND) del alcance de solicitantes vigente; "" sin alcance."""
+    modo = _ALCANCE_SOLICITANTES.get()
+    if not modo:
+        return ""
+    lista = "SELECT UPPER(codigo) FROM gestion_solicitante WHERE gep_proyectos"
+    return f" AND UPPER(TRIM(COALESCE({columna}, ''))) {'IN' if modo == 'gep' else 'NOT IN'} ({lista})"
 
 
 def _sql_proveedores_alcance(material="material_codigo", proveedor="proveedor_codigo"):

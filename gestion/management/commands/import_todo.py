@@ -82,6 +82,15 @@ class Command(BaseCommand):
         else:
             self.stdout.write("== Ingresos físicos (S&OP, ZMM056) == (omitido, no se encontró la carpeta)")
 
+        # Solicitantes con su área (GEP y Proyectos, filtro de Suministros
+        # Industriales): una foto completa, se toma el archivo más reciente.
+        if self._carpeta_opcional(base, "INFORMACIÓN SOLICITANTES"):
+            solicitantes = self._paso("Solicitantes", lambda: self._mas_reciente(base, "INFORMACIÓN SOLICITANTES"))
+            if solicitantes:
+                self._paso("Solicitantes", "import_solicitantes", solicitantes)
+        else:
+            self.stdout.write("== Solicitantes == (omitido, no se encontró la carpeta 'INFORMACIÓN SOLICITANTES')")
+
         fbl3n_dir = self._carpeta_opcional(base, "TABLA_FBL3N")
         if fbl3n_dir:
             self._paso("Ajustes de valor de existencias (FBL3N)", "import_fbl3n", fbl3n_dir, forzar=forzar)

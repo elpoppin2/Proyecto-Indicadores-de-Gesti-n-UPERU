@@ -643,6 +643,13 @@ def _contexto_evaluacion_precios(request, base, evaluacion, sufijo, campo="categ
                          "pct": d["acumulado"] * 100, "bolsa": d["bolsa_acumulada"], "toneladas": d["toneladas_acumuladas"]})
     total = q.inflacion_canasta(inflacion)
     total["variacion"] = total["variacion"] or 0.0
+    # Lo pagado y su valor al precio base de cada material en el período (sin
+    # atípicas), para el desglose del IPU por material de los cuadrantes de
+    # Planificación (pedido del usuario, 2026-10-28).
+    validas = inflacion[~inflacion["atipica"]].sort_values("mes")
+    por_material = validas.assign(base_importe=validas["precio_base"] * validas["toneladas"]).groupby(
+        ["material_codigo", "centro"]).agg(texto_breve=("texto_breve", "last"), importe=("importe", "sum"),
+                                           base_importe=("base_importe", "sum"), toneladas=("toneladas", "sum")).reset_index()
     contexto.update({
         "meses": [_mes_corto(m) for m in meses], "meses_fecha": meses, "anios": anios, "filas": filas, "canasta": canasta,
         "ipu_fila": ipu_fila,
@@ -665,6 +672,9 @@ def _contexto_evaluacion_precios(request, base, evaluacion, sufijo, campo="categ
         "bolsa_anios_total": [q.inflacion_canasta(inflacion[inflacion["anio"] == a])["bolsa"] for a in anios],
         "un_material": total_materiales == 1,
         "filas_total": total_materiales, "filas_recortadas": mostrar is not None,
+        "por_material": [{"nombre": f"{r.texto_breve} ({q.nombre_centro(r.centro).title()})", "importe": float(r.importe),
+                          "base_importe": float(r.base_importe), "cantidad": f"{r.toneladas:z,.0f} {por_unidad(r.material_codigo)}"}
+                         for r in por_material.itertuples()],
     })
     if por_familia and por_anio:
         contexto["familias_ipu"] = _participacion_familias_ipu(inflacion_total, base, por_anio[-1], meses)

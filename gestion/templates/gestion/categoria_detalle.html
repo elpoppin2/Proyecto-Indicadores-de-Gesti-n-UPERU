@@ -21,6 +21,22 @@
     <p class="aviso">Todavía no hay datos cargados.</p>
   {% else %}
 
+    {# Filtro Solicitante (Suministros Industriales, pedido del usuario 2026-10-28): rige para todas las pestañas; al cambiarlo se recarga la página con ?solicitante= (los demás filtros y la pestaña abierta se conservan). #}
+    {% if filtro_solicitante %}
+      <form class="filtros filtro-pagina" method="get">
+        <div class="campo">
+          <label for="solicitante">Solicitante</label>
+          <select name="solicitante" id="solicitante" onchange="var u = new URL(window.location.href); if (this.value) { u.searchParams.set('solicitante', this.value); } else { u.searchParams.delete('solicitante'); } window.location.href = u.href;">
+            {% for o in filtro_solicitante.opciones %}
+              <option value="{{ o.valor }}"{% if o.valor == filtro_solicitante.sel %} selected{% endif %}>{{ o.texto }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <p class="nota">GEP y Proyectos según el área de cada solicitante (archivo de solicitantes). Rige para compras, proveedores, plazo de pago y OTIF de todas las pestañas; el inventario y el IPU no dependen del solicitante.</p>
+        <noscript><button type="submit">Aplicar</button></noscript>
+      </form>
+    {% endif %}
+
     {# Pestañas de la categoría (views._zonas_categoria): Indicadores viene en la página; cada otra se pide al abrirla (?_zona=inventario) y zonas.js las precarga en segundo plano. Pedido por el usuario: mismas pestañas que Planificación (Indicadores, Inventario, Precios e IPU...) y las propias de cada categoría. #}
     <nav class="zonas" role="tablist" aria-label="Pestañas de {{ categoria|nombre_visible }}">
       {% for z in zonas %}

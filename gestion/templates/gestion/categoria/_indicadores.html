@@ -1,4 +1,4 @@
-{# Pestaña Indicadores de una categoría (views._cat_indicadores): un panel por pestaña con su número clave y el gráfico que lo explica. "Ver detalle" abre la pestaña. Las categorías con filtro Año (Suministros Industriales, como Planificación; pedido del usuario 2026-10-24) traen sus paneles por período (vistas): en el localhost el filtro vuelve a pedir la sección (base.html); en la copia de SharePoint vienen todos los períodos y el filtro muestra uno (graficos.js). #}
+{# Pestaña Indicadores de una categoría (views._cat_indicadores) y del Overview (todas juntas, nombre_indicadores): un panel por pestaña con su número clave y el gráfico que lo explica. "Ver detalle" abre la pestaña. Las categorías con filtro Año (las de códigos de material, como Planificación; pedido del usuario 2026-10-24 y 28) traen sus paneles por período (vistas): en el localhost el filtro vuelve a pedir la sección (base.html); en la copia de SharePoint vienen todos los períodos y el filtro muestra uno (graficos.js). #}
 <section class="indicadores-graficos" id="sec-indicadores-categoria">
   {% if vistas %}
     <div class="indicadores-cabecera">
@@ -13,7 +13,7 @@
         </div>
         {% if not estatico %}<noscript><button type="submit">Aplicar</button></noscript>{% endif %}
       </form>
-      <p class="nota indicadores-nota">{{ categoria|title }} en el año elegido, contra el año anterior. Pasa el mouse por un gráfico para ver el detalle.</p>
+      <p class="nota indicadores-nota">{% if nombre_indicadores %}{{ nombre_indicadores }}{% else %}{{ categoria|title }}{% endif %} en el año elegido, contra el año anterior. Pasa el mouse por un gráfico para ver el detalle.</p>
     </div>
     {% for v in vistas %}
       <div class="paneles-indicador" data-vista="anio_indicadores={{ v.valor }}"{% if v.valor != periodo_sel %} hidden{% endif %}>

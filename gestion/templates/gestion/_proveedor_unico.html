@@ -2,7 +2,7 @@
 {# Dependencia de proveedor único (views._proveedor_unico_periodo / ejecutivo.proveedor_unico), en el bloque Compras del Overview (por_categoria=True) y de cada categoría. #}
 <section class="bloque" id="sec-unico">
   <h2>Dependencia de proveedor único · {{ sc.texto }}</h2>
-  <p class="nota">Cuánto de lo que se compra de forma recurrente ({{ un.meses_minimos }} mes{{ un.meses_minimos|pluralize:"es" }} o más del período) depende de un solo proveedor: riesgo de abastecimiento y de negociación. Sin CAPEX.</p>
+  <p class="nota">Cuánto de lo que se compra de forma recurrente ({{ un.meses_minimos }} mes{{ un.meses_minimos|pluralize:"es" }} o más del período) depende de un solo proveedor: riesgo de abastecimiento y de negociación.</p>
   {% if un.pct is not None %}
     <div class="metricas">
       <div class="metrica"><span class="valor">{{ un.pct|numero:0 }}%</span><span class="etiqueta">Del valor recurrente con un solo proveedor</span></div>

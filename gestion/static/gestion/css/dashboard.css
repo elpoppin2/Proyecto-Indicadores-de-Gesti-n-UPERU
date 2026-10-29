@@ -990,6 +990,26 @@ tbody.tabla-ordenada { animation: filas-asentar .25s ease-out; }
 .paneles-indicador[hidden] { display: none; }
 .panel-ancho { grid-column: 1 / -1; }
 @media (max-width: 980px) { .paneles-indicador { grid-template-columns: minmax(0, 1fr); } }
+/* Tabla larga en un panel (desglose del IPU por material de Planificación,
+   pedido del usuario 2026-10-29): el panel toma la altura de su fila (la del
+   gráfico de al lado) y la tabla se desplaza por dentro, con el encabezado y
+   el total fijos. El marco no aporta altura (la tabla va en posición absoluta). */
+.tabla-panel-marco { position: relative; flex: 1 1 auto; min-height: 240px; }
+.tabla-panel-marco > .tabla-panel {
+  position: absolute; inset: 0; margin: 0; overflow: auto; scrollbar-gutter: stable;
+  border: 1px solid var(--table-line); border-radius: 6px; background: var(--surface);
+}
+.tabla-panel-marco table { font-size: 12.5px; }
+.tabla-panel-marco th, .tabla-panel-marco td { padding-top: 6px; padding-bottom: 6px; }
+.tabla-panel-marco thead th { position: sticky; top: 0; z-index: 2; background: var(--th-bg); box-shadow: inset 0 -1px 0 var(--table-line); }
+.tabla-panel-marco tfoot { position: sticky; bottom: 0; z-index: 2; }
+.tabla-panel-marco tfoot td { background: var(--th-bg); border-top: 0; box-shadow: inset 0 2px 0 var(--table-line); }
+/* Pestaña Simulación de Planificación (en preparación): lo que va a tener, en tres columnas. */
+.simulacion-plan { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
+.simulacion-modulo { border: 1px solid var(--line); border-radius: var(--radio); padding: 16px 18px; background: var(--surface); }
+.simulacion-modulo h3 { margin: 0 0 6px; font-size: 15px; }
+.simulacion-modulo p { margin: 0; font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+@media (max-width: 860px) { .simulacion-plan { grid-template-columns: minmax(0, 1fr); } }
 .panel-indicador {
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radio); box-shadow: var(--shadow);
   padding: 20px 22px 18px; display: flex; flex-direction: column; gap: 14px; min-width: 0;
@@ -1019,10 +1039,30 @@ tbody.tabla-ordenada { animation: filas-asentar .25s ease-out; }
 .estado-alerta { color: var(--down-texto); background: color-mix(in srgb, var(--down) 10%, transparent); }
 .estado-aviso { color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); }
 .estado-neutro { color: var(--muted); }
+/* Resumen por categoría de la Portada: celda contra la meta de la categoría (sin meta, sin color). */
+.tabla-semaforo td.celda-ok, .muestra-celda.celda-ok { color: var(--up); background: color-mix(in srgb, var(--up) 11%, transparent); font-weight: 600; }
+.tabla-semaforo td.celda-aviso, .muestra-celda.celda-aviso { color: var(--warn); background: color-mix(in srgb, var(--warn) 11%, transparent); font-weight: 600; }
+.tabla-semaforo td.celda-alerta, .muestra-celda.celda-alerta { color: var(--down-texto); background: color-mix(in srgb, var(--down) 10%, transparent); font-weight: 600; }
+.celda-meta-texto { display: block; margin-top: 2px; font-size: 11.5px; font-weight: 400; color: var(--muted); white-space: nowrap; }
+.muestra-celda { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 12px; margin-right: 4px; }
 .panel-pie { display: flex; flex-direction: column; gap: 6px; margin-top: auto; }
 .panel-pie .leyenda-curva { margin-top: 0; gap: 6px 14px; font-size: 12px; }
 .panel-nota { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
 .panel-vacio { font-size: 13px; padding: 18px 0; }
+/* Tabla dentro de un panel (desglose del IPU del Overview): compacta, las
+   cabeceras largas ("Valor de compra Ene-25–Oct-26") se parten en dos líneas. */
+.tabla-panel { margin: 2px 0 4px; }
+.tabla-panel table { width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+.tabla-panel th { white-space: normal; line-height: 1.25; vertical-align: bottom; }
+.tabla-panel td.num { white-space: nowrap; }
+/* Línea de meta en los gráficos de líneas de Indicadores (inventario sin
+   obsoletos y OTIF de Suministros Industriales) y su marca en la leyenda. */
+.chart-lineas .referencia-lineas.ref-meta { stroke: var(--down-texto); opacity: .9; }
+.marca-ref-meta { width: 16px; height: 3px; border-radius: 2px;
+  background: repeating-linear-gradient(90deg, var(--down-texto) 0 4px, transparent 4px 7px); }
+/* Filtro de toda la página (Solicitante de Suministros Industriales), sobre las pestañas. */
+.filtro-pagina { align-items: flex-end; margin: 0 0 14px; }
+.filtro-pagina .nota { margin: 0; max-width: 68ch; }
 
 /* Barras sobre una escala (% de la meta, desviación con signo, días): nombre,
    pista con la referencia punteada (y la banda de tolerancia) y el valor. */

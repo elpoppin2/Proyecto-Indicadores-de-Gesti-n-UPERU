@@ -19,6 +19,6 @@
     "inmovilizado_recuperable_pct": 20,
     "monto_minimo_proveedor_plazo": 100000,
     "meses_compra_recurrente": 3,
-    "categorias_sin_formula_contrato": ["CAPEX", "EMPAQUES"]
+    "categorias_sin_formula_contrato": ["EMPAQUES"]
   }
 }

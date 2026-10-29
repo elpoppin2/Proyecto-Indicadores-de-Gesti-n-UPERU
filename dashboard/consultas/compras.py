@@ -64,6 +64,7 @@ def top_proveedores(anio, top=15):
 CONSOLIDACION_CATEGORIAS_COMPRA = {
     "MROM": "REPUESTOS",
     "MROE": "REPUESTOS",
+    "MRO": "REPUESTOS",  # servicios de los GCp de mantenimiento y, desde 2026-10-28, lo que era CAPEX de esos GCp
     "CONSUMIBLES": "SUMINISTROS INDUSTRIALES",
     "SUMINISTROS": "SUMINISTROS INDUSTRIALES",
     "SUMINISTROS INDUSTRIALES": "SUMINISTROS INDUSTRIALES",

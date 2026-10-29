@@ -1,11 +1,34 @@
-"""Página Overview: los indicadores de todas las categorías juntas."""
+"""Página Overview: los indicadores de todas las categorías juntas. Pestaña
+Indicadores (los cuatro cuadrantes, con filtro Año) y Detalle por categoría
+(compras, proveedores, plazo de pago e inventario de cada una)."""
 
 from dashboard import queries as q
 from django.contrib.auth.decorators import login_required
+from django.http import HttpResponse
 from django.shortcuts import render
+from django.template.loader import render_to_string
+from django.utils.safestring import mark_safe
 
 from .. import charts, ejecutivo
+from .categoria_indicadores import cuadrantes_todas
 from .comun import _construir_nav, _evolucion_inventario, _mes_abrev_guion, _por_familia_centro, _por_str, _proveedor_unico_periodo, _segmentadores_compras, _segmentadores_inventario, _slug
+from .plan_cuadrantes import periodo_valido, periodos_cuadrantes
+
+
+def _html_indicadores(request, categorias):
+    """Pestaña Indicadores: los cuatro cuadrantes de todas las categorías
+    juntas en el período del filtro Año (?anio_indicadores=; por defecto
+    "2025 en adelante")."""
+    periodos = periodos_cuadrantes()
+    periodo_sel = periodo_valido(request.GET.get("anio_indicadores", ""))
+    con_inventario = set(q.categorias_inventario_disponibles())
+    categorias_inventario = [c for c in categorias if c in con_inventario]
+    vistas = [{"valor": periodo_sel, "texto": dict(periodos)[periodo_sel],
+               "paneles": cuadrantes_todas(request, categorias, categorias_inventario, periodo_sel)}]
+    return render_to_string("gestion/categoria/_indicadores.html", {
+        "vistas": vistas, "periodos": [{"valor": v, "texto": t} for v, t in periodos], "periodo_sel": periodo_sel,
+        "nombre_indicadores": "Todas las categorías",
+    }, request=request)
 
 
 @login_required
@@ -14,12 +37,36 @@ def overview(request):
 
     fechas_inv = q.fechas_inventario_disponibles()
     anios_compras = q.anios_compras_disponibles()
+    sin_datos = not fechas_inv and not anios_compras
+
+    # Una pestaña (?_zona=) o una sección al cambiar su filtro (?_seccion=):
+    # solo ese pedazo de HTML. Las secciones que no son de Indicadores están
+    # en el Detalle por categoría.
+    zona, seccion = request.GET.get("_zona"), request.GET.get("_seccion")
+    if zona or seccion:
+        if sin_datos:
+            return HttpResponse("")
+        if zona == "indicadores" or seccion == "sec-indicadores-categoria":
+            return HttpResponse(_html_indicadores(request, categorias))
+        return HttpResponse(render_to_string("gestion/_overview_detalle.html",
+                                             _contexto_detalle(request, categorias_nav, categorias), request=request))
 
     contexto = {"categoria": "OVERVIEW", "categorias_nav": categorias_nav, "es_overview": True}
-
-    if not fechas_inv and not anios_compras:
+    if sin_datos:
         contexto["sin_datos"] = True
-        return render(request, "gestion/categoria_detalle.html", contexto)
+        return render(request, "gestion/overview.html", contexto)
+    contexto["indicadores_html"] = mark_safe(_html_indicadores(request, categorias))
+    if fechas_inv:
+        criticos = q.cobertura_materiales_criticos_por_categoria(fechas_inv[-1])
+        contexto["total_criticos_en_riesgo"] = sum(r["en_riesgo"] for r in criticos)
+    return render(request, "gestion/overview.html", contexto)
+
+
+def _contexto_detalle(request, categorias_nav, categorias):
+    """Pestaña Detalle por categoría del Overview (lo que era toda la página
+    hasta el 2026-10-28)."""
+    fechas_inv = q.fechas_inventario_disponibles()
+    contexto = {"categoria": "OVERVIEW", "categorias_nav": categorias_nav, "es_overview": True}
 
     # --- Bloque Compras (Compras, Pareto, Fill Rate, Lead Time): un solo
     # juego de segmentadores (Año, Desde, Hasta, Top de proveedores) ---
@@ -92,7 +139,7 @@ def overview(request):
 
     if not fechas_inv:
         contexto["sin_inventario"] = True
-        return render(request, "gestion/overview.html", contexto)
+        return contexto
 
     # --- Bloque Inventario: un solo juego de segmentadores (Corte, Familia,
     # Centro) para Evolución, Inventario, ABC, Sin movimiento, Rotación,
@@ -194,4 +241,4 @@ def overview(request):
         })
         contexto["variacion"]["filas"] = variacion_filas
 
-    return render(request, "gestion/overview.html", contexto)
+    return contexto

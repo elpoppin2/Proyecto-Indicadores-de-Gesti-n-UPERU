@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 
-from .base import _query
+from .base import _query, _sql_solicitantes_alcance
 
 
 # Cantidades de las reglas que no van al repositorio (público): están en
@@ -29,12 +29,28 @@ def regla_local(clave, defecto):
 # gestion_categoriaservicio). G02 ya no está aquí: se excluye por categoría
 # (ENERGÍA ELÉCTRICA, ver FILTRO_CATEGORIA_VALIDA_LC) en vez de por código de
 # grupo de compras.
-FILTRO_COMPRAS_VALIDAS_LC = (
+_FILTRO_COMPRAS_VALIDAS_BASE = (
     "lc.grupo_compras NOT IN ('G67','G60','G59','G52','G29','G20','G14','G15')"
     " AND lc.campo_b != 'L'"
     " AND lc.proveedor != '4000002'"
     " AND NOT (lc.proveedor = '' AND lc.cuenta_proveedor = '')"
 )
+
+
+class _FiltroComprasValidas:
+    """FILTRO_COMPRAS_VALIDAS_LC: la regla de arriba más el alcance de
+    solicitantes vigente (base.alcance_solicitantes, filtro GEP y Proyectos
+    de Suministros Industriales). Se arma al ponerlo en el f-string de cada
+    consulta, así todas las de compras lo respetan sin cambiar su firma."""
+
+    def __str__(self):
+        return _FILTRO_COMPRAS_VALIDAS_BASE + _sql_solicitantes_alcance()
+
+    def __format__(self, especificacion):
+        return format(str(self), especificacion)
+
+
+FILTRO_COMPRAS_VALIDAS_LC = _FiltroComprasValidas()
 
 # "Valor de Compras" = Tp. cambio * Valor neto (convierte a soles las líneas en USD/EUR).
 # Definido por el usuario. Se usa COALESCE a 1 porque las pocas líneas sin tipo de
@@ -50,7 +66,24 @@ PROVEEDOR_EFECTIVO_LC = "COALESCE(NULLIF(lc.cuenta_proveedor, ''), lc.proveedor)
 # Categoría efectiva de una línea de compra: la del grupo de artículos (CATEGORÍAS
 # OFICIAL) o, si no tiene, la Categoría de Servicio de su grupo de compras (GCp).
 # Requiere JOIN con gestion_categoria (alias c) y gestion_categoriaservicio (alias cs).
-_CATEGORIA_BASE_LC = "COALESCE(NULLIF(c.categoria, ''), NULLIF(cs.categoria_servicio, ''))"
+# CAPEX se disolvió como categoría (pedido del usuario, 2026-10-28): sus grupos
+# de artículos (proyectos, vehículo pesado) ya no definen la categoría y la
+# línea toma la de su grupo de compras, como un servicio.
+CATEGORIAS_DISUELTAS = ("CAPEX",)
+# Grupos de compras sin fila en la tabla de categorías de servicio y su
+# categoría: G70 (nuevo desde set-2026, equipos eléctricos y repuestos de
+# puesta en marcha) va a Repuestos (confirmado por el usuario, 2026-10-28).
+CATEGORIA_GRUPO_COMPRAS_SIN_TABLA = {"G70": "REPUESTOS"}
+_IN_DISUELTAS = ",".join(f"'{c}'" for c in CATEGORIAS_DISUELTAS)
+_CATEGORIA_GCP_LC = (
+    "COALESCE(NULLIF(cs.categoria_servicio, ''), CASE lc.grupo_compras"
+    + "".join(f" WHEN '{g}' THEN '{cat}'" for g, cat in CATEGORIA_GRUPO_COMPRAS_SIN_TABLA.items())
+    + " END)"
+)
+_CATEGORIA_BASE_LC = (
+    f"COALESCE(CASE WHEN c.categoria IN ({_IN_DISUELTAS}) THEN NULL ELSE NULLIF(c.categoria, '') END, "
+    f"{_CATEGORIA_GCP_LC})"
+)
 
 # Pedidos con categoría puesta a mano, por encima de la regla anterior
 # (pedido del usuario, 2026-10-26): Doc. compra -> categoría.
@@ -205,6 +238,7 @@ CONSOLIDACION_CATEGORIAS_INVENTARIO = {
     "SUMINISTROS": "SUMINISTROS INDUSTRIALES",
     "MROE": "REPUESTOS",
     "MROM": "REPUESTOS",
+    "MRO": "REPUESTOS",  # categoría de servicio de los GCp de mantenimiento (G08, G55, G58, G64)
 }
 _CASE_CONSOLIDACION_INVENTARIO = " ".join(
     f"WHEN '{origen}' THEN '{destino}'" for origen, destino in CONSOLIDACION_CATEGORIAS_INVENTARIO.items()
@@ -235,10 +269,17 @@ FAMILIA_INVENTARIO_EFECTIVA = (
 
 # Mismas reglas pero a nivel de material (sobre gestion_material m + gestion_categoria c),
 # para poder clasificar materiales fuera del contexto de una línea de inventario
-# (p.ej. consumos de MB51). Aquí la excepción de Caliza no distingue centro.
+# (p.ej. consumos de MB51). Aquí la excepción de Caliza no distingue centro. Un
+# material de una categoría disuelta (CAPEX) toma la de servicio del grupo de
+# compras de su maestro, como sus compras.
 _CATEGORIA_MATERIAL_BASE = (
-    "CASE WHEN m.codigo IN ('14-00000024', '14-00000023')"
-    " THEN 'MATERIAS PRIMAS' ELSE c.categoria END"
+    "CASE WHEN m.codigo IN ('14-00000024', '14-00000023') THEN 'MATERIAS PRIMAS'"
+    f" WHEN c.categoria IN ({_IN_DISUELTAS}) THEN COALESCE("
+    "(SELECT NULLIF(cs.categoria_servicio, '') FROM gestion_categoriaservicio cs WHERE cs.grupo_compras = m.grupo_compras),"
+    " CASE m.grupo_compras"
+    + "".join(f" WHEN '{g}' THEN '{cat}'" for g, cat in CATEGORIA_GRUPO_COMPRAS_SIN_TABLA.items())
+    + " END)"
+    " ELSE c.categoria END"
 )
 CATEGORIA_MATERIAL_EFECTIVA = (
     f"CASE {_CATEGORIA_MATERIAL_BASE} {_CASE_CONSOLIDACION_INVENTARIO} ELSE {_CATEGORIA_MATERIAL_BASE} END"
