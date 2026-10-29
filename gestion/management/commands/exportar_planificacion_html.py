@@ -260,7 +260,8 @@ class Command(BaseCommand):
         indicadores = views._html_indicadores_cuadrantes(RequestFactory().get("/planificacion/"), estatico=True)
         indicadores = re.sub(r"\n\s+", "\n", indicadores)  # sin la sangría de la plantilla
         # "</" escapado: un texto de SAP con "</script>" no puede cortar el <script> de los datos.
-        datos_json = json.dumps(datos, ensure_ascii=False).replace("</", "<\\/")
+        # Sin espacios tras "," y ":" (decenas de miles de filas: ~1 MB menos que leer al abrirlo).
+        datos_json = json.dumps(datos, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
         html = (plantilla.replace("/*__DASHBOARD_CSS__*/", css)
                 .replace("/*__ZONAS_JS__*/", zonas_js)
                 .replace("__LOGO_UNACEM__", logo)

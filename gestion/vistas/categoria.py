@@ -13,7 +13,8 @@ from django.utils.safestring import mark_safe
 from .categoria_indicadores import _cat_indicadores
 from .categoria_pestanas import _cat_abastecimiento, _cat_compras, _cat_cuentas, _cat_inventario, _cat_precios_zona
 from .comun import (_ROTACION_PAGINA_TAM, _centros_por_nombre, _construir_nav, _por_str, _rotacion_materiales_filtrado,
-                    _segmentadores_compras, _segmentadores_inventario, _slug, alcance_categoria, filtro_solicitante)
+                    _segmentadores_compras, _segmentadores_inventario, _slug, alcance_categoria, filtro_solicitante,
+                    html_guardado)
 from .portada import _contexto_informe_area, _contexto_resumen_area
 from .zonas import _zonas_categoria
 
@@ -31,11 +32,17 @@ _CONTENIDO_ZONA_CATEGORIA = {
 }
 
 
-def _html_zona_categoria(request, categoria, slug, zona, tiene_inventario, contexto=None):
+def _html_zona_categoria(request, categoria, slug, zona, tiene_inventario):
+    """HTML de una pestaña, guardado en la caché por sus filtros. La de
+    Indicadores devuelve también los críticos en riesgo (aviso de la cabecera)."""
     plantilla, funcion = _CONTENIDO_ZONA_CATEGORIA[zona]
-    if contexto is None:
+
+    def dibujar():
         contexto = funcion(request, categoria, tiene_inventario)
-    return render_to_string(plantilla, {**contexto, "categoria": categoria, "slug": slug}, request=request)
+        html = render_to_string(plantilla, {**contexto, "categoria": categoria, "slug": slug}, request=request)
+        return (html, contexto["criticos_en_riesgo"]) if zona == "indicadores" else html
+
+    return html_guardado(request, "categoria", categoria, zona, tiene_inventario, dibujar=dibujar)
 
 
 @login_required
@@ -66,19 +73,19 @@ def _categoria_detalle(request, slug, categoria, categorias_nav):
             zona = next((z["clave"] for z in zonas if seccion in z["secciones"].split()), "")
         if sin_datos or zona not in {z["clave"] for z in zonas}:
             return HttpResponse("")
-        return HttpResponse(_html_zona_categoria(request, categoria, slug, zona, tiene_inventario))
+        html = _html_zona_categoria(request, categoria, slug, zona, tiene_inventario)
+        return HttpResponse(html[0] if zona == "indicadores" else html)
 
     contexto = {"categoria": categoria, "categorias_nav": categorias_nav, "slug": slug,
                 "filtro_solicitante": filtro_solicitante(request, categoria)}
     if sin_datos:
         contexto["sin_datos"] = True
         return render(request, "gestion/categoria_detalle.html", contexto)
-    indicadores = _cat_indicadores(request, categoria, tiene_inventario)
+    indicadores_html, criticos_en_riesgo = _html_zona_categoria(request, categoria, slug, "indicadores", tiene_inventario)
     contexto.update({
         "zonas": zonas,
-        "indicadores_html": mark_safe(_html_zona_categoria(request, categoria, slug, "indicadores",
-                                                           tiene_inventario, indicadores)),
-        "total_criticos_en_riesgo": indicadores["criticos_en_riesgo"],
+        "indicadores_html": mark_safe(indicadores_html),
+        "total_criticos_en_riesgo": criticos_en_riesgo,
     })
     return render(request, "gestion/categoria_detalle.html", contexto)
 

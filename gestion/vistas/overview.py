@@ -11,7 +11,7 @@ from django.utils.safestring import mark_safe
 
 from .. import charts, ejecutivo
 from .categoria_indicadores import cuadrantes_todas
-from .comun import _construir_nav, _evolucion_inventario, _mes_abrev_guion, _por_familia_centro, _por_str, _proveedor_unico_periodo, _segmentadores_compras, _segmentadores_inventario, _slug
+from .comun import _construir_nav, _evolucion_inventario, _mes_abrev_guion, _por_familia_centro, _por_str, _proveedor_unico_periodo, _segmentadores_compras, _segmentadores_inventario, _slug, html_guardado
 from .plan_cuadrantes import periodo_valido, periodos_cuadrantes
 
 
@@ -21,14 +21,18 @@ def _html_indicadores(request, categorias):
     "2025 en adelante")."""
     periodos = periodos_cuadrantes()
     periodo_sel = periodo_valido(request.GET.get("anio_indicadores", ""))
-    con_inventario = set(q.categorias_inventario_disponibles())
-    categorias_inventario = [c for c in categorias if c in con_inventario]
-    vistas = [{"valor": periodo_sel, "texto": dict(periodos)[periodo_sel],
-               "paneles": cuadrantes_todas(request, categorias, categorias_inventario, periodo_sel)}]
-    return render_to_string("gestion/categoria/_indicadores.html", {
-        "vistas": vistas, "periodos": [{"valor": v, "texto": t} for v, t in periodos], "periodo_sel": periodo_sel,
-        "nombre_indicadores": "Todas las categorías",
-    }, request=request)
+
+    def dibujar():
+        con_inventario = set(q.categorias_inventario_disponibles())
+        categorias_inventario = [c for c in categorias if c in con_inventario]
+        vistas = [{"valor": periodo_sel, "texto": dict(periodos)[periodo_sel],
+                   "paneles": cuadrantes_todas(request, categorias, categorias_inventario, periodo_sel)}]
+        return render_to_string("gestion/categoria/_indicadores.html", {
+            "vistas": vistas, "periodos": [{"valor": v, "texto": t} for v, t in periodos], "periodo_sel": periodo_sel,
+            "nombre_indicadores": "Todas las categorías",
+        }, request=request)
+
+    return html_guardado(request, "overview", "indicadores", periodo_sel, dibujar=dibujar)
 
 
 @login_required
@@ -48,8 +52,8 @@ def overview(request):
             return HttpResponse("")
         if zona == "indicadores" or seccion == "sec-indicadores-categoria":
             return HttpResponse(_html_indicadores(request, categorias))
-        return HttpResponse(render_to_string("gestion/_overview_detalle.html",
-                                             _contexto_detalle(request, categorias_nav, categorias), request=request))
+        return HttpResponse(html_guardado(request, "overview", "detalle", dibujar=lambda: render_to_string(
+            "gestion/_overview_detalle.html", _contexto_detalle(request, categorias_nav, categorias), request=request)))
 
     contexto = {"categoria": "OVERVIEW", "categorias_nav": categorias_nav, "es_overview": True}
     if sin_datos:

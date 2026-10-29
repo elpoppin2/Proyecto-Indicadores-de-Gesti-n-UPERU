@@ -1,14 +1,80 @@
-"""Utilidades compartidas por las vistas: formatos (soles, meses, nombres), navegación, rangos de meses y segmentadores (filtros) de compras, inventario, categoría/centro y material."""
+"""Utilidades compartidas por las vistas: caché de lo ya dibujado, formatos (soles, meses, nombres), navegación, rangos de meses y segmentadores (filtros) de compras, inventario, categoría/centro y material."""
 
 import calendar
 import datetime
+import hashlib
 import re
+from pathlib import Path
 from urllib.parse import urlencode
 
 from dashboard import queries as q
 from django.urls import reverse
 
 from .. import charts, ejecutivo
+
+
+def _huella_vistas():
+    """Huella del código de las vistas, gráficos y plantillas: si cambian, lo
+    guardado en caché con el código anterior deja de usarse (la de queries.py
+    ya va en la versión de la caché). ejecutivo.py y desglose.py también: el
+    Resumen y el Informe por área se guardan ya dibujados."""
+    base = Path(__file__).resolve().parent.parent  # gestion/
+    huella = hashlib.sha1()
+    for ruta in sorted([*(base / "vistas").glob("*.py"), base / "charts.py", base / "ejecutivo.py", base / "desglose.py",
+                        *(base / "templates").rglob("*.html")]):
+        huella.update(ruta.read_bytes())
+    return huella.hexdigest()[:10]
+
+
+_HUELLA_VISTAS = _huella_vistas()
+
+
+def _modificado(ruta):
+    try:
+        return ruta.stat().st_mtime_ns
+    except OSError:
+        return None
+
+
+def clave_vista(*partes):
+    """Clave de caché de algo ya dibujado (HTML o contexto de una vista). Lleva
+    la fecha de hoy (ventanas de meses), la huella de las vistas, el alcance
+    vigente (Logística, filtro Solicitante) y la fecha de modificación de
+    metas.json y de reglas_locales.json: si se edita una meta o una regla, lo
+    dibujado con la anterior deja de usarse, como en la Portada."""
+    return (*partes, datetime.date.today().isoformat(), _HUELLA_VISTAS, q.clave_alcance(),
+            _modificado(ejecutivo._RUTA_METAS), _modificado(q._ARCHIVO_REGLAS_LOCALES))
+
+
+# Sangría de las plantillas: en las pestañas con tablas de miles de filas
+# (Precios e IPU de Suministros o Repuestos) era más de la quinta parte del
+# HTML. Entre etiquetas de tabla no se ve (se quita: además, cada espacio es
+# un nodo más que arma el navegador); en el resto basta un salto de línea.
+_ETIQUETA_TABLA = r"</?(?:table|thead|tbody|tfoot|tr|td|th|colgroup|col)\b"
+_ESPACIO_TABLA = re.compile(rf"({_ETIQUETA_TABLA}[^>]*>)\s+(?={_ETIQUETA_TABLA})")
+_SANGRIA = re.compile(r">[ \t]*\n\s*<")
+
+
+def compactar_html(html):
+    """`html` sin la sangría de las plantillas; se ve igual (no usar con <pre> ni <textarea>)."""
+    return _SANGRIA.sub(">\n<", _ESPACIO_TABLA.sub(r"\1", html))
+
+
+def html_guardado(request, *partes, dibujar):
+    """Lo que devuelve `dibujar()` (el HTML de una pestaña, o una tupla que lo
+    trae primero), compactado y guardado en la caché versionada por todos los
+    parámetros de la URL. La segunda apertura de una pestaña con los mismos
+    filtros es inmediata, y calentar_cache deja dibujadas las de por defecto
+    tras cada carga. Solo para HTML que no depende del usuario (sin
+    csrf_token ni request.user). La copia de SharePoint (X-Uperu-Copia) se
+    guarda aparte: trae todos los períodos dibujados."""
+    def compacto():
+        valor = dibujar()
+        return (compactar_html(valor[0]), *valor[1:]) if isinstance(valor, tuple) else compactar_html(valor)
+
+    parametros = tuple(sorted((clave, tuple(valores)) for clave, valores in request.GET.lists()))
+    copia = request.headers.get("X-Uperu-Copia") == "1"
+    return q._cache_obtener(clave_vista("html", *partes, parametros, copia), compacto)
 
 
 # Formato de mes abreviado con guion ("Ene - 2025") para los gráficos de

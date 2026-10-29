@@ -2,9 +2,7 @@
 
 import copy
 import datetime
-import hashlib
 import json
-from pathlib import Path
 from urllib.parse import urlencode
 
 from dashboard import queries as q
@@ -15,9 +13,9 @@ from django.template.loader import render_to_string
 from django.utils.safestring import mark_safe
 from django.views.decorators.http import require_POST
 
-from .. import asistente, ejecutivo
+from .. import asistente
 from ..models import ConsultaAsistente
-from .comun import _construir_nav, _por_str
+from .comun import _construir_nav, _por_str, clave_vista, compactar_html
 from .plan_calidad import _contexto_calidad, _contexto_energia, _contexto_premios
 from .plan_cuadrantes import _paneles_cuadrantes, periodo_valido, periodos_cuadrantes
 from .plan_consumo import _contexto_consumo, _contexto_consumo_especifico, _contexto_proyeccion_sop
@@ -169,22 +167,6 @@ _CONTEXTOS_KPIS = {
 }
 
 
-def _huella_vistas():
-    """Huella del código de las vistas, gráficos y plantillas: si cambian, lo
-    guardado en caché con el código anterior deja de usarse (la de queries.py
-    ya va en la versión de la caché). ejecutivo.py y desglose.py también: el
-    Resumen y el Informe por área de Planificación se guardan ya dibujados."""
-    base = Path(__file__).resolve().parent.parent  # gestion/
-    huella = hashlib.sha1()
-    for ruta in sorted([*(base / "vistas").glob("*.py"), base / "charts.py", base / "ejecutivo.py", base / "desglose.py",
-                        *(base / "templates").rglob("*.html")]):
-        huella.update(ruta.read_bytes())
-    return huella.hexdigest()[:10]
-
-
-_HUELLA_VISTAS = _huella_vistas()
-
-
 def _parametros_seccion(request, sufijos):
     return tuple(sorted(
         (clave, valor) for clave, valor in request.GET.items()
@@ -193,12 +175,15 @@ def _parametros_seccion(request, sufijos):
 
 
 def _clave_planificacion(tipo, *partes):
-    # Con el alcance: Logística de Materias Primas usa las mismas secciones
-    # con menos materiales y no debe tomar lo guardado por Planificación.
-    # Con la fecha de metas.json: si se editan las metas, el Resumen y el
-    # Informe por área (guardados ya dibujados) se recalculan como la Portada.
-    return ("planificacion", tipo, *partes, datetime.date.today().isoformat(), _HUELLA_VISTAS, q.clave_alcance(),
-            ejecutivo._RUTA_METAS.stat().st_mtime_ns)
+    # Con el alcance (en clave_vista): Logística de Materias Primas usa las
+    # mismas secciones con menos materiales y no debe tomar lo guardado por
+    # Planificación.
+    return clave_vista("planificacion", tipo, *partes)
+
+
+def _html_cacheado(clave, dibujar):
+    """HTML de `dibujar()` compactado (ver compactar_html) y guardado en la caché."""
+    return q._cache_obtener(clave, lambda: compactar_html(dibujar()))
 
 
 def _contexto_seccion(request, seccion):
@@ -219,7 +204,7 @@ def _html_seccion(request, seccion):
             return ""
         return render_to_string(plantilla, {variable: contexto, "qs_seccion": urlencode(parametros)})
 
-    return q._cache_obtener(_clave_planificacion("html", seccion, parametros), dibujar)
+    return _html_cacheado(_clave_planificacion("html", seccion, parametros), dibujar)
 
 
 # Filtro Mes de la pestaña Indicadores: qué parámetro de mes de cada sección
@@ -284,7 +269,7 @@ def _html_indicadores(request, mes_forzado=None, paneles=_PANELES_OVERVIEW, zona
             "meses": meses, "mes_sel": mes,
         })
 
-    return q._cache_obtener(_clave_planificacion("indicadores", valor_mes, _parametros_seccion(request, sufijos)), dibujar)
+    return _html_cacheado(_clave_planificacion("indicadores", valor_mes, _parametros_seccion(request, sufijos)), dibujar)
 
 
 def _html_indicadores_cuadrantes(request, estatico=False):
@@ -332,8 +317,8 @@ def _html_indicadores_cuadrantes(request, estatico=False):
                           for c, s in _SEGMENTOS_INDICADORES.items()],
             "clave_sel": _clave_vista_indicadores(periodo_sel, codigos_sel), "vistas": vistas, "estatico": estatico})
 
-    return q._cache_obtener(_clave_planificacion("cuadrantes", "estatico" if estatico else (periodo_sel, codigos_sel)),
-                            dibujar)
+    return _html_cacheado(_clave_planificacion("cuadrantes", "estatico" if estatico else (periodo_sel, codigos_sel)),
+                          dibujar)
 
 
 # Filtro Categoría de Indicadores: código del parámetro -> segmento de Planificación.
@@ -361,7 +346,7 @@ def _html_kpis_zona(request, zona):
         contextos = {n: _contexto_seccion(request, _SECCIONES_INDICADORES[n]) for n in nombres}
         return render_to_string("gestion/planificacion/_kpis_zona.html", {"zona": zona, "kpis": _kpis_zona(zona, contextos)})
 
-    return q._cache_obtener(_clave_planificacion("kpis", zona, _parametros_seccion(request, sufijos)), dibujar)
+    return _html_cacheado(_clave_planificacion("kpis", zona, _parametros_seccion(request, sufijos)), dibujar)
 
 
 # Conversación con el asistente de IA: se guarda en la sesión del usuario solo

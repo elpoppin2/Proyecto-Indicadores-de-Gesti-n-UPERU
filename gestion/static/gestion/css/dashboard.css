@@ -1123,7 +1123,7 @@ tbody.tabla-ordenada { animation: filas-asentar .25s ease-out; }
 .marca-regular { background: var(--warn); }
 .marca-mal { background: var(--down); }
 .marca-neutra { background: var(--table-header); opacity: .55; }
-.marca-linea-ipu, .marca-linea-neto { background: var(--ink); }
+.marca-linea-ipu { background: var(--ink); }
 .marca-serie-0 { background: var(--accent); }
 .marca-serie-1 { background: repeating-linear-gradient(90deg, var(--table-header) 0 4px, transparent 4px 7px); }
 /* Curva S por centro (Ritmo del abastecimiento): Atocongo, Condorcocha y el
@@ -1609,7 +1609,6 @@ details.detalle-calculo[open] > summary.boton-detalle::before { content: "−"; 
 details.detalle-calculo > summary.boton-detalle:hover { background: var(--surface-2); border-color: var(--accent); }
 details.detalle-calculo > summary.boton-detalle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 details.detalle-calculo[open] > summary.boton-detalle { margin-bottom: 12px; }
-.tabla-calculo td, .tabla-calculo th { white-space: nowrap; }
 /* Matriz de precios TCO: encabezados con el estilo normal de las tablas (el
    usuario pidió quitar el azul y el verde), columnas IPU separadas con un
    filete y en negrita, celdas atípicas en amarillo. */

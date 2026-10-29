@@ -1,16 +1,88 @@
-# Indicadores de Gestión
+# Indicadores de Gestión — Supply Chain
 
-Dashboard Django de indicadores de gestión de Supply Chain (compras, inventario,
-precios/IPU, cuentas por pagar y Planificación S&OP), alimentado desde extracciones de
-SAP (MB51, MB5B, ME2N, ZMM060, ZMM056, FBL3N) y un catálogo de categorías.
+Dashboard Django de indicadores de gestión de Supply Chain: compras, proveedores,
+inventario, precios e IPU, cuentas por pagar, OTIF y Planificación S&OP. Se alimenta de
+extracciones de SAP (MB51, MB5B, ME2N, ZMM060, ZMM056, FBL3N), de los Excel del S&OP y
+de un catálogo de categorías. La **Portada** es la vista gerencial (indicadores contra su
+meta, con semáforo por categoría). Cada área tiene su página con pestañas, y cada número
+puede abrirse fila por fila.
 
-## Arquitectura
+## Cómo está armado
 
-- `config/`: configuración de Django.
-- `gestion/`: modelos, vistas (`gestion/vistas/`), plantillas, gráficos SVG
-  (`charts.py`), resumen ejecutivo (`ejecutivo.py`) y comandos de carga y exportación.
-- `dashboard/queries.py`: consultas y cálculos (SQL directo + pandas) con caché versionada.
-  (La antigua app de Streamlit se retiró el 2026-10-21; el dashboard web la reemplazó.)
+```
+SAP y Excel del S&OP ──► comandos import_* ──► base de datos (gestion/models.py)
+                                                    │
+        dashboard/consultas/  SQL + pandas, con caché versionada (memoria y disco)
+                                                    │
+        gestion/vistas/       arma cada pestaña y guarda su HTML ya dibujado
+                                                    │
+        gestion/templates/    ──► navegador (localhost) y copias estáticas (SharePoint)
+```
+
+| Carpeta / archivo | Qué hay |
+|---|---|
+| `config/` | Configuración de Django. Todo lo sensible sale de variables de entorno o de `secretos/` (fuera de git). |
+| `dashboard/consultas/` | Consultas y cálculos, un módulo por tema: `base` (caché, alcance, fechas), `reglas` (reglas de negocio en SQL que comparten todas las consultas), `inventario`, `compras`, `precios` (precio real, IPU), `detalle` (filas del detalle fila por fila) y, para el S&OP, `sop_base`, `sop_abastecimiento`, `sop_inventario`, `consumo_sop`, `importados`, `calidad`. |
+| `dashboard/queries.py` | Fachada: re-exporta todo, así el resto del código usa `from dashboard import queries as q`. |
+| `gestion/vistas/` | Un módulo por página: `portada`, `overview`, `categoria` (+ `categoria_pestanas`, `categoria_indicadores`), `planificacion` (+ `plan_*` por sección), `detalle`. `zonas.py` define las pestañas y `comun.py` lo compartido (filtros, navegación, caché del HTML). `gestion/views.py` es la fachada para `urls.py` y los comandos. |
+| `gestion/charts.py` | Gráficos en SVG generados en el servidor, sin librerías de JavaScript. |
+| `gestion/ejecutivo.py` | Portada, semáforo contra metas, cartera de oportunidades e informe mensual. |
+| `gestion/desglose.py` | Detalle fila por fila y descarga a Excel de cada indicador. |
+| `gestion/asistente.py` | Asistente de IA de Planificación (solo lectura; inactivo sin clave de API). |
+| `gestion/metas.json` | Metas propuestas de la Portada (las confirmadas por categoría van en `reglas_locales.json`). |
+| `gestion/management/commands/` | Carga de datos (`import_*`), caché (`calentar_cache`), copias estáticas (`exportar_*`) y verificación (`verificar_calculos`, `revisar_paginas`). |
+| `datos_locales/` | Fuera de git: `reglas_locales.json` (cantidades y metas de la empresa) y la foto de `verificar_calculos`. |
+| `herramientas/` | Scripts de uso puntual (copia del sitio a una fecha de corte). |
+
+## Criterios del proyecto
+
+Lo que hace que el tablero sea confiable, rápido y fácil de mantener. Sirven para cualquier
+tablero nuevo del área.
+
+1. **Una regla de negocio vive en un solo lugar.** Qué compras cuentan, el valor de
+   compra, la categoría efectiva o el plazo de pago están en `dashboard/consultas/reglas.py`;
+   todas las consultas y páginas usan esa misma definición. Un indicador nunca se calcula
+   de dos formas.
+2. **Cada número se puede auditar.** Cada indicador tiene su "Cómo se calcula" y su
+   detalle fila por fila (`desglose.py`), con los mismos filtros que la cifra agregada: la
+   suma de las filas cuadra con el número mostrado.
+3. **El repositorio es público: ninguna cifra de la empresa en el código.** Ni montos,
+   toneladas, porcentajes ni metas en código, comentarios o mensajes de commit. Las
+   cantidades que la lógica necesita se leen de `datos_locales/reglas_locales.json`
+   (`q.regla_local`), que no se sube. Antes de cada push se revisa `git diff origin/main`.
+4. **La caché nunca muestra datos viejos.** No vence por tiempo: se invalida cuando entran
+   datos nuevos (`marcar_datos_actualizados`) o cambia el código (huella de las consultas y
+   de las vistas). Lo ya dibujado lleva además la fecha, el alcance y la fecha de
+   modificación de `metas.json` y `reglas_locales.json`.
+5. **Lo que no depende del usuario se dibuja una sola vez.** Cada pestaña se guarda ya
+   dibujada por sus filtros (`html_guardado` en `gestion/vistas/comun.py`), y
+   `calentar_cache` deja listas las vistas por defecto después de cada carga.
+6. **Las cargas no dejan datos a medias.** Cada importador corre en una transacción, solo
+   procesa archivos nuevos o modificados y se puede repetir sin duplicar.
+7. **Se verifica antes de publicar.** Pruebas unitarias, cifras de los meses cerrados
+   contra una foto (`verificar_calculos`) y todas las páginas y filtros (`revisar_paginas`);
+   ver [Verificación](#verificación).
+8. **Las copias compartidas salen del mismo código.** La copia de SharePoint y el HTML de
+   Planificación se generan desde las mismas vistas y estilos del localhost; nunca se
+   mantiene una copia aparte.
+9. **Seguro por defecto.** Todas las páginas piden sesión, las claves están fuera del
+   código y el servidor escucha solo en `127.0.0.1`.
+
+## Agregar un indicador
+
+1. **Consulta** en el módulo de `dashboard/consultas/` del tema. Usa las reglas de
+   `reglas.py` (por ejemplo `FILTRO_COMPRAS_VALIDAS_LC`) en vez de repetir condiciones, y
+   `_query` (SQL) o `@_cacheado` (cálculo en pandas) para que quede en la caché. Exponla en
+   `dashboard/queries.py`.
+2. **Detalle fila por fila** en `consultas/detalle.py` y `gestion/desglose.py`, con los
+   mismos filtros que la consulta agregada.
+3. **Vista**: el contexto de la pestaña en `gestion/vistas/` y el gráfico con
+   `gestion/charts.py`. Si la pestaña es nueva, regístrala en `zonas.py`.
+4. **Plantilla** en `gestion/templates/gestion/`, con su bloque "Cómo se calcula".
+5. **Meta** (si tiene): propuesta en `metas.json`; la confirmada, en
+   `reglas_locales.json`.
+6. **Verificar**: `manage.py test gestion`, `verificar_calculos --guardar` (para incluirlo
+   en la foto) y `revisar_paginas`.
 
 ## Instalación
 
@@ -22,28 +94,19 @@ python -m venv venv
 
 ## Carga de datos
 
-Cada CSV se importa con un comando de Django. También existe un orquestador
-`import_todo` que corre los cuatro pasos en orden a partir de la carpeta
-`CSVs_Convertidos`.
+`import_todo` carga todo desde la carpeta sincronizada de SAP, en este orden:
+categorías (si está la carpeta), materiales (ZMM060), inventario (MB5B), compras (ME2N),
+movimientos (MB51), plan de abastecimiento, plan de consumos y stock mínimo/máximo del
+S&OP, ingresos físicos (ZMM056), solicitantes y ajustes de valor (FBL3N).
 
 ```powershell
-# Todo de una vez (recomendado)
-.\venv\Scripts\python.exe manage.py import_todo "E:\Exceles Control de Gestión\CSVs_Convertidos"
-
-# O paso a paso:
-.\venv\Scripts\python.exe manage.py import_categorias "<ruta>\CATEGORÍAS\CATEGORÍAS OFICIAL.csv"
-.\venv\Scripts\python.exe manage.py import_materiales "<ruta>\TABLA_SQ01_ZMM060\MM60_SUPPLY.csv"
-.\venv\Scripts\python.exe manage.py import_inventario "<ruta>\TABLA_MB5B"
-.\venv\Scripts\python.exe manage.py import_compras "<ruta>\TABLA_ME2N"
+.\venv\Scripts\python.exe manage.py import_todo "<carpeta DOCUMENTOS DESCARGA TABLAS MM>"
 ```
 
-`import_inventario` e `import_compras` aceptan tanto un archivo individual como una
-carpeta completa (importan todos los `.csv` que encuentren dentro).
-
-Los reimportes son seguros: `import_categorias` y `import_materiales` actualizan por
-código; `import_inventario` ignora duplicados (mismo material+fecha+área); si necesitas
-recargar compras de un año, borra antes esas filas (`LineaCompra.objects.filter(anio_origen=2024).delete()`)
-para no duplicar líneas.
+Cada tabla tiene también su comando (`import_materiales`, `import_compras`,
+`import_movimientos`...), que acepta un archivo o una carpeta. Los reimportes son seguros:
+solo se procesan archivos nuevos o modificados (`--forzar` reprocesa todo) y cada uno
+reemplaza lo que cubre.
 
 ## Roles y autenticación
 
@@ -54,15 +117,8 @@ Todas las páginas piden iniciar sesión. Hay dos roles, implementados como grup
 
 Todavía no hay permisos por área: cualquier usuario ve todas las páginas.
 
-Primero, crea los grupos de roles (una sola vez):
-
 ```powershell
-.\venv\Scripts\python.exe manage.py setup_roles
-```
-
-Luego crea usuarios asignándoles un rol:
-
-```powershell
+.\venv\Scripts\python.exe manage.py setup_roles     # una sola vez: crea los grupos
 .\venv\Scripts\python.exe manage.py crear_usuario juan --password "clave-segura" --rol admin
 .\venv\Scripts\python.exe manage.py crear_usuario maria --password "clave-segura" --rol coordinador
 ```
@@ -70,18 +126,24 @@ Luego crea usuarios asignándoles un rol:
 `crear_usuario` es idempotente: si el usuario ya existe, actualiza su contraseña y su rol.
 Las contraseñas no se escriben en este repositorio.
 
-## Uso
+## Verificación
+
+Después de cada cambio, en este orden:
 
 ```powershell
-# Desarrollo (el uso diario es con waitress, ver abajo)
-.\venv\Scripts\python.exe manage.py runserver
+# 1. Pruebas unitarias (segundos, sin base de datos): formatos, fechas, semáforo, reglas
+.\venv\Scripts\python.exe manage.py test gestion
 
-# Prueba de humo después de un cambio: todas las páginas, filtros, detalles y descargas
-.\venv\Scripts\python.exe manage.py revisar_paginas
-
-# Cifras de meses cerrados contra la foto guardada (IPU, PMP, compras, S&OP...)
+# 2. Cifras de los 12 meses cerrados contra la foto guardada (IPU, PMP, compras, S&OP...)
+#    --guardar toma una foto nueva cuando la diferencia es esperada
 .\venv\Scripts\python.exe manage.py verificar_calculos
+
+# 3. Prueba de humo: todas las páginas, pestañas, filtros, detalles y descargas
+.\venv\Scripts\python.exe manage.py revisar_paginas
 ```
+
+Luego se reinicia el servidor, se corre `calentar_cache` y se regeneran las copias
+estáticas (`exportar_sitio_html` y `exportar_planificacion_html`).
 
 ## Operación diaria (dashboard web para gerencia)
 
@@ -122,25 +184,32 @@ ejecuta `C:\Users\BLAZO\Scripts\actualizar_tablas_mm.ps1`:
 4. `calentar_cache`: abre todas las páginas para dejarlas calculadas.
 5. `exportar_sitio_html`: copia estática por área en la carpeta de SharePoint.
 
+
 ### Por qué es rápido
 
-- **Caché de consultas en disco** (`.cache_consultas/`, ver `dashboard/queries.py`).
+- **Caché de consultas en disco** (`.cache_consultas/`, ver `dashboard/consultas/base.py`).
   - La comparten el servidor y la tarea programada.
   - En memoria, cada proceso guarda lo más usado hasta 1 GB (`UPERU_CACHE_MEMORIA_MB`).
   - No vence por tiempo: cada importación que carga datos cambia la versión y
     todo se recalcula con los datos nuevos, sin reiniciar el servidor.
   - Se puede borrar sin riesgo: se regenera sola.
+- **Cada pestaña se guarda ya dibujada** (Planificación, categorías, Overview), por sus
+  filtros: la segunda apertura no recalcula nada. El HTML se guarda sin la sangría de las
+  plantillas (entre 15 y 30 % menos que enviar y que armar en el navegador).
 - **Lectura de Excel con `python-calamine`**, 4 a 5 veces más rápida que
   openpyxl. `UPERU_LECTOR_EXCEL=openpyxl` fuerza el lector anterior.
 - **SQLite en modo WAL**, con más memoria (ver `config/settings.py`). El
   dashboard lee mientras la carga escribe.
 - **Índices y planes de consulta revisados.** Donde SQLite elegía mal el índice,
   la consulta lo corrige con `+columna` (comentado en cada caso).
+- **Respuestas comprimidas** (gzip) y estáticos con nombre versionado (whitenoise): el
+  navegador guarda los estilos y solo los vuelve a pedir cuando cambian.
 
 | | Antes | Ahora |
 |---|---|---|
-| Primera apertura de Overview | ~136 s | ~0.3 s |
-| Primera apertura de las demás páginas | 2 a 10 s | 0.1 a 0.2 s |
+| Primera apertura de Overview | ~136 s | ~0.03 s |
+| Primera apertura de cada pestaña de categoría | 0.1 a 1 s | ~0.01 s |
+| Las 63 páginas y pestañas, desde la caché en disco | ~11 s | ~1 s |
 | Carga diaria (mes en curso y ME2N completo) | ~21 min | ~2 min |
 
 ## Despliegue en Azure
@@ -249,8 +318,17 @@ Al terminar: `https://indicadores-admin.azurewebsites.net` (dashboard, pide logi
 
 ## Modelo de datos (`gestion/models.py`)
 
-- `Categoria`: catálogo de grupos de artículos (familia/categoría/tipo de material).
-- `Material`: maestro de materiales (ZMM060), enlazado a `Categoria`.
-- `InventarioMensual`: stock y valorización de cierre por material y mes (MB5B).
-- `LineaCompra`: líneas de pedido/solicitud de compra (ME2N), con año de origen para
-  facilitar reimportes incrementales.
+| Modelo | Origen | Qué guarda |
+|---|---|---|
+| `Categoria` | Catálogo de categorías | Grupo de artículos → familia, categoría y tipo de material. |
+| `CategoriaServicio` | Catálogo de categorías | Categoría por grupo de compras, para las compras sin material (servicios). |
+| `Material` | ZMM060 | Maestro de materiales, enlazado a su categoría. |
+| `InventarioMensual` | MB5B | Stock y valor de cierre mensual por material. |
+| `LineaCompra` | ME2N | Líneas de pedido y solicitud de compra, con su año de origen. |
+| `MovimientoMaterial` | MB51 | Movimientos de materiales y servicios (entradas, consumos, traslados). |
+| `Solicitante` | Información de solicitantes | Solicitante de compra con su área y gerencia (filtro GEP y Proyectos). |
+| `PlanAbastecimientoSOP`, `PlanConsumoSOP`, `StockMinMaxSOP` | Excel del S&OP | Plan de abastecimiento, plan de consumos y stock mínimo/máximo por material, centro y mes. |
+| `IngresoFisicoSOP` | ZMM056 | Tickets de báscula de Materias Primas y Combustibles. |
+| `AjustePrecioFBL3N` | FBL3N | Ajustes al valor del stock que no pasan por MB51 (facturas, cambios de precio): precio real. |
+| `ArchivoImportado` | Cargas | Qué archivo se importó y cuándo, para procesar solo lo nuevo. |
+| `ConsultaAsistente` | Asistente de IA | Registro de cada pregunta: herramientas usadas, tokens y duración. |

@@ -26,7 +26,7 @@ class Command(BaseCommand):
         cliente.force_login(usuario)
         # Planificación trae solo Indicadores y pide cada zona aparte al
         # abrirla: se calientan también esas (con sus filtros por defecto).
-        paginas = ["/portada/", "/overview/", "/planificacion/"] + [
+        paginas = ["/portada/", "/overview/", "/overview/?_zona=detalle", "/informe-mensual/", "/planificacion/"] + [
             f"/planificacion/?_zona={clave}" for clave, _, _, secciones in views._ZONAS_PLANIFICACION if secciones
         ]
         # Logística de Materias Primas: mismas secciones con menos materiales.
