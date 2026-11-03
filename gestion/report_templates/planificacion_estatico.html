@@ -54,6 +54,7 @@
     <button type="button" class="zona-tab" role="tab" id="zona-tab-inventario" data-zona="inventario" aria-controls="zona-inventario" aria-selected="false" tabindex="-1"><span class="zona-nombre">Inventario</span><span class="zona-desc">Cobertura y proyección S&amp;OP</span></button>
     <button type="button" class="zona-tab" role="tab" id="zona-tab-precios" data-zona="precios" aria-controls="zona-precios" aria-selected="false" tabindex="-1"><span class="zona-nombre">Precios e IPU</span><span class="zona-desc">Precios de entrada e inflación</span></button>
     <button type="button" class="zona-tab" role="tab" id="zona-tab-calidad" data-zona="calidad" aria-controls="zona-calidad" aria-selected="false" tabindex="-1"><span class="zona-nombre">Calidad y energía</span><span class="zona-desc">Análisis, premios y costo por Gcal</span></button>
+    <button type="button" class="zona-tab" role="tab" id="zona-tab-simulacion" data-zona="simulacion" aria-controls="zona-simulacion" aria-selected="false" tabindex="-1"><span class="zona-nombre">Simulación</span><span class="zona-desc">Inventario valorizado y precios S&amp;OP</span></button>
     <span class="zona-indicador" aria-hidden="true"></span>
   </nav>
 
@@ -322,6 +323,10 @@
     </form>
     <div id="energia-contenido"></div>
   </section>
+  </div>
+
+  <div class="zona-panel" id="zona-simulacion" role="tabpanel" aria-labelledby="zona-tab-simulacion" data-secciones="sec-valorizado sec-precios-sop sec-precision-precios" data-pendiente hidden>
+<!--__SIMULACION_HTML__-->
   </div>
 
 </div>
@@ -3075,8 +3080,37 @@ fEver.addEventListener("change", renderEntregas);
 
 /* ---------- Zonas: cada una se dibuja la primera vez que se abre (o antes,
    en segundo plano, ver zonas.js), no todas al abrir el archivo. ---------- */
+// Simulación: la dibuja el localhost al exportar. El S&OP y la versión de
+// precios traen cada opción ya dibujada (<template id="sop_simulacion-AAAA-MM-DD">
+// y "sop_simprecios-..."); los demás filtros y las descargas quedan para el localhost.
+const AVISO_SIMULACION = "Filtro disponible en el localhost: esta copia muestra la vista por defecto.";
+const SELECTORES_SIMULACION = ["sop_simulacion", "sop_simprecios"];
+function prepararSimulacion(raiz){
+  raiz.querySelectorAll("form.filtros select, form.filtros input, .filtro-multi-boton").forEach(c => {
+    if(SELECTORES_SIMULACION.includes(c.id)) return;
+    c.disabled = true; c.title = AVISO_SIMULACION;
+  });
+  raiz.querySelectorAll(".acciones-version").forEach(a => a.remove());  // las descargas necesitan el localhost
+  for(const id of SELECTORES_SIMULACION){
+    const sel = raiz.querySelector("select#" + id);
+    if(sel) for(const o of [...sel.options]) if(!document.getElementById(`${id}-${o.value}`)) o.remove();
+  }
+}
+document.addEventListener("change", evento => {
+  const id = evento.target.id;
+  if(!SELECTORES_SIMULACION.includes(id)) return;
+  const plantilla = document.getElementById(`${id}-${evento.target.value}`);
+  const actual = evento.target.closest("section.bloque");
+  if(!plantilla || !actual) return;
+  const nueva = plantilla.content.firstElementChild.cloneNode(true);
+  actual.replaceWith(nueva);
+  prepararSimulacion(nueva);
+  setTimeout(() => prepararSimulacion(nueva), 0);  // el botón del filtro Material lo arma zonas.js después
+  document.dispatchEvent(new CustomEvent("uperu:seccion-actualizada", {detail: {seccion: nueva}}));
+});
 const INICIO_ZONA = {
   indicadores: () => {},
+  simulacion: () => prepararSimulacion(document.getElementById("zona-simulacion")),
   cumplimiento: () => {
     f1mes.value = MES_DEFECTO; poblarFiltros1(null, null); renderSeccion1();
     f2mes.value = MES_DEFECTO; poblarFiltros2(null, null); renderSeccion2();

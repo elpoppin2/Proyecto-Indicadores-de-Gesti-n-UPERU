@@ -1004,12 +1004,13 @@ tbody.tabla-ordenada { animation: filas-asentar .25s ease-out; }
 .tabla-panel-marco thead th { position: sticky; top: 0; z-index: 2; background: var(--th-bg); box-shadow: inset 0 -1px 0 var(--table-line); }
 .tabla-panel-marco tfoot { position: sticky; bottom: 0; z-index: 2; }
 .tabla-panel-marco tfoot td { background: var(--th-bg); border-top: 0; box-shadow: inset 0 2px 0 var(--table-line); }
-/* Pestaña Simulación de Planificación (en preparación): lo que va a tener, en tres columnas. */
-.simulacion-plan { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
-.simulacion-modulo { border: 1px solid var(--line); border-radius: var(--radio); padding: 16px 18px; background: var(--surface); }
-.simulacion-modulo h3 { margin: 0 0 6px; font-size: 15px; }
-.simulacion-modulo p { margin: 0; font-size: 13.5px; color: var(--muted); line-height: 1.5; }
-@media (max-width: 860px) { .simulacion-plan { grid-template-columns: minmax(0, 1fr); } }
+/* Pestaña Simulación: valor por categoría (columnas apiladas) y precios que cambiaron contra la versión anterior. */
+.col-sim-mp, .marca-col-sim-mp { fill: var(--prov-0); background: var(--prov-0); }
+.col-sim-comb, .marca-col-sim-comb { fill: var(--prov-1); background: var(--prov-1); }
+td.precio-sube { color: var(--down-texto); font-weight: 600; background: color-mix(in srgb, var(--down) 9%, transparent); }
+td.precio-baja { color: var(--up); font-weight: 600; background: color-mix(in srgb, var(--up) 10%, transparent); }
+td.precio-real, th.precio-real { color: var(--muted); }
+.acciones-version { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin: 4px 0 2px; }
 .panel-indicador {
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radio); box-shadow: var(--shadow);
   padding: 20px 22px 18px; display: flex; flex-direction: column; gap: 14px; min-width: 0;

@@ -435,7 +435,7 @@ def proyeccion_inventario_sop(mes_snapshot):
     columnas = [
         "material_codigo", "texto_breve", "centro", "categoria", "familia",
         "mes", "stock_inicial", "abastecimiento", "consumo", "traslado", "traslado_recibido", "stock_final",
-        "stock_minimo", "stock_maximo", "estado",
+        "stock_minimo", "stock_maximo", "estado", "valor_partida",
     ]
     abast = _plan_sop_por_mes("gestion_planabastecimientosop", "cantidad_plan", mes_snapshot)
     cons = _plan_sop_por_mes("gestion_planconsumosop", "cantidad_consumo", mes_snapshot)
@@ -482,19 +482,22 @@ def proyeccion_inventario_sop(mes_snapshot):
     codigos_stock = {m for m, _ in claves} | {real[0] for real in fusiones}
     ids = ",".join(f"'{m}'" for m in _con_anteriores(codigos_stock))  # con los códigos antiguos (Pelets)
     fecha_inicial = fecha_inventario_inicial_sop(mes_snapshot)
-    stock = {}
+    stock, valor = {}, {}
     if fecha_inicial:
         df_stock = _query(f"""
             SELECT material_codigo AS material_codigo, area_valoracion AS centro,
-                   SUM(stock_cierre) AS stock
+                   SUM(stock_cierre) AS stock, SUM(valor_final) AS valor
             FROM gestion_inventariomensual
             WHERE fecha = %s AND material_codigo IN ({ids}) AND area_valoracion IN ('U001', 'U002')
             GROUP BY material_codigo, area_valoracion
         """, [fecha_inicial])
-        df_stock = _a_codigo_vigente(df_stock.fillna({"stock": 0.0}), "stock")
+        df_stock = _a_codigo_vigente(df_stock.fillna({"stock": 0.0, "valor": 0.0}), ["stock", "valor"])
         stock = {(r.material_codigo, r.centro): float(r.stock or 0.0) for r in df_stock.itertuples()}
+        # Valor del stock de partida (S/, MB5B): lo usa el inventario valorizado de Simulación.
+        valor = {(r.material_codigo, r.centro): float(r.valor or 0.0) for r in df_stock.itertuples()}
         for real, origen in fusiones.items():
             stock[origen] = stock.get(origen, 0.0) + stock.pop(real, 0.0)
+            valor[origen] = valor.get(origen, 0.0) + valor.pop(real, 0.0)
 
     a = {(r.material_codigo, r.centro, r.mes): r.cantidad for r in abast.itertuples()}
     c = {(r.material_codigo, r.centro, r.mes): r.cantidad for r in cons.itertuples()}
@@ -527,6 +530,7 @@ def proyeccion_inventario_sop(mes_snapshot):
                 # abastecimiento y de traslados (es un movimiento interno).
                 "traslado_recibido": entra if (material, centro) in _TRASLADOS_SOP else 0.0,
                 "stock_final": final, "descripcion_plan": descripcion_plan.get((material, centro), ""),
+                "valor_partida": valor.get((material, centro), 0.0),
             })
             saldo = final
 

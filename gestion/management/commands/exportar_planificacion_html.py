@@ -259,6 +259,19 @@ class Command(BaseCommand):
         from gestion import views
         indicadores = views._html_indicadores_cuadrantes(RequestFactory().get("/planificacion/"), estatico=True)
         indicadores = re.sub(r"\n\s+", "\n", indicadores)  # sin la sangría de la plantilla
+        # Pestaña Simulación (2026-11-03): las secciones del localhost con su vista
+        # por defecto, más cada S&OP y cada versión de precios ya dibujados.
+        from gestion.vistas.planificacion import _html_seccion
+
+        def seccion(sid, **filtros):
+            return _html_seccion(RequestFactory().get("/planificacion/", filtros), sid)
+
+        simulacion = [seccion(s) for s in ("sec-valorizado", "sec-precios-sop", "sec-precision-precios")]
+        simulacion += [f'<template id="sop_simulacion-{s.isoformat()}">{seccion("sec-valorizado", sop_simulacion=s.isoformat())}</template>'
+                       for s, _ in q.sop_valorizables()]
+        simulacion += [f'<template id="sop_simprecios-{v.isoformat()}">{seccion("sec-precios-sop", sop_simprecios=v.isoformat())}</template>'
+                       for v in q.versiones_precios_sop()]
+        simulacion = re.sub(r"\n\s+", "\n", "\n".join(simulacion))
         # "</" escapado: un texto de SAP con "</script>" no puede cortar el <script> de los datos.
         # Sin espacios tras "," y ":" (decenas de miles de filas: ~1 MB menos que leer al abrirlo).
         datos_json = json.dumps(datos, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
@@ -266,6 +279,7 @@ class Command(BaseCommand):
                 .replace("/*__ZONAS_JS__*/", zonas_js)
                 .replace("__LOGO_UNACEM__", logo)
                 .replace("<!--__INDICADORES_HTML__-->", indicadores)
+                .replace("<!--__SIMULACION_HTML__-->", simulacion)
                 .replace("__DATA_JSON__", datos_json))
 
         # Se escribe a un temporal y se reemplaza al final: si algo falla a

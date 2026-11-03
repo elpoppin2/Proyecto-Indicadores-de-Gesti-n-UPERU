@@ -22,7 +22,7 @@ SAP y Excel del S&OP ──► comandos import_* ──► base de datos (gestio
 | Carpeta / archivo | Qué hay |
 |---|---|
 | `config/` | Configuración de Django. Todo lo sensible sale de variables de entorno o de `secretos/` (fuera de git). |
-| `dashboard/consultas/` | Consultas y cálculos, un módulo por tema: `base` (caché, alcance, fechas), `reglas` (reglas de negocio en SQL que comparten todas las consultas), `inventario`, `compras`, `precios` (precio real, IPU), `detalle` (filas del detalle fila por fila) y, para el S&OP, `sop_base`, `sop_abastecimiento`, `sop_inventario`, `consumo_sop`, `importados`, `calidad`. |
+| `dashboard/consultas/` | Consultas y cálculos, un módulo por tema: `base` (caché, alcance, fechas), `reglas` (reglas de negocio en SQL que comparten todas las consultas), `inventario`, `compras`, `precios` (precio real, IPU), `detalle` (filas del detalle fila por fila) y, para el S&OP, `sop_base`, `sop_abastecimiento`, `sop_inventario`, `consumo_sop`, `importados`, `calidad` y `simulacion` (versiones de precios e inventario valorizado). |
 | `dashboard/queries.py` | Fachada: re-exporta todo, así el resto del código usa `from dashboard import queries as q`. |
 | `gestion/vistas/` | Un módulo por página: `portada`, `overview`, `categoria` (+ `categoria_pestanas`, `categoria_indicadores`), `planificacion` (+ `plan_*` por sección), `detalle`. `zonas.py` define las pestañas y `comun.py` lo compartido (filtros, navegación, caché del HTML). `gestion/views.py` es la fachada para `urls.py` y los comandos. |
 | `gestion/charts.py` | Gráficos en SVG generados en el servidor, sin librerías de JavaScript. |
@@ -96,11 +96,22 @@ python -m venv venv
 
 `import_todo` carga todo desde la carpeta sincronizada de SAP, en este orden:
 categorías (si está la carpeta), materiales (ZMM060), inventario (MB5B), compras (ME2N),
-movimientos (MB51), plan de abastecimiento, plan de consumos y stock mínimo/máximo del
-S&OP, ingresos físicos (ZMM056), solicitantes y ajustes de valor (FBL3N).
+movimientos (MB51), plan de abastecimiento, plan de consumos, stock mínimo/máximo y versión
+de precios del S&OP, ingresos físicos (ZMM056), solicitantes y ajustes de valor (FBL3N).
 
 ```powershell
 .\venv\Scripts\python.exe manage.py import_todo "<carpeta DOCUMENTOS DESCARGA TABLAS MM>"
+```
+
+**Versión de precios S&OP** (carpeta `TABLA SOP PRECIOS`, un archivo por S&OP: «Precios SOP -
+&lt;mes&gt; &lt;año&gt;.xlsx», hoja `Precios`): la usa la pestaña Simulación para valorizar el
+inventario proyectado a precio promedio móvil. Cada S&OP usa solo su propia versión.
+
+```powershell
+# Convertir el Excel anterior ("1. Precios S&OP Proyección 18 meses <Mes> <Año>.xlsx") a la plantilla
+.\venv\Scripts\python.exe manage.py convertir_precios_sop "<Excel anterior>" "<carpeta TABLA SOP PRECIOS>"
+# Plantilla del mes siguiente: meses reales del tablero y precios de la última versión para editar
+.\venv\Scripts\python.exe manage.py plantilla_precios_sop "<carpeta>" [--mes "Noviembre 2026"]
 ```
 
 Cada tabla tiene también su comando (`import_materiales`, `import_compras`,
@@ -328,6 +339,7 @@ Al terminar: `https://indicadores-admin.azurewebsites.net` (dashboard, pide logi
 | `MovimientoMaterial` | MB51 | Movimientos de materiales y servicios (entradas, consumos, traslados). |
 | `Solicitante` | Información de solicitantes | Solicitante de compra con su área y gerencia (filtro GEP y Proyectos). |
 | `PlanAbastecimientoSOP`, `PlanConsumoSOP`, `StockMinMaxSOP` | Excel del S&OP | Plan de abastecimiento, plan de consumos y stock mínimo/máximo por material, centro y mes. |
+| `PrecioSOP` | Excel del S&OP | Versión de precios: precio proyectado por material, centro y mes de cada S&OP. |
 | `IngresoFisicoSOP` | ZMM056 | Tickets de báscula de Materias Primas y Combustibles. |
 | `AjustePrecioFBL3N` | FBL3N | Ajustes al valor del stock que no pasan por MB51 (facturas, cambios de precio): precio real. |
 | `ArchivoImportado` | Cargas | Qué archivo se importó y cuándo, para procesar solo lo nuevo. |

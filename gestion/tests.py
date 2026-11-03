@@ -1,5 +1,6 @@
 """Pruebas de la lógica que no depende de los datos cargados: formatos, fechas,
-semáforo contra metas, condiciones de pago y el compactado del HTML guardado.
+semáforo contra metas, condiciones de pago, el compactado del HTML guardado, el
+inventario valorizado a precio promedio y la plantilla de precios S&OP.
 No usan la base de datos (corren en segundos):
 
     venv\\Scripts\\python.exe manage.py test gestion
@@ -105,3 +106,80 @@ class CompactarHtmlTest(SimpleTestCase):
     def test_no_toca_el_texto_de_las_celdas(self):
         html = "<td>  dos  espacios  </td>"
         self.assertEqual(compactar_html(html), html)
+
+
+class InventarioValorizadoTest(SimpleTestCase):
+    """Simulación: inventario valorizado a precio promedio móvil (valores de ejemplo)."""
+
+    def test_un_mes_a_precio_promedio(self):
+        # 100 en stock a 10 + 100 comprados a 12 -> promedio 11; quedan 120.
+        pmp, valor = q.valorizar_mes(100, 1000, 100, 1200, 120)
+        self.assertAlmostEqual(pmp, 11.0)
+        self.assertAlmostEqual(valor, 1320.0)
+
+    def test_quiebre_vale_cero_y_sin_stock_no_hay_promedio(self):
+        self.assertEqual(q.valorizar_mes(10, 100, 0, 0, -5), (10.0, 0.0))
+        self.assertEqual(q.valorizar_mes(0, 0, 0, 0, 0), (None, 0.0))
+
+    def test_traslado_entra_al_promedio_del_que_envia_mas_flete(self):
+        import pandas as pd
+        from dashboard.consultas.simulacion import _valorizar
+
+        mes1, mes2 = datetime.date(2026, 10, 1), datetime.date(2026, 11, 1)
+        base = {"texto_breve": "CARBON", "categoria": "COMBUSTIBLES", "familia": ""}
+        filas = [
+            # El que envía: compra 100 a 12 y manda 50 al que recibe.
+            {**base, "material_codigo": "06-00000003", "centro": "U001", "mes": mes1, "stock_inicial": 100.0,
+             "abastecimiento": 100.0, "consumo": 50.0, "traslado": 50.0, "traslado_recibido": 0.0,
+             "stock_final": 100.0, "valor_partida": 1000.0},
+            {**base, "material_codigo": "06-00000003", "centro": "U002", "mes": mes1, "stock_inicial": 0.0,
+             "abastecimiento": 50.0, "consumo": 20.0, "traslado": 0.0, "traslado_recibido": 50.0,
+             "stock_final": 30.0, "valor_partida": 0.0},
+            # Mes 2: compra sin precio en la versión -> al promedio vigente.
+            {**base, "material_codigo": "06-00000003", "centro": "U001", "mes": mes2, "stock_inicial": 100.0,
+             "abastecimiento": 10.0, "consumo": 10.0, "traslado": 0.0, "traslado_recibido": 0.0,
+             "stock_final": 100.0, "valor_partida": 1000.0},
+        ]
+        precios = {("06-00000003", "U001", mes1): 12.0, ("06-00000003", "U002", mes1): 15.0}
+        r = _valorizar(pd.DataFrame(filas), precios).set_index(["centro", "mes"])
+        self.assertAlmostEqual(r.loc[("U001", mes1), "pmp"], 11.0)
+        self.assertAlmostEqual(r.loc[("U001", mes1), "valor_final"], 1100.0)
+        # 50 recibidos a 11 (promedio del que envía) + 3 de flete (15 − 12).
+        self.assertAlmostEqual(r.loc[("U002", mes1), "valor_recibido"], 700.0)
+        self.assertAlmostEqual(r.loc[("U002", mes1), "valor_final"], 420.0)
+        self.assertTrue(r.loc[("U001", mes2), "sin_precio"])
+        self.assertAlmostEqual(r.loc[("U001", mes2), "valor_final"], 1100.0)
+        fila = r.loc[("U001", mes1)]
+        self.assertAlmostEqual(fila.valor_inicial + fila.valor_compras + fila.valor_recibido - fila.valor_salidas,
+                               fila.valor_final)
+
+
+class PlantillaPreciosTest(SimpleTestCase):
+    """La plantilla 'Precios SOP' se lee igual que se escribe; el Supuesto del Excel anterior."""
+
+    def test_ida_y_vuelta(self):
+        import os
+        import tempfile
+
+        from gestion.management.commands._precios_sop_excel import leer_plantilla
+        from gestion.precios_sop import escribir_plantilla
+
+        set26, oct26, nov26 = datetime.date(2026, 9, 1), datetime.date(2026, 10, 1), datetime.date(2026, 11, 1)
+        version = {"mes": oct26, "origen": "prueba", "meses_reales": [set26], "meses_proyectados": [oct26, nov26],
+                   "filas": [{"material_codigo": "07-00000001", "centro": "U001", "categoria": "MATERIAS PRIMAS",
+                              "descripcion": "CALIZA", "unidad": "T", "reales": {set26: 50.0},
+                              "proyectados": {oct26: 51.25, nov26: None}, "supuesto": "Contrato"}]}
+        ruta = os.path.join(tempfile.mkdtemp(), "Precios SOP - Octubre 2026.xlsx")
+        escribir_plantilla(ruta, version)
+        celdas = {c["mes"]: c for c in leer_plantilla(ruta)}
+        self.assertEqual(set(celdas), {set26, oct26, nov26})
+        self.assertAlmostEqual(float(celdas[oct26]["precio"]), 51.25)
+        self.assertIsNone(celdas[nov26]["precio"])
+        self.assertEqual((celdas[oct26]["centro"], celdas[oct26]["supuesto"]), ("U001", "Contrato"))
+
+    def test_supuesto_deja_a_la_vista_el_ajuste(self):
+        from gestion.management.commands._precios_sop_excel import _supuesto
+
+        mar30 = datetime.date(2030, 3, 1)
+        self.assertEqual(_supuesto([(datetime.date(2030, 2, 1), "=AU10", "repite"), (mar30, "=AV10*(1+2.5%)", "ajuste")]),
+                         "Valor escrito; +2.5% desde Mar-30")

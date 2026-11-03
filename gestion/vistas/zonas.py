@@ -14,9 +14,10 @@ _ZONAS_PLANIFICACION = [
     ("inventario", "Inventario", "Cobertura y proyección S&OP", ["sec-cobertura", "sec-proyeccion"]),
     ("precios", "Precios e IPU", "Precios de entrada e inflación", ["sec-precios", "sec-inflacion", "sec-inflacion-mensual"]),
     ("calidad", "Calidad y energía", "Análisis, premios y costo por Gcal", ["sec-calidad", "sec-premios", "sec-energia"]),
-    # Pedido del usuario (2026-10-29): escenarios futuros de stock y precios y
-    # su efecto en el IPU y los indicadores. Por ahora, en preparación.
-    ("simulacion", "Simulación", "Stock y precios proyectados", []),
+    # Pedido del usuario (2026-10-29): escenarios futuros de stock y precios. Desde
+    # el 2026-11-03: inventario valorizado con la versión de precios de cada S&OP.
+    ("simulacion", "Simulación", "Inventario valorizado y precios S&OP",
+     ["sec-valorizado", "sec-precios-sop", "sec-precision-precios"]),
     # Pedido del usuario (2026-10-21): cada área con su resumen e informe mensual.
     ("resumen", "Resumen ejecutivo", "Metas, mensajes y oportunidades del mes", ["sec-resumen-area"]),
     ("informe", "Informe mensual", "Para imprimir o guardar en PDF", ["sec-informe-area"]),
@@ -59,7 +60,6 @@ _ZONAS_LOGISTICA = [
     ("fletes", "Fletes", "Costo de transporte", []),
 ]
 _PLANTILLAS_ZONA_LOGISTICA = {"fletes": "gestion/logistica/_fletes.html"}
-_PLANTILLAS_ZONA_PLANIFICACION = {"simulacion": "gestion/planificacion/_simulacion.html"}
 _PANELES_LOGISTICA = ("planificacion", "logistica_transporte")
 
 

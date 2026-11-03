@@ -1,0 +1,187 @@
+{% load dashboard_extras %}
+{# Inventario valorizado proyectado del S&OP con su versión de precios (pedido del usuario, 2026-11-03). Contexto: plan_simulacion._contexto_valorizado. #}
+{% with p=va %}
+{% if p %}
+<section class="bloque" id="sec-valorizado">
+  <div class="bloque-cabecera">
+    <h2>Inventario valorizado proyectado</h2>
+    <button type="button" class="btn-link" data-imprimir="sec-valorizado">Descargar / Imprimir</button>
+  </div>
+  <p class="nota">Valor en soles del stock que proyecta el S&amp;OP, mes a mes, valorizado con la versión de precios de ese mismo S&amp;OP.</p>
+  <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+    <p>Las cantidades son las de Evolución de inventario: stock inicial + abastecimiento − consumo − traslados a otro centro, desde
+    el inventario de cierre del mes anterior al S&amp;OP (MB5B{% if p.fecha_inicial %} al {{ p.fecha_inicial|date:"d/m/Y" }}{% endif %}),
+    que parte con su valor en SAP.</p>
+    <p>Cada mes se valoriza a <strong>precio promedio móvil</strong>, como el precio V de SAP: las compras entran al precio de la
+    versión de precios S&amp;OP; precio promedio = (valor inicial + compras) ÷ (stock inicial + compras), y lo que sale (consumo y
+    traslados) sale a ese promedio. El valor final es el stock final por el precio promedio. Se toman todas las entradas del mes
+    antes de sus salidas.</p>
+    <p>Lo que Condorcocha recibe por traslado (Carbón Importado) entra al precio promedio con que salió de Atocongo ese mes más el
+    flete, que es la diferencia entre el precio S&amp;OP de las dos plantas. Un mes sin precio en la versión valoriza la compra al
+    precio promedio del momento (no lo mueve). Un stock negativo del plan (quiebre) vale 0.</p>
+    <p>Cada S&amp;OP usa solo su propia versión de precios («Precios SOP - &lt;mes&gt; &lt;año&gt;.xlsx» en {{ p.carpeta_precios }}).</p>
+  </div></details>
+  <form class="filtros" method="get" data-target="sec-valorizado">
+    <div class="campo">
+      <label for="sop_simulacion">S&amp;OP</label>
+      <select name="sop_simulacion" id="sop_simulacion">
+        {% for o in p.opciones_snapshot %}
+          <option value="{{ o.fecha|fechaiso }}" {% if o.fecha == p.snapshot %}selected{% endif %}>{{ o.fecha|mesanio }}{% if not o.con_precios %} (sin precios){% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="categoria_simulacion">Categoría</label>
+      <select name="categoria_simulacion" id="categoria_simulacion">
+        {% for cat in p.categorias %}<option value="{{ cat }}" {% if cat == p.categoria_sel %}selected{% endif %}>{{ cat }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="centro_simulacion">Centro</label>
+      <select name="centro_simulacion" id="centro_simulacion">
+        {% for c in p.centros %}<option value="{{ c }}" {% if c == p.centro_sel %}selected{% endif %}>{{ c|centro }}</option>{% endfor %}
+      </select>
+    </div>
+    {% include "gestion/planificacion/_filtro_material.html" with nombre="material_simulacion" opciones=p.materiales seleccion=p.material_sel %}
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+
+  {% if not p.tiene_precios %}
+    <p class="aviso">El S&amp;OP de {{ p.snapshot|mesanio }} no tiene su versión de precios: carga «{{ p.archivo_precios }}» en {{ p.carpeta_precios }} para valorizarlo.</p>
+  {% elif p.resumen %}
+    <div class="metricas">
+      <div class="metrica"><span class="valor">{{ p.partida|soles_mm }}</span><span class="etiqueta">Valor de partida{% if p.fecha_inicial %} (MB5B al {{ p.fecha_inicial|date:"d/m/Y" }}){% endif %}</span></div>
+      <div class="metrica"><span class="valor">{{ p.cierre.valor_final|soles_mm }}</span><span class="etiqueta">Valor proyectado a {{ p.cierre.mes|mesanio }}</span></div>
+      <div class="metrica"><span class="valor {% if p.variacion_total > 0 %}dato-alerta{% endif %}">{% if p.variacion_total > 0 %}+{% endif %}{{ p.variacion_total|soles_mm }}</span><span class="etiqueta">Variación al cierre del horizonte{% if p.variacion_pct %} ({{ p.variacion_pct }}){% endif %}</span></div>
+      <div class="metrica"><span class="valor">{{ p.mayor.valor_final|soles_mm }}</span><span class="etiqueta">Mayor valor del horizonte ({{ p.mayor.mes|mesanio }})</span></div>
+    </div>
+    {% if p.sin_precio %}
+      <p class="aviso">Sin precio en la versión (sus compras van al precio promedio): {{ p.sin_precio|join:", " }}.</p>
+    {% endif %}
+
+    {% include "gestion/planificacion/_grafico_columnas.html" with g=p.grafico titulo="Inventario valorizado proyectado por mes" %}
+    <div class="leyenda-curva">
+      {% for l in p.leyenda %}<span class="leyenda-item"><span class="leyenda-marca marca-{{ l.clase }}"></span>{{ l.texto }}</span>{% endfor %}
+      <span class="leyenda-item leyenda-nota">Millones de S/ al cierre de cada mes; la primera columna es la partida (MB5B)</span>
+    </div>
+
+    <h3 class="subtitulo">Detalle mensual (S/)</h3>
+    <div class="tabla-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Mes</th><th class="num">Valor inicial</th><th class="num">Compras (T)</th><th class="num">Compras</th>
+            <th class="num">Precio de compra (S/ por T)</th>
+            {% if p.hay_traslados %}<th class="num">Recibido por traslado</th>{% endif %}
+            <th class="num">Salidas (consumo y traslados)</th><th class="num">Valor final</th><th class="num">Variación del mes</th>
+            {% if p.un_material %}<th class="num">Stock final (T)</th><th class="num">Precio promedio (S/ por T)</th><th class="num">Precio S&amp;OP (S/ por T)</th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in p.resumen %}
+            <tr>
+              <td>{{ r.mes|mesanio }}</td>
+              <td class="num">{{ r.valor_inicial|numero:0 }}</td>
+              <td class="num">{{ r.compras|numero:0 }}</td>
+              <td class="num">{{ r.valor_compras|numero:0 }}</td>
+              <td class="num">{{ r.precio_compra|numero:2|default:"—" }}</td>
+              {% if p.hay_traslados %}<td class="num">{{ r.valor_recibido|numero:0 }}</td>{% endif %}
+              <td class="num">{{ r.valor_salidas|numero:0 }}</td>
+              <td class="num">{{ r.valor_final|numero:0 }}</td>
+              <td class="num {% if r.variacion < 0 %}dato-negativo{% endif %}">{{ r.variacion|numero:0 }}</td>
+              {% if p.un_material %}
+                <td class="num {% if r.stock_final < 0 %}dato-negativo{% endif %}">{{ r.stock_final|numero:0 }}</td>
+                <td class="num">{{ r.pmp|numero:2|default:"—" }}</td>
+                <td class="num">{{ r.precio_sop|numero:2|default:"—" }}</td>
+              {% endif %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="subtitulo">Valor al cierre de cada mes por material (S/)</h3>
+    <div class="tabla-marco">
+      <table class="tabla-fija">
+        <thead>
+          <tr>
+            <th class="fijo-1">Material</th><th class="fijo-2">Descripción</th><th>Centro</th><th class="num">Partida</th>
+            {% for m in p.meses %}<th class="num">{{ m.corto }}</th>{% endfor %}
+            <th class="num">Variación</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in p.matriz %}
+            <tr>
+              <td class="fijo-1 col-codigo">{{ f.material_codigo }}</td>
+              <td class="fijo-2" title="{{ f.texto_breve }}">{{ f.texto_breve }}{% if f.sin_precio %} <span class="parte-acopio">· sin precio en la versión</span>{% endif %}</td>
+              <td>{{ f.centro|centro }}</td>
+              <td class="num">{{ f.partida|numero:0 }}</td>
+              {% for v in f.celdas %}<td class="num">{{ v|numero:0 }}</td>{% endfor %}
+              <td class="num {% if f.variacion < 0 %}dato-negativo{% endif %}">{{ f.variacion|numero:0 }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td class="fijo-1">Total</td><td class="fijo-2">{{ p.matriz|length }} materiales</td><td></td>
+            <td class="num">{{ p.total_partida|numero:0 }}</td>
+            {% for v in p.total_celdas %}<td class="num">{{ v|numero:0 }}</td>{% endfor %}
+            <td class="num">{{ p.variacion_total|numero:0 }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    {% with c=p.comparativo %}
+    <h3 class="subtitulo">Cambio contra el S&amp;OP anterior</h3>
+    {% if not c.anterior %}
+      <p class="nota">Para comparar falta la versión de precios de un S&amp;OP anterior (por ejemplo «Precios SOP - Setiembre 2026.xlsx» con su Plan de Consumos).</p>
+    {% elif not c.meses %}
+      <p class="nota">El S&amp;OP de {{ c.anterior|mesanio }} no tiene meses en común con este para los filtros elegidos.</p>
+    {% else %}
+      <p class="nota">Valor al cierre de cada mes según el S&amp;OP de {{ c.anterior|mesanio }} y según el de {{ p.snapshot|mesanio }}, en los meses que tienen los dos.
+      Efecto cantidad: el plan y el inventario de partida nuevos con los precios de antes; efecto precio: la nueva versión de precios.</p>
+      <div class="tabla-scroll">
+        <table>
+          <thead><tr><th>Mes</th><th class="num">S&amp;OP {{ c.anterior|mesanio }}</th><th class="num">Efecto cantidad</th><th class="num">Efecto precio</th><th class="num">S&amp;OP {{ p.snapshot|mesanio }}</th></tr></thead>
+          <tbody>
+            {% for m in c.meses %}
+              <tr>
+                <td>{{ m.mes|mesanio }}</td>
+                <td class="num">{{ m.valor_anterior|numero:0 }}</td>
+                <td class="num {% if m.efecto_cantidad < 0 %}dato-negativo{% endif %}">{{ m.efecto_cantidad|numero:0 }}</td>
+                <td class="num {% if m.efecto_precio < 0 %}dato-negativo{% endif %}">{{ m.efecto_precio|numero:0 }}</td>
+                <td class="num">{{ m.valor_final|numero:0 }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if c.materiales %}
+        <p class="nota">Por material, al cierre de {{ c.mes_materiales|mesanio }}:</p>
+        <div class="tabla-scroll">
+          <table>
+            <thead><tr><th>Material</th><th>Descripción</th><th>Centro</th><th class="num">S&amp;OP {{ c.anterior|mesanio }}</th><th class="num">Efecto cantidad</th><th class="num">Efecto precio</th><th class="num">S&amp;OP {{ p.snapshot|mesanio }}</th></tr></thead>
+            <tbody>
+              {% for m in c.materiales %}
+                <tr>
+                  <td class="celda-codigo">{{ m.material_codigo }}</td><td>{{ m.texto_breve }}</td><td>{{ m.centro|centro }}</td>
+                  <td class="num">{{ m.valor_anterior|numero:0 }}</td>
+                  <td class="num {% if m.efecto_cantidad < 0 %}dato-negativo{% endif %}">{{ m.efecto_cantidad|numero:0 }}</td>
+                  <td class="num {% if m.efecto_precio < 0 %}dato-negativo{% endif %}">{{ m.efecto_precio|numero:0 }}</td>
+                  <td class="num">{{ m.valor_final|numero:0 }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    {% endif %}
+    {% endwith %}
+  {% else %}
+    <p class="aviso">Sin datos para los filtros seleccionados.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endwith %}

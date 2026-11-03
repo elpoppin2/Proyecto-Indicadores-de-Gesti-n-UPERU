@@ -1,0 +1,101 @@
+{% load dashboard_extras %}
+{# Versión de precios S&OP con sus cambios contra la anterior (pedido del usuario, 2026-11-03). Contexto: plan_simulacion._contexto_precios_version. #}
+{% with p=ps %}
+{% if p %}
+<section class="bloque" id="sec-precios-sop">
+  <div class="bloque-cabecera">
+    <h2>Versión de precios S&amp;OP</h2>
+    <button type="button" class="btn-link" data-imprimir="sec-precios-sop">Imprimir</button>
+  </div>
+  <p class="nota">Precio de compra proyectado de cada material y mes que trae la versión de precios, con su supuesto y lo que cambió contra la versión anterior.</p>
+  <details class="metodo"><summary>Cómo se actualiza cada mes</summary><div class="metodo-cuerpo">
+    <p>Cada S&amp;OP tiene su propia versión: el archivo «Precios SOP - &lt;mes&gt; &lt;año&gt;.xlsx» en {{ p.carpeta_precios }}, que la carga
+    diaria toma sola. La plantilla del mes siguiente sale de aquí: trae los meses reales con el precio de compra del tablero (MB51 +
+    FBL3N, en gris, solo referencia) y los meses proyectados con los precios de la última versión, para editarlos celda por celda.</p>
+    <p>En la matriz, las columnas grises son el precio real de los últimos meses cerrados. Una celda en rojo subió y una en verde bajó
+    más de 0.5% contra la versión anterior en ese mismo mes (pasa el mouse para ver el precio de antes).</p>
+  </div></details>
+  <div class="acciones-version">
+    {% if p.versiones %}<a class="btn-link" href="{% url 'descargar_precios_sop' %}?sop={{ p.version|fechaiso }}">Descargar esta versión (Excel)</a>{% endif %}
+    {% if p.versiones %}<a class="btn-link" href="{% url 'plantilla_precios_sop' %}">Plantilla del S&amp;OP de {{ p.mes_siguiente|mesanio }} ({{ p.archivo_siguiente }})</a>{% endif %}
+  </div>
+  {% if not p.versiones %}
+    <p class="aviso">Todavía no hay versiones de precios cargadas: deja «{{ p.archivo_siguiente }}» en {{ p.carpeta_precios }}.</p>
+  {% else %}
+  <form class="filtros" method="get" data-target="sec-precios-sop">
+    <div class="campo">
+      <label for="sop_simprecios">Versión de precios</label>
+      <select name="sop_simprecios" id="sop_simprecios">
+        {% for v in p.versiones %}<option value="{{ v|fechaiso }}" {% if v == p.version %}selected{% endif %}>{{ v|mesanio }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="categoria_simprecios">Categoría</label>
+      <select name="categoria_simprecios" id="categoria_simprecios">
+        {% for cat in p.categorias %}<option value="{{ cat }}" {% if cat == p.categoria_sel %}selected{% endif %}>{{ cat }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="centro_simprecios">Centro</label>
+      <select name="centro_simprecios" id="centro_simprecios">
+        {% for c in p.centros %}<option value="{{ c }}" {% if c == p.centro_sel %}selected{% endif %}>{{ c|centro }}</option>{% endfor %}
+      </select>
+    </div>
+    {% include "gestion/planificacion/_filtro_material.html" with nombre="material_simprecios" opciones=p.materiales seleccion=p.material_sel %}
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+
+  <div class="metricas">
+    <div class="metrica"><span class="valor">{{ p.filas|length }}</span><span class="etiqueta">Materiales en la versión de {{ p.version|mesanio }}{% if p.sin_precio %} · {{ p.sin_precio }} sin precio{% endif %}</span></div>
+    <div class="metrica"><span class="valor">{{ p.meses|length }}</span><span class="etiqueta">Meses proyectados{% if p.rango %} ({{ p.rango }}){% endif %}</span></div>
+    <div class="metrica"><span class="valor">{% if p.anterior %}{{ p.cambios|length }}{% else %}—{% endif %}</span><span class="etiqueta">{% if p.anterior %}Materiales con precios distintos a la versión de {{ p.anterior|mesanio }}{% else %}Sin versión anterior para comparar{% endif %}</span></div>
+  </div>
+
+  <div class="tabla-marco">
+    <table class="tabla-fija">
+      <thead>
+        <tr>
+          <th class="fijo-1">Material</th><th class="fijo-2">Descripción</th><th>Centro</th><th>Unidad</th>
+          {% for m in p.meses_reales %}<th class="num precio-real" title="Precio real de compra">{{ m.corto }} real</th>{% endfor %}
+          {% for m in p.meses %}<th class="num">{{ m.corto }}</th>{% endfor %}
+          <th>Supuesto</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in p.filas %}
+          <tr>
+            <td class="fijo-1 col-codigo">{{ f.material_codigo }}</td>
+            <td class="fijo-2" title="{{ f.texto_breve }}">{{ f.texto_breve }}</td>
+            <td>{{ f.centro|centro }}</td><td>{{ f.unidad }}</td>
+            {% for v in f.reales %}<td class="num precio-real">{{ v|numero:2|default:"—" }}</td>{% endfor %}
+            {% for c in f.celdas %}<td class="num {{ c.marca }}"{% if c.titulo %} title="{{ c.titulo }}"{% endif %}>{{ c.valor|numero:2|default:"—" }}</td>{% endfor %}
+            <td>{{ f.supuesto|default:"—" }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if p.cambios %}
+    <h3 class="subtitulo">Cambios contra la versión de {{ p.anterior|mesanio }}</h3>
+    <div class="tabla-scroll">
+      <table>
+        <thead><tr><th>Material</th><th>Descripción</th><th>Centro</th><th class="num">Meses con cambio</th><th class="num">Cambio promedio</th><th class="num">Mayor cambio</th><th>Mes del mayor cambio</th></tr></thead>
+        <tbody>
+          {% for c in p.cambios %}
+            <tr>
+              <td class="celda-codigo">{{ c.material_codigo }}</td><td>{{ c.texto_breve }}</td><td>{{ c.centro|centro }}</td>
+              <td class="num">{{ c.meses }}</td>
+              <td class="num {% if c.promedio > 0 %}dato-negativo{% endif %}">{{ c.promedio_texto }}</td>
+              <td class="num {% if c.mayor > 0 %}dato-negativo{% endif %}">{{ c.mayor_texto }}</td>
+              <td>{{ c.mes_mayor }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+  {% endif %}
+</section>
+{% endif %}
+{% endwith %}

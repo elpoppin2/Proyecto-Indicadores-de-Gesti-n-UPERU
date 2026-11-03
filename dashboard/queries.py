@@ -128,6 +128,10 @@ from .consultas.consumo_sop import (
     consumo_por_tonelada_sop, consumo_real_mensual_sop, destino_produccion_sop, plan_consumo_del_mes,
     plan_consumo_sop, produccion_mensual_planta,
 )
+from .consultas.simulacion import (
+    comparativo_valorizado_sop, inventario_valorizado_sop, mes_siguiente_sop, precios_sop,
+    precision_precios_sop, sop_anterior_con_precios, sop_valorizables, valorizar_mes, versiones_precios_sop,
+)
 
 __all__ = [
     'ALCANCES_SOLICITANTES', 'NOMBRES_CENTRO', '_ALCANCE_MATERIALES', '_ALCANCE_SOLICITANTES',
@@ -220,4 +224,7 @@ __all__ = [
     'resumen_premios', '_MESES_CADENA_PRODUCCION', '_PRODUCTOS_FINALES', '_como_material_comprado',
     '_producto_final', 'consumo_por_tonelada_sop', 'consumo_real_mensual_sop', 'destino_produccion_sop',
     'plan_consumo_del_mes', 'plan_consumo_sop', 'produccion_mensual_planta',
+    'comparativo_valorizado_sop', 'inventario_valorizado_sop', 'mes_siguiente_sop', 'precios_sop',
+    'precision_precios_sop', 'sop_anterior_con_precios', 'sop_valorizables', 'valorizar_mes',
+    'versiones_precios_sop',
 ]

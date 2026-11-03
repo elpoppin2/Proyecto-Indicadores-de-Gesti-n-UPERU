@@ -42,7 +42,8 @@
      el período de Compras y el de Cuentas por pagar van juntos, y la
      Familia y el Centro de Inventario con los de Precios e IPU. */
   var GRUPOS = [
-    ['mes_indicadores', 'mes_plan', 'mes_detalle', 'mes_consumo', 'mes_factor', 'mes_cobertura', 'sop_proyeccion'],
+    ['mes_indicadores', 'mes_plan', 'mes_detalle', 'mes_consumo', 'mes_factor', 'mes_cobertura', 'sop_proyeccion',
+     'sop_simulacion', 'sop_simprecios'],
     ['sop_plan', 'sop_detalle', 'sop_cumplmes'],
     ['anio_compras', 'anio_cxp'],
     ['mes_compras_desde', 'mes_cxp_desde'],

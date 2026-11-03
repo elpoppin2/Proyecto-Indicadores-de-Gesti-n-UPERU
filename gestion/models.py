@@ -448,6 +448,35 @@ class StockMinMaxSOP(models.Model):
         return f"{self.material_codigo} @ {self.centro_destino} - min/max {self.mes_planificado}"
 
 
+class PrecioSOP(models.Model):
+    """Precio proyectado de compra por material/centro y mes de una versión de
+    precios S&OP: cada S&OP tiene la suya (no se toma la de otro mes), cargada
+    de 'Precios SOP - <mes> <año>.xlsx' (carpeta 'TABLA SOP PRECIOS', hoja
+    'Precios'). Solo los meses desde la emisión: los meses reales de la
+    plantilla son referencia y no se guardan. Una celda vacía = None (sin
+    precio: el inventario valorizado toma el precio promedio de ese mes).
+    Pedido por el usuario (2026-11-03)."""
+
+    material_codigo = models.CharField(max_length=40, db_index=True, verbose_name="Material")
+    material_descripcion = models.CharField(max_length=255, blank=True)
+    centro = models.CharField(max_length=20, db_index=True)
+    unidad = models.CharField(max_length=20, blank=True)
+    mes_snapshot = models.DateField(db_index=True, verbose_name="Mes de emisión")
+    mes = models.DateField(verbose_name="Mes")
+    precio = models.DecimalField(max_digits=18, decimal_places=4, null=True, blank=True)
+    supuesto = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        verbose_name = "Precio proyectado (S&OP)"
+        verbose_name_plural = "Precios proyectados (S&OP)"
+        constraints = [
+            models.UniqueConstraint(fields=["material_codigo", "centro", "mes_snapshot", "mes"], name="uniq_precio_sop")
+        ]
+
+    def __str__(self):
+        return f"{self.material_codigo} @ {self.centro} - precio {self.mes} (S&OP {self.mes_snapshot})"
+
+
 class IngresoFisicoSOP(models.Model):
     """Ingresos físicos reales de Materias Primas y Energía/Combustibles
     (tickets de báscula, transacción ZMM056), usados para medir el

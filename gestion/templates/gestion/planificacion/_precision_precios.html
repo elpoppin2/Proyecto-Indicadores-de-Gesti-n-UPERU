@@ -1,0 +1,66 @@
+{% load dashboard_extras %}
+{# Precisión del pronóstico de precios S&OP contra el precio real de compra (pedido del usuario, 2026-11-03). Contexto: plan_simulacion._contexto_precision. #}
+{% with p=pp %}
+{% if p %}
+<section class="bloque" id="sec-precision-precios">
+  <div class="bloque-cabecera">
+    <h2>Precisión del pronóstico de precios</h2>
+    <button type="button" class="btn-link" data-imprimir="sec-precision-precios">Imprimir</button>
+  </div>
+  <p class="nota">Cuánto se alejó el precio que proyectó cada versión del precio real de compra, en los meses ya cerrados.</p>
+  <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+    <p>Error = precio proyectado ÷ precio real − 1, en cada material, centro y mes cerrado con compras (precio real = MB51 + FBL3N,
+    como el IPU). <strong>Error medio</strong>: promedio de los errores sin signo, ponderado por el importe real comprado;
+    <strong>sesgo</strong>: el mismo promedio con signo (positivo = la versión proyectó precios más altos que los reales).</p>
+    <p>Horizonte = meses entre la emisión de la versión y el mes proyectado (0 = el mismo mes de emisión, ya en curso al emitirla).
+    Se completa a medida que se cierran los meses y se cargan versiones anteriores.</p>
+  </div></details>
+  {% if not p.horizontes %}
+    <p class="aviso">Todavía no hay meses cerrados con compras para comparar contra las versiones de precios cargadas.</p>
+  {% else %}
+  <form class="filtros" method="get" data-target="sec-precision-precios">
+    <div class="campo">
+      <label for="centro_simprecision">Centro</label>
+      <select name="centro_simprecision" id="centro_simprecision">
+        {% for c in p.centros %}<option value="{{ c }}" {% if c == p.centro_sel %}selected{% endif %}>{{ c|centro }}</option>{% endfor %}
+      </select>
+    </div>
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+  <div class="metricas">
+    <div class="metrica"><span class="valor">{{ p.total.error_texto }}</span><span class="etiqueta">Error medio ponderado ({{ p.total.n }} comparaciones de {{ p.versiones_texto }})</span></div>
+    <div class="metrica"><span class="valor">{{ p.total.sesgo_texto }}</span><span class="etiqueta">Sesgo (positivo = se proyectó más caro)</span></div>
+  </div>
+  <div class="tabla-scroll">
+    <table>
+      <thead><tr><th>Horizonte</th><th class="num">Comparaciones</th><th class="num">Error medio</th><th class="num">Sesgo</th><th class="num">Importe real (S/)</th></tr></thead>
+      <tbody>
+        {% for h in p.horizontes %}
+          <tr>
+            <td>{% if h.horizonte == 0 %}Mes de emisión{% else %}{{ h.horizonte }} mes{{ h.horizonte|pluralize:"es" }} después{% endif %}</td>
+            <td class="num">{{ h.n }}</td><td class="num">{{ h.error_texto }}</td><td class="num">{{ h.sesgo_texto }}</td>
+            <td class="num">{{ h.importe|numero:0 }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <h3 class="subtitulo">Por material</h3>
+  <div class="tabla-scroll">
+    <table>
+      <thead><tr><th>Material</th><th>Descripción</th><th>Centro</th><th class="num">Comparaciones</th><th class="num">Error medio</th><th class="num">Sesgo</th><th class="num">Importe real (S/)</th></tr></thead>
+      <tbody>
+        {% for m in p.materiales %}
+          <tr>
+            <td class="celda-codigo">{{ m.material_codigo }}</td><td>{{ m.texto_breve }}</td><td>{{ m.centro|centro }}</td>
+            <td class="num">{{ m.n }}</td><td class="num">{{ m.error_texto }}</td><td class="num">{{ m.sesgo_texto }}</td>
+            <td class="num">{{ m.importe|numero:0 }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+{% endwith %}

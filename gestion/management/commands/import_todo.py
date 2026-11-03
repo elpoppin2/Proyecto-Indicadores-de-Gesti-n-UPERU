@@ -76,6 +76,12 @@ class Command(BaseCommand):
         else:
             self.stdout.write("== Stock mínimo/máximo (S&OP) == (omitido, no se encontró la carpeta)")
 
+        precios_sop_dir = self._carpeta_opcional(base, "TABLA SOP PRECIOS")
+        if precios_sop_dir:
+            self._paso("Precios S&OP", "import_precios_sop", precios_sop_dir, forzar=forzar)
+        else:
+            self.stdout.write("== Precios S&OP == (omitido, no se encontró la carpeta)")
+
         ingresos_sop_dir = self._carpeta_opcional(base, "TABLA_ZMM056")
         if ingresos_sop_dir:
             self._paso("Ingresos físicos (S&OP, ZMM056)", "import_ingresos_fisicos_sop", ingresos_sop_dir, forzar=forzar)
