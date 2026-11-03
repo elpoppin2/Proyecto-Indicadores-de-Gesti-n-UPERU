@@ -118,6 +118,15 @@ inventario proyectado a precio promedio móvil. Cada S&OP usa solo su propia ver
 .\venv\Scripts\python.exe manage.py plantilla_precios_sop "<carpeta>" [--mes "Noviembre 2026"]
 ```
 
+**Plan de consumos S&OP** (carpeta `TABLA SOP CONSUMOS`, «Consumos SOP - &lt;mes&gt; &lt;año&gt;.xlsx»):
+se arma desde la corrida de Planificación («UNACEM-PROY-INVENTARIOS SOP &lt;Mes&gt; &lt;Año&gt;.xlsx»), con
+la fila Consumo de cada material del S&OP desde el mes de emisión. Si el libro trae varias hojas
+«Mov. Inv» de una planta (escenarios), se indica cuál con `--hoja-atocongo` / `--hoja-condorcocha`.
+
+```powershell
+.\venv\Scripts\python.exe manage.py convertir_consumos_sop "<corrida>" "<carpeta TABLA SOP CONSUMOS>"
+```
+
 Cada tabla tiene también su comando (`import_materiales`, `import_compras`,
 `import_movimientos`...), que acepta un archivo o una carpeta. Los reimportes son seguros:
 solo se procesan archivos nuevos o modificados (`--forzar` reprocesa todo) y cada uno

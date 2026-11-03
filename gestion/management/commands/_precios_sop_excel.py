@@ -86,7 +86,7 @@ def _mes_corto(mes):
     return f"{('Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic')[mes.month - 1]}-{mes.year % 100:02d}"
 
 
-def _supuesto(formulas):
+def _supuesto(formulas, centro):
     """Texto del Supuesto de una fila a partir de las fórmulas de sus meses
     proyectados [(mes, fórmula, tipo)]: de dónde sale y los % de ajuste que
     estaban escritos dentro de las fórmulas (ahora a la vista)."""
@@ -96,9 +96,14 @@ def _supuesto(formulas):
         partes.append("Cálculo por proveedor (hoja CÁLCULO: contrato, bono, premio, flete, humedad, descarga)")
     for mes, f, t in formulas:
         if t == "otra_planta":
-            planta = "Condorcocha" if "Condorcocha" in f else "Atocongo"
+            # La hoja de la otra planta, o (en los libros de 2025) la de una versión anterior de la misma planta,
+            # p.ej. 'Tarifas Atocongo P 2025'.
+            hoja = re.match(r"^=\+?(?:'([^']+)'|([^!']+))!", f.strip())
+            hoja = (hoja.group(1) or hoja.group(2)).strip() if hoja else ""
+            otra = "Condorcocha" if centro == "U001" else "Atocongo"
+            origen = f"Precio de {otra}" if hoja.startswith("Tar.") and otra.lower() in hoja.lower() else f"De la hoja «{hoja}»"
             resto = re.sub(r"^=\+?'[^']+'!\$?[A-Z]+\$?\d+", "", f.replace(" ", ""))
-            partes.append(f"Precio de {planta}{(' ' + resto.replace('-', '− ').replace('+', '+ ')) if resto else ''}")
+            partes.append(f"{origen}{(' ' + resto.replace('-', '− ').replace('+', '+ ')) if resto else ''}")
             break
     if tipos["externo"]:
         partes.append("Vínculo a otro libro")
@@ -124,7 +129,10 @@ def leer_legado(archivo, desde):
     formulas = openpyxl.load_workbook(archivo, data_only=False)
     salida = {}
     for prefijo, centro in _HOJAS_LEGADO:
-        nombre = next((h for h in formulas.sheetnames if h.startswith(prefijo)), None)
+        # La hoja visible: los libros de 2025 guardan antes, ocultas, las tarifas de versiones anteriores
+        # ('Tar. Condorcocha O2 2024', 'Tar. Condorcocha P 2025').
+        candidatas = [h for h in formulas.sheetnames if h.startswith(prefijo)]
+        nombre = next((h for h in candidatas if formulas[h].sheet_state == "visible"), candidatas[0] if candidatas else None)
         if nombre is None:
             raise ValueError(f"no tiene la hoja '{prefijo} <Mes>'")
         wf, wv = formulas[nombre], valores[nombre]
@@ -155,7 +163,7 @@ def leer_legado(archivo, desde):
                     f = wf.cell(r, c).value
                     proyectadas.append((mes, f, _tipo_formula(f, openpyxl.utils.get_column_letter(c - 1), r)))
             salida[(codigo, centro)] = {
-                "precios": precios, "supuesto": _supuesto(proyectadas) if proyectadas else "",
+                "precios": precios, "supuesto": _supuesto(proyectadas, centro) if proyectadas else "",
                 "descripcion": str(wf.cell(r, 4).value or "").strip(),
                 "unidad": unidad.replace("S/", "").strip(" /.") or unidad,
             }

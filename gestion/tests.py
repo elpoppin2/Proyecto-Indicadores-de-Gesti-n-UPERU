@@ -1,6 +1,7 @@
 """Pruebas de la lógica que no depende de los datos cargados: formatos, fechas,
 semáforo contra metas, condiciones de pago, el compactado del HTML guardado, el
-inventario valorizado a precio promedio y la plantilla de precios S&OP.
+inventario valorizado a precio promedio, la plantilla de precios S&OP y la
+lectura de la corrida S&OP.
 No usan la base de datos (corren en segundos):
 
     venv\\Scripts\\python.exe manage.py test gestion
@@ -181,5 +182,57 @@ class PlantillaPreciosTest(SimpleTestCase):
         from gestion.management.commands._precios_sop_excel import _supuesto
 
         mar30 = datetime.date(2030, 3, 1)
-        self.assertEqual(_supuesto([(datetime.date(2030, 2, 1), "=AU10", "repite"), (mar30, "=AV10*(1+2.5%)", "ajuste")]),
+        self.assertEqual(_supuesto([(datetime.date(2030, 2, 1), "=AU10", "repite"), (mar30, "=AV10*(1+2.5%)", "ajuste")],
+                                   "U001"),
                          "Valor escrito; +2.5% desde Mar-30")
+
+    def test_supuesto_nombra_la_hoja_de_origen(self):
+        from gestion.management.commands._precios_sop_excel import _supuesto
+
+        ene30 = datetime.date(2030, 1, 1)
+        # La otra planta, y una versión anterior de la misma planta (libros de 2025).
+        self.assertEqual(_supuesto([(ene30, "='Tar. Atocongo Ene 30'!F12", "otra_planta")], "U002"), "Precio de Atocongo")
+        self.assertEqual(_supuesto([(ene30, "='Tarifas Atocongo P 2030'!F12", "otra_planta")], "U001"),
+                         "De la hoja «Tarifas Atocongo P 2030»")
+
+
+class CorridaSOPTest(SimpleTestCase):
+    """Lectura de la corrida de Planificación (hojas 'Mov. Inv'), con datos inventados."""
+
+    def test_bloques_por_planta_y_seccion(self):
+        import os
+        import tempfile
+
+        from openpyxl import Workbook
+
+        from gestion.management.commands._corrida_sop_excel import leer_corrida
+
+        ene30, feb30 = datetime.datetime(2030, 1, 1), datetime.datetime(2030, 2, 1)
+        wb = Workbook()
+        ato = wb.active
+        ato.title = "Mov. Inv Atocongo SOP Ene 30"
+        ato.append(["x"])
+        ato.append([None, None, None, None] + [ene30 + datetime.timedelta(days=31 * i) for i in range(14)])
+        ato.append([None, "MATERIAS PRIMAS"])
+        ato.append([None, "Caliza\n07-00000001", "Inv. Inicial", "tm", 10, 20])
+        ato.append([None, None, "Consumo", "tm", -3, -4])
+        ato.append([None, "ADITIVO"])
+        ato.append([None, "Aditivo\n05-00000001", "Inv. Inicial", "kgs", 1, 1])
+        # Condorcocha: la columna A queda vacía en toda la hoja.
+        cdc = wb.create_sheet("Mov. Inv Condor SOP Ene 30")
+        cdc.append([None, None, None, None] + [ene30 + datetime.timedelta(days=31 * i) for i in range(14)])
+        cdc.append([None, "Carbón\n06-00000001", "S. Ini.", "TM", 5, 6])
+        cdc.append([None, None, "Cons", "TM", 7, 8])
+        cdc.append([None, None, "Cons", "S/.", 70, 80])
+        wb.create_sheet("Mov. Inv Condor SOP ESC 2").sheet_state = "hidden"
+        ruta = os.path.join(tempfile.mkdtemp(), "UNACEM-PROY-INVENTARIOS SOP Enero 2030.xlsx")
+        wb.save(ruta)
+
+        corrida = leer_corrida(ruta)
+        ato_b, cdc_b = corrida["U001"]["bloques"], corrida["U002"]["bloques"]
+        self.assertEqual([(b["codigo"], b["seccion"]) for b in ato_b],
+                         [("07-00000001", "Materias primas"), ("05-00000001", "Aditivos")])
+        self.assertEqual(ato_b[0]["datos"][("consumo", "cantidad")], {ene30.date(): -3.0, feb30.date(): -4.0})
+        self.assertEqual((cdc_b[0]["codigo"], cdc_b[0]["seccion"]), ("06-00000001", "Combustibles"))
+        self.assertEqual(cdc_b[0]["datos"][("consumo", "cantidad")], {ene30.date(): 7.0, feb30.date(): 8.0})
+        self.assertEqual(cdc_b[0]["datos"][("consumo", "valor")], {ene30.date(): 70.0, feb30.date(): 80.0})
