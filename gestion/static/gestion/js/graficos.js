@@ -45,7 +45,8 @@
     svg.querySelectorAll('rect:not(.zona-detalle):not([class*="banda"])').forEach(function (el) {
       var x = parseFloat(el.getAttribute('x')) || 0, y = parseFloat(el.getAttribute('y')) || 0;
       if (!(parseFloat(el.getAttribute('height')) > 0)) return;
-      var haciaAbajo = yCero !== null && y >= yCero - 0.5;
+      // data-abajo: barras que bajan desde una línea que no es el cero (los pines de cumplimiento bajo el plan).
+      var haciaAbajo = el.getAttribute('data-abajo') === '1' || (yCero !== null && y >= yCero - 0.5);
       var origen = haciaAbajo ? 'center top' : 'center bottom';
       el.animate([
         { transformBox: 'fill-box', transformOrigin: origen, transform: 'scaleY(0)' },

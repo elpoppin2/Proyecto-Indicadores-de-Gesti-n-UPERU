@@ -30,6 +30,11 @@
   <script src="{% static 'gestion/js/graficos.js' %}?v={% version_estatico 'gestion/js/graficos.js' %}" defer></script>
 </head>
 <body>
+  {# Tramas de los gráficos (notación IBCS: lo proyectado va rayado). Van aquí y no dentro de cada gráfico: un <pattern> dentro de una pestaña oculta no se pinta en Edge/Chrome. El HTML estático de Planificación lleva la misma copia. #}
+  <svg class="tramas-graficos" id="tramas-graficos" width="0" height="0" aria-hidden="true" focusable="false"><defs>
+    <pattern id="trama-sim-mp" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect class="trama-fondo" width="6" height="6"></rect><line class="trama-sim-mp" x1="1" y1="0" x2="1" y2="6"></line></pattern>
+    <pattern id="trama-sim-comb" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect class="trama-fondo" width="6" height="6"></rect><line class="trama-sim-comb" x1="1" y1="0" x2="1" y2="6"></line></pattern>
+  </defs></svg>
   {% block contenido %}{% endblock %}
   <script>
     (function () {

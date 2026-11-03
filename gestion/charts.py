@@ -221,6 +221,81 @@ def barras_mensuales(puntos, ancho=640, alto=240, pad_x=10, pad_y=28, meta=100, 
     }
 
 
+def plan_real_mensual(filas, etiqueta_mes, mes_parcial=None, meta=100, alto=300, pad_izq=14, pad_der=14):
+    """Plan contra real mes a mes con la notación IBCS (pedido del usuario,
+    2026-11-03). Abajo, las toneladas: el plan como columna de contorno
+    (detrás, corrida a la izquierda) y el real como columna sólida delante.
+    Arriba, un "pin" por mes desde la línea del plan (100%) hasta el
+    cumplimiento del mes, con el semáforo de siempre (≥ meta verde, 80–99%
+    gris, < 80% rojo) y el % como etiqueta. El mes en curso (`mes_parcial`)
+    lleva el real más claro: todavía no cierra. `filas`: dicts con mes,
+    cantidad_plan, cantidad_real y cumplimiento_pct (None = sin comparación:
+    columnas sin pin)."""
+    if not filas:
+        return None
+    n = len(filas)
+    ancho = max(360, round(78 * n + pad_izq + pad_der))
+    paso = (ancho - pad_izq - pad_der) / n
+    # Franja de los pines: la línea del plan queda donde corresponde según
+    # cuánto sube y cuánto baja el cumplimiento; con desvíos chicos la escala
+    # cubre al menos 10 puntos, para no exagerarlos.
+    tope_pin, pie_pin = 26.0, 92.0
+    desvios = [f["cumplimiento_pct"] - meta for f in filas if f["cumplimiento_pct"] is not None]
+    sube = max([d for d in desvios if d > 0] + [0.0])
+    baja = max([-d for d in desvios if d < 0] + [0.0])
+    total = max(sube + baja, 10.0)
+    por_punto = (pie_pin - tope_pin) / total
+    y_plan = tope_pin + (sube + (total - sube - baja) / 2) * por_punto
+    # Franja de las columnas.
+    tope_col, base = pie_pin + 38, alto - 24
+    mayor = max([max(f["cantidad_plan"], f["cantidad_real"]) for f in filas] + [1.0])
+    ancho_col = max(min(paso * 0.36, 26.0), 6.0)
+    corrimiento = ancho_col * 0.32
+
+    def y_de(valor):
+        return base - (base - tope_col) * max(valor, 0.0) / mayor
+
+    def caja(x, y0, y1):
+        return {"x": f"{x:z.1f}", "y": f"{min(y0, y1):z.1f}", "ancho": f"{ancho_col:z.1f}",
+                "alto": f"{max(abs(y1 - y0), 0.8):z.1f}"}
+
+    columnas_out = []
+    for i, f in enumerate(filas):
+        cx = pad_izq + paso * (i + 0.5)
+        plan, real, pct = f["cantidad_plan"], f["cantidad_real"], f["cumplimiento_pct"]
+        parcial = f["mes"] == mes_parcial
+        y_plan_col, y_real_col = y_de(plan), y_de(real)
+        detalle = f"{etiqueta_mes(f['mes'])}: plan {plan:z,.0f} T · real {real:z,.0f} T"
+        pin = None
+        if pct is not None:
+            detalle += f" · {pct:z.1f}% del plan ({real - plan:+z,.0f} T)"
+            y_pin = y_plan - (pct - meta) * por_punto
+            clase = "pin-bueno" if pct >= meta else ("pin-malo" if pct < 80 else "pin-regular")
+            pin = {"x": f"{cx - 1.5:z.1f}", "y": f"{min(y_plan, y_pin):z.1f}", "ancho": "3",
+                   "alto": f"{max(abs(y_pin - y_plan), 0.8):z.1f}", "cy": f"{y_pin:z.1f}",
+                   "abajo": pct < meta, "clase": clase + (" pin-parcial" if parcial else ""),
+                   "texto": f"{pct:z.1f}%", "y_pct": f"{y_pin / alto * 100:z.2f}"}
+        if parcial:
+            detalle += " · mes en curso, parcial"
+        columnas_out.append({
+            "plan": caja(cx - corrimiento - ancho_col / 2, y_plan_col, base) if plan > 0 else None,
+            "real": caja(cx + corrimiento - ancho_col / 2, y_real_col, base) if real > 0 else None,
+            "parcial": parcial, "pin": pin, "cx": f"{cx:z.1f}", "x_pct": f"{cx / ancho * 100:z.2f}",
+            # El valor del real va encima de la columna más alta: así no cruza el contorno del plan.
+            "texto_real": _toneladas_corto(real) if real > 0 else "",
+            "real_x_pct": f"{(cx + corrimiento) / ancho * 100:z.2f}",
+            "texto_y_pct": f"{min(y_plan_col, y_real_col) / alto * 100:z.2f}",
+            "etiqueta": etiqueta_mes(f["mes"]), "zona_x": f"{cx - paso / 2:z.1f}", "zona_ancho": f"{paso:z.1f}",
+            "detalle": detalle,
+        })
+    return {
+        "ancho": ancho, "alto": alto, "x0": pad_izq, "x1": ancho - pad_der,
+        "y_plan": f"{y_plan:z.1f}", "base": f"{base:z.1f}", "zona_y": f"{tope_pin - 12:z.1f}",
+        "zona_alto": f"{base - tope_pin + 12:z.1f}", "columnas": columnas_out,
+        "hay_parcial": any(c["parcial"] and c["real"] for c in columnas_out),
+    }
+
+
 def soles_corto(valor):
     """Soles con signo y abreviados (+S/ 1.23M, −S/ 45K) para etiquetas."""
     return ("+" if valor > 0 else ("−" if valor < 0 else "")) + "S/ " + _toneladas_corto(abs(valor))
@@ -696,11 +771,13 @@ def evolucion_calidad(serie, promedio, formato, etiqueta_fecha, referencia=None,
 
 
 def evolucion_consumo(real, plan, etiqueta_mes, mes_parcial=None, ancho=960, alto=300, pad_x=22, pad_y=26):
-    """Consumo mes a mes (toneladas): barras con el consumo REAL (MB51) y una
-    línea con puntos con el PLAN de consumos del S&OP, sobre un eje de meses
-    continuo. `real` y `plan`: listas de (mes, toneladas). `mes_parcial`: mes
-    en curso (su barra va más clara: todavía no cierra). Pedido por el
-    usuario."""
+    """Consumo mes a mes (toneladas) con la notación IBCS (pedido del usuario,
+    2026-11-03; antes el plan era una línea roja): el consumo REAL (MB51) en
+    columnas sólidas y el PLAN de consumos del S&OP en columnas de contorno,
+    detrás y corridas a la izquierda; los meses sin real muestran solo el
+    plan. Eje de meses continuo. `real` y `plan`: listas de (mes, toneladas).
+    `mes_parcial`: mes en curso (su columna va más clara: todavía no
+    cierra). El valor del plan se rotula solo donde no hay real cerrado."""
     if not real and not plan:
         return None
     todos = [m for m, _ in real] + [m for m, _ in plan]
@@ -711,7 +788,8 @@ def evolucion_consumo(real, plan, etiqueta_mes, mes_parcial=None, ancho=960, alt
     mayor = max([v for _, v in real] + [v for _, v in plan] + [1.0]) * 1.15
     base = alto - 24
     paso = (ancho - 2 * pad_x) / (len(meses) - 1)
-    ancho_barra = max(min(paso * 0.62, 26.0), 3.0)
+    ancho_barra = max(min(paso * 0.5, 22.0), 3.0)
+    corrimiento = ancho_barra * 0.3
 
     def x_de(mes):
         return pad_x + indice[mes] * paso
@@ -720,9 +798,10 @@ def evolucion_consumo(real, plan, etiqueta_mes, mes_parcial=None, ancho=960, alt
         return base - (base - pad_y) * max(valor, 0.0) / mayor
 
     plan_por_mes = dict(plan)
+    meses_real = {m for m, v in real if v > 0}
     barras = []
     for mes, valor in real:
-        x, y = x_de(mes), y_de(valor)
+        x, y = x_de(mes) + corrimiento, y_de(valor)
         alto_barra = base - y
         dentro = alto_barra >= 30
         parcial = mes == mes_parcial
@@ -734,14 +813,19 @@ def evolucion_consumo(real, plan, etiqueta_mes, mes_parcial=None, ancho=960, alt
             "etiqueta": _toneladas_corto(valor) if valor > 0 else "",
             "detalle": f"{etiqueta_mes(mes)}: consumo real {valor:z,.0f} T{' (mes en curso, parcial)' if parcial else ''}{texto_plan}",
         })
-    puntos = [{
-        "x": f"{x_de(m):z.1f}", "y": f"{y_de(v):z.1f}", "x_pct": f"{x_de(m) / ancho * 100:z.2f}", "y_pct": f"{y_de(v) / alto * 100:z.2f}",
-        "etiqueta": _toneladas_corto(v), "detalle": f"{etiqueta_mes(m)}: plan de consumo S&OP {v:z,.0f} T",
-    } for m, v in sorted(plan)]
-    linea = " ".join(f"{'M' if i == 0 else 'L'}{p['x']} {p['y']}" for i, p in enumerate(puntos))
+    planes = []
+    for m, v in sorted(plan):
+        x, y = x_de(m) - corrimiento, y_de(v)
+        rotulo = m not in meses_real or m == mes_parcial
+        planes.append({
+            "x": f"{x - ancho_barra / 2:z.1f}", "y": f"{y:z.1f}", "ancho": f"{ancho_barra:z.1f}", "alto": f"{max(base - y, 0.8):z.1f}",
+            "x_pct": f"{x / ancho * 100:z.2f}", "y_pct": f"{y / alto * 100:z.2f}",
+            "etiqueta": _toneladas_corto(v) if rotulo and v > 0 else "",
+            "detalle": f"{etiqueta_mes(m)}: plan de consumo S&OP {v:z,.0f} T",
+        })
     paso_eje = max(1, math.ceil(len(meses) / 20))
     return {
-        "ancho": ancho, "alto": alto, "base": f"{base:z.1f}", "barras": barras, "puntos": puntos, "linea": linea,
+        "ancho": ancho, "alto": alto, "base": f"{base:z.1f}", "barras": barras, "planes": planes,
         "eje": [{"x_pct": f"{x_de(m) / ancho * 100:z.2f}", "texto": etiqueta_mes(m)}
                 for i, m in enumerate(meses) if _etiqueta_eje_visible(i, len(meses), paso_eje)],
     }

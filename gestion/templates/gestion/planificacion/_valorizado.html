@@ -62,7 +62,9 @@
     {% include "gestion/planificacion/_grafico_columnas.html" with g=p.grafico titulo="Inventario valorizado proyectado por mes" %}
     <div class="leyenda-curva">
       {% for l in p.leyenda %}<span class="leyenda-item"><span class="leyenda-marca marca-{{ l.clase }}"></span>{{ l.texto }}</span>{% endfor %}
-      <span class="leyenda-item leyenda-nota">Millones de S/ al cierre de cada mes; la primera columna es la partida (MB5B)</span>
+      <span class="leyenda-item"><span class="leyenda-marca marca-real"></span>Partida real (MB5B)</span>
+      <span class="leyenda-item"><span class="leyenda-marca marca-proyeccion"></span>Proyección S&amp;OP</span>
+      <span class="leyenda-item leyenda-nota">Millones de S/ al cierre de cada mes</span>
     </div>
 
     <h3 class="subtitulo">Detalle mensual (S/)</h3>

@@ -95,15 +95,12 @@ def _contexto_cumplimiento_mensual(request):
     # dos meses no ocupan todo el ancho de la página (pulido, 2026-10-23). La
     # tabla de abajo sigue con todos los meses del plan.
     hoy_mes = datetime.date.today().replace(day=1)
-    puntos_cumplimiento = [
-        (q.formato_mes_anio_abrev(f["mes"]), f["cumplimiento_pct"]) for f in cumplimiento_mensual if f["mes"] <= hoy_mes
-    ]
+    graficables = [f for f in cumplimiento_mensual if f["mes"] <= hoy_mes]
     return {
         "categorias": categorias_plan_op, "categoria_sel": categoria_cm_sel,
         "centros": centros_plan_op, "centro_sel": centro_cm_sel, "sops": sops, "sop_sel": sop_sel,
         "filas": cumplimiento_mensual,
-        "grafico": charts.barras_mensuales(puntos_cumplimiento, ancho=max(320, 72 * len(puntos_cumplimiento) + 40),
-                                           alto=240, meta=100) if puntos_cumplimiento else None,
+        "grafico": charts.plan_real_mensual(graficables, q.formato_mes_anio_abrev, mes_parcial=hoy_mes),
     }
 
 

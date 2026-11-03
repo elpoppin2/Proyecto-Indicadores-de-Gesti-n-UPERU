@@ -213,9 +213,7 @@ def _cat_abastecimiento(request, categoria, tiene_inventario):
         "mes": mes, "opciones_mes": meses, "centros": centros,
         "total_plan": total_plan, "total_real": total_real,
         "cumplimiento_pct": round(total_real / total_plan * 100, 1) if total_plan else None,
-        "grafico": charts.barras_mensuales(
-            [(q.formato_mes_anio_abrev(f["mes"]), f["cumplimiento_pct"]) for f in filas], alto=240, meta=100,
-        ),
+        "grafico": charts.plan_real_mensual(filas, q.formato_mes_anio_abrev, mes_parcial=hoy_mes),
     }}
 
 

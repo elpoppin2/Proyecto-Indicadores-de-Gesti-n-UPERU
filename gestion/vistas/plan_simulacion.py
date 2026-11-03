@@ -94,17 +94,21 @@ def _contexto_valorizado(request):
     etiqueta_partida = _mes_corto(contexto["fecha_inicial"]) if contexto["fecha_inicial"] else "Inicio"
     etiquetas, pilas, textos = [etiqueta_partida], [], []
 
-    def pila(valores, titulo):
+    def pila(valores, titulo, proyeccion=True):
+        # Notación IBCS: la partida es real (sólida) y los meses del S&OP son proyección (rayados).
         total = sum(valores.values())
         detalle = "\n".join([f"{titulo}: S/ {_millones(total)} MM"] +
                             [f"{c.capitalize()}: S/ {_millones(valores.get(c, 0.0))} MM" for c in categorias])
-        segmentos = [{"valor": valores.get(c, 0.0), "clase": _CLASE_CATEGORIA.get(c, "col-prov-otros")} for c in categorias]
+        segmentos = [{"valor": valores.get(c, 0.0),
+                      "clase": _CLASE_CATEGORIA.get(c, "col-prov-otros") + (" col-fc" if proyeccion else "")}
+                     for c in categorias]
         if segmentos:
             segmentos[0]["detalle"] = detalle
         return segmentos, _millones(total)
 
     segmentos, texto = pila({c: float(inicial_categoria.get(c, 0.0)) for c in categorias},
-                            f"Partida{' (MB5B ' + contexto['fecha_inicial'].strftime('%d/%m/%Y') + ')' if contexto['fecha_inicial'] else ''}")
+                            f"Partida{' (MB5B ' + contexto['fecha_inicial'].strftime('%d/%m/%Y') + ')' if contexto['fecha_inicial'] else ''}",
+                            proyeccion=False)
     pilas.append(segmentos)
     textos.append(texto)
     for r in resumen:

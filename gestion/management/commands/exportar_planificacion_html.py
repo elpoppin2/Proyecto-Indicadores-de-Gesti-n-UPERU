@@ -227,6 +227,8 @@ class Command(BaseCommand):
             "proyeccion_rows": proyeccion_rows, "proyeccion_inicial": proyeccion_inicial,
             "acopio_proyeccion": acopio_proyeccion,
             "diagnostico_rows": diagnostico_rows, "estados_stock": q.ESTADOS_STOCK,            "meses": [m.isoformat() for m in meses],
+            # Cumplimiento mensual con "El más reciente de cada mes": solo los meses con su propio S&OP (como la web).
+            "meses_sop_propio": [m.isoformat() for m in q.meses_con_sop_propio()],
             "sops": [{"value": "", "label": "El más reciente de cada mes"}]
                     + [{"value": s.isoformat(), "label": f"S&OP {q.formato_mes_anio(s)}"} for s in sops],
             "meses_inventario": {k.isoformat(): v.isoformat() for k, v in sorted(meses_inv.items())},

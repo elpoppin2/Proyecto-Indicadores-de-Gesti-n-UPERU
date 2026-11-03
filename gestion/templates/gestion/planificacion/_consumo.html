@@ -67,28 +67,26 @@
       <div class="chart-wrap chart-consumo">
         <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Consumo real mensual contra el plan de consumos">
           <line class="base-barras" x1="0" y1="{{ g.base }}" x2="{{ g.ancho }}" y2="{{ g.base }}"></line>
-          {% for b in g.barras %}
-            <rect class="barra-consumo-real{% if b.parcial %} barra-parcial{% endif %} con-detalle" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.ancho }}" height="{{ b.alto }}" rx="2" data-detalle="{{ b.detalle }}"></rect>
+          {% for p in g.planes %}
+            <rect class="col-plan con-detalle" x="{{ p.x }}" y="{{ p.y }}" width="{{ p.ancho }}" height="{{ p.alto }}" data-detalle="{{ p.detalle }}"></rect>
           {% endfor %}
-          {% if g.linea %}<path class="linea-plan-consumo" d="{{ g.linea }}"></path>{% endif %}
-          {% for p in g.puntos %}
-            <circle class="punto-plan-consumo" cx="{{ p.x }}" cy="{{ p.y }}" r="3.2"></circle>
-            <circle class="zona-detalle con-detalle" cx="{{ p.x }}" cy="{{ p.y }}" r="9" data-detalle="{{ p.detalle }}"></circle>
+          {% for b in g.barras %}
+            <rect class="col-real{% if b.parcial %} col-parcial{% endif %} con-detalle" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.ancho }}" height="{{ b.alto }}" data-detalle="{{ b.detalle }}"></rect>
           {% endfor %}
         </svg>
         {% for b in g.barras %}{% if b.etiqueta %}
           <span class="etiqueta-barra {% if b.dentro %}etiqueta-barra-dentro etiqueta-consumo-dentro{% else %}etiqueta-barra-encima{% endif %} con-detalle" style="left:{{ b.x_pct }}%; top:{{ b.y_pct }}%;" data-detalle="{{ b.detalle }}">{{ b.etiqueta }}</span>
         {% endif %}{% endfor %}
-        {% for p in g.puntos %}
+        {% for p in g.planes %}{% if p.etiqueta %}
           <span class="etiqueta-valor etiqueta-plan-consumo con-detalle" style="left:{{ p.x_pct }}%; top:{{ p.y_pct }}%;" data-detalle="{{ p.detalle }}">{{ p.etiqueta }}</span>
-        {% endfor %}
+        {% endif %}{% endfor %}
         {% for e in g.eje %}<span class="etiqueta-mes" style="left:{{ e.x_pct }}%;">{{ e.texto }}</span>{% endfor %}
       </div>
       </div>
       <div class="leyenda-curva">
-        <span class="leyenda-item"><span class="leyenda-marca barra-consumo-real"></span>Consumo real (MB51)</span>
-        <span class="leyenda-item"><span class="leyenda-marca barra-consumo-real barra-parcial"></span>Mes en curso (parcial)</span>
-        <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>Plan de consumos S&amp;OP {{ co.ultimo_snapshot|mesanio }}</span>
+        <span class="leyenda-item"><span class="leyenda-marca marca-real"></span>Consumo real (MB51)</span>
+        <span class="leyenda-item"><span class="leyenda-marca marca-real marca-parcial"></span>Mes en curso (parcial)</span>
+        <span class="leyenda-item"><span class="leyenda-marca marca-plan"></span>Plan de consumos S&amp;OP {{ co.ultimo_snapshot|mesanio }}</span>
       </div>
     {% endif %}
     {% endwith %}

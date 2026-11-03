@@ -30,6 +30,11 @@
 </style>
 </head>
 <body>
+<!-- Tramas de los gráficos (misma copia que base.html): lo proyectado va rayado. -->
+<svg class="tramas-graficos" id="tramas-graficos" width="0" height="0" aria-hidden="true" focusable="false"><defs>
+  <pattern id="trama-sim-mp" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect class="trama-fondo" width="6" height="6"></rect><line class="trama-sim-mp" x1="1" y1="0" x2="1" y2="6"></line></pattern>
+  <pattern id="trama-sim-comb" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect class="trama-fondo" width="6" height="6"></rect><line class="trama-sim-comb" x1="1" y1="0" x2="1" y2="6"></line></pattern>
+</defs></svg>
 <div class="wrap wrap-planificacion">
 
   <header class="pagina">
@@ -103,7 +108,7 @@
   </section>
   <section class="bloque" id="sec-cumplimiento-mensual">
     <h2>Cumplimiento mensual</h2>
-    <p class="nota">Cumplimiento del plan de abastecimiento (real ÷ plan) mes a mes. Un mes sin plan o sin ingresos todavía no tiene barra.</p>
+    <p class="nota">Toneladas ingresadas frente al plan de abastecimiento, mes a mes, y el cumplimiento (real ÷ plan) de cada mes. Un mes sin plan o sin ingresos todavía no tiene pin.</p>
     <form class="filtros">
       <div class="campo"><label for="sop_cumplmes">S&amp;OP</label><select id="sop_cumplmes"></select></div>
       <div class="campo"><label for="categoria_cumplmes">Categoría</label><select id="categoria_cumplmes"></select></div>
@@ -527,32 +532,51 @@ function curvaDoble(puntosA, puntosB, {ancho=640, alto=220, padX=8, padY=24, for
   };
 }
 
-/* ---------- gráfico de barras: cálculo puro (replica charts.py::barras_mensuales) ---------- */
-function barrasMensuales(puntos, {ancho=640, alto=240, padX=10, padY=28, meta=100, formatoValor} = {}){
-  formatoValor = formatoValor || (v => (Number(v.toFixed(1)) || 0).toFixed(1)+"%");  // sin "-0.0%"
-  if(!puntos.length) return null;
-  const valores = puntos.map(p=>p[1]).filter(v=>v!=null);
-  const maximo = (valores.length ? Math.max(meta, ...valores) : meta) * 1.15;
-  const n = puntos.length;
-  const paso = (ancho - 2*padX) / n;
-  const anchoBarra = Math.max(4, Math.min(28, paso*0.55));
-  const baseY = alto - padY;
-  const yMeta = baseY - (alto-2*padY)*(meta/maximo);
-  const minGapIdx = Math.max(1, Math.ceil(46/paso));
-
-  const barras = puntos.map(([etiqueta,valor],i) => {
-    const cx = padX + paso*i + paso/2;
-    const entrada = { x_pct:(cx/ancho*100).toFixed(2), etiqueta, mostrar_etiqueta:(i%minGapIdx===0)||(i===n-1), valor:null };
-    if(valor != null){
-      const altoBarra = Math.max(2, (alto-2*padY)*(valor/maximo));
-      const y = baseY - altoBarra;
-      const clase = valor >= meta ? "barra-buena" : (valor < 80 ? "barra-mala" : "barra-regular");
-      entrada.valor = { x:(cx-anchoBarra/2).toFixed(1), y:y.toFixed(1), ancho:anchoBarra.toFixed(1), alto:altoBarra.toFixed(1),
-        clase, x_pct:entrada.x_pct, y_pct:(y/alto*100).toFixed(2), etiqueta_valor: formatoValor(valor) };
+/* ---------- plan contra real mes a mes, notación IBCS (replica charts.py::plan_real_mensual) ----------
+   Plan en contorno detrás, real sólido delante y el cumplimiento como pin desde la línea del plan (100%). */
+function planRealMensual(filas, {mesParcial=null, meta=100, alto=300, padIzq=14, padDer=14} = {}){
+  if(!filas.length) return null;
+  const n = filas.length;
+  const ancho = Math.max(360, Math.round(78*n + padIzq + padDer));
+  const paso = (ancho - padIzq - padDer) / n;
+  const topePin = 26, piePin = 92;
+  const desvios = filas.filter(f => f.cumplimiento_pct != null).map(f => f.cumplimiento_pct - meta);
+  const sube = Math.max(0, ...desvios.filter(d => d > 0));
+  const baja = Math.max(0, ...desvios.filter(d => d < 0).map(d => -d));
+  const total = Math.max(sube + baja, 10);
+  const porPunto = (piePin - topePin) / total;
+  const yPlan = topePin + (sube + (total - sube - baja)/2) * porPunto;
+  const topeCol = piePin + 38, base = alto - 24;
+  const mayor = Math.max(1, ...filas.map(f => Math.max(f.cantidad_plan, f.cantidad_real)));
+  const anchoCol = Math.max(Math.min(paso*0.36, 26), 6), corrimiento = anchoCol*0.32;
+  const yDe = v => base - (base - topeCol)*Math.max(v, 0)/mayor;
+  const caja = (x, y0, y1) => ({x:x.toFixed(1), y:Math.min(y0, y1).toFixed(1), ancho:anchoCol.toFixed(1), alto:Math.max(Math.abs(y1 - y0), 0.8).toFixed(1)});
+  const signo = v => (v > 0 ? "+" : "") + numero(v);
+  const columnas = filas.map((f, i) => {
+    const cx = padIzq + paso*(i + 0.5);
+    const plan = f.cantidad_plan, real = f.cantidad_real, pct = f.cumplimiento_pct, parcial = f.mes === mesParcial;
+    const yPlanCol = yDe(plan), yRealCol = yDe(real);
+    let detalle = `${mesAbrev(f.mes)}: plan ${numero(plan)} T · real ${numero(real)} T`;
+    let pin = null;
+    if(pct != null){
+      detalle += ` · ${numero(pct, 1)}% del plan (${signo(real - plan)} T)`;
+      const yPin = yPlan - (pct - meta)*porPunto;
+      const clase = pct >= meta ? "pin-bueno" : (pct < 80 ? "pin-malo" : "pin-regular");
+      pin = {x:(cx - 1.5).toFixed(1), y:Math.min(yPlan, yPin).toFixed(1), ancho:"3", alto:Math.max(Math.abs(yPin - yPlan), 0.8).toFixed(1),
+             cy:yPin.toFixed(1), abajo:pct < meta, clase:clase + (parcial ? " pin-parcial" : ""),
+             texto:numero(pct, 1) + "%", y_pct:(yPin/alto*100).toFixed(2)};
     }
-    return entrada;
+    if(parcial) detalle += " · mes en curso, parcial";
+    return {plan: plan > 0 ? caja(cx - corrimiento - anchoCol/2, yPlanCol, base) : null,
+            real: real > 0 ? caja(cx + corrimiento - anchoCol/2, yRealCol, base) : null,
+            parcial, pin, cx:cx.toFixed(1), x_pct:(cx/ancho*100).toFixed(2),
+            texto_real: real > 0 ? toneladasCorto(real) : "", real_x_pct:((cx + corrimiento)/ancho*100).toFixed(2),
+            texto_y_pct:(Math.min(yPlanCol, yRealCol)/alto*100).toFixed(2), etiqueta:mesAbrev(f.mes),
+            zona_x:(cx - paso/2).toFixed(1), zona_ancho:paso.toFixed(1), detalle};
   });
-  return { ancho, alto, barras, y_meta: yMeta.toFixed(1), meta_texto: meta.toFixed(0)+"%" };
+  return {ancho, alto, x0:padIzq, x1:ancho - padDer, y_plan:yPlan.toFixed(1), base:base.toFixed(1),
+          zona_y:(topePin - 12).toFixed(1), zona_alto:(base - topePin + 12).toFixed(1), columnas,
+          hay_parcial: columnas.some(c => c.parcial && c.real)};
 }
 
 function svgCurvaS(g){
@@ -583,28 +607,39 @@ function svgCurvaS(g){
     </div>`;
 }
 
-function svgBarras(g){
+/* Replica gestion/planificacion/_grafico_plan_real.html. */
+function svgPlanReal(g){
   if(!g) return `<p class="aviso">Sin datos suficientes para graficar la tendencia mensual.</p>`;
-  const rects = g.barras.filter(b=>b.valor).map(b => `<rect class="${b.valor.clase}" x="${b.valor.x}" y="${b.valor.y}" width="${b.valor.ancho}" height="${b.valor.alto}" rx="2"></rect>`).join("");
-  const etiquetas = g.barras.map(b => {
-    let html = "";
-    if(b.valor) html += `<span class="etiqueta-valor" style="left:${b.valor.x_pct}%; top:${b.valor.y_pct}%;">${b.valor.etiqueta_valor}</span>`;
-    if(b.mostrar_etiqueta) html += `<span class="etiqueta-mes" style="left:${b.x_pct}%;">${b.etiqueta}</span>`;
-    return html;
-  }).join("");
+  const e = escaparAttr;
+  const formas = g.columnas.map(c =>
+    (c.plan ? `<rect class="col-plan" x="${c.plan.x}" y="${c.plan.y}" width="${c.plan.ancho}" height="${c.plan.alto}"></rect>` : "") +
+    (c.real ? `<rect class="col-real${c.parcial ? " col-parcial" : ""}" x="${c.real.x}" y="${c.real.y}" width="${c.real.ancho}" height="${c.real.alto}"></rect>` : "") +
+    (c.pin ? `<rect class="pin ${c.pin.clase}" x="${c.pin.x}" y="${c.pin.y}" width="${c.pin.ancho}" height="${c.pin.alto}"${c.pin.abajo ? ' data-abajo="1"' : ""}></rect><circle class="pin-cabeza ${c.pin.clase}" cx="${c.cx}" cy="${c.pin.cy}" r="4"></circle>` : "")
+  ).join("");
+  const zonas = g.columnas.map(c => `<rect class="zona-detalle con-detalle" x="${c.zona_x}" y="${g.zona_y}" width="${c.zona_ancho}" height="${g.zona_alto}" data-detalle="${e(c.detalle)}"></rect>`).join("");
+  const etiquetas = g.columnas.map(c =>
+    (c.pin ? `<span class="etiqueta-valor etiqueta-pin ${c.pin.clase}${c.pin.abajo ? " etiqueta-abajo" : ""}" style="left:${c.x_pct}%; top:${c.pin.y_pct}%;">${c.pin.texto}</span>` : "") +
+    (c.texto_real ? `<span class="etiqueta-valor etiqueta-col-real" style="left:${c.real_x_pct}%; top:${c.texto_y_pct}%;">${c.texto_real}</span>` : "") +
+    `<span class="etiqueta-mes" style="left:${c.x_pct}%;">${c.etiqueta}</span>`
+  ).join("");
   return `
-    <div class="chart-scroll" style="max-width:${g.ancho}px;"><div class="chart-wrap chart-barras">
-      <svg class="chart-svg" viewBox="0 0 ${g.ancho} ${g.alto}" role="img" aria-label="Cumplimiento mensual de Abastecimiento">
-        <line class="linea-meta" x1="0" y1="${g.y_meta}" x2="${g.ancho}" y2="${g.y_meta}"></line>
-        ${rects}
+    <div class="chart-scroll" style="max-width:${g.ancho}px;"><div class="chart-wrap chart-plan-real">
+      <svg class="chart-svg" viewBox="0 0 ${g.ancho} ${g.alto}" role="img" aria-label="Cumplimiento mensual de Abastecimiento: plan contra real">
+        <line class="linea-plan-pin" x1="${g.x0}" y1="${g.y_plan}" x2="${g.x1}" y2="${g.y_plan}"></line>
+        <line class="base-barras" x1="${g.x0}" y1="${g.base}" x2="${g.x1}" y2="${g.base}"></line>
+        ${formas}
+        ${zonas}
       </svg>
       ${etiquetas}
     </div></div>
     <div class="leyenda-curva">
-      <span class="leyenda-item"><span class="leyenda-marca leyenda-meta"></span>Meta — ${g.meta_texto}</span>
-      <span class="leyenda-item"><span class="leyenda-marca barra-buena"></span>&ge; 100%</span>
-      <span class="leyenda-item"><span class="leyenda-marca barra-regular"></span>80–99%</span>
-      <span class="leyenda-item"><span class="leyenda-marca barra-mala"></span>&lt; 80%</span>
+      <span class="leyenda-item"><span class="leyenda-marca marca-real"></span>Real ingresado (T)</span>
+      <span class="leyenda-item"><span class="leyenda-marca marca-plan"></span>Plan S&amp;OP (T)</span>
+      ${g.hay_parcial ? `<span class="leyenda-item"><span class="leyenda-marca marca-real marca-parcial"></span>Mes en curso (parcial)</span>` : ""}
+      <span class="leyenda-item"><span class="leyenda-marca marca-pin pin-bueno"></span>&ge; 100%</span>
+      <span class="leyenda-item"><span class="leyenda-marca marca-pin pin-regular"></span>80–99%</span>
+      <span class="leyenda-item"><span class="leyenda-marca marca-pin pin-malo"></span>&lt; 80%</span>
+      <span class="leyenda-item leyenda-nota">Arriba, el cumplimiento de cada mes; la línea es el plan (100%)</span>
     </div>`;
 }
 
@@ -881,10 +916,12 @@ function poblarFiltros4(){
 }
 
 function cumplimientoMensual({categoria, centro, sop} = {}){
-  return DATA.meses.map(mes => {
-    const filas = planVsRealPorMaterial(mes, {categoria, centro, sop});
-    const plan = filas.reduce((s,f)=>s+f.cantidad_plan,0);
-    const real = filas.reduce((s,f)=>s+f.cantidad_real,0);
+  // Como queries.cumplimiento_mensual_abastecimiento: sin S&OP elegido, solo los meses con su propio
+  // S&OP, y desde el primer mes con plan.
+  const filas = (sop ? DATA.meses : (DATA.meses_sop_propio || DATA.meses)).map(mes => {
+    const detalle = planVsRealPorMaterial(mes, {categoria, centro, sop});
+    const plan = detalle.reduce((s,f)=>s+f.cantidad_plan,0);
+    const real = detalle.reduce((s,f)=>s+f.cantidad_real,0);
     const sinComparacion = mes > hoyMes || !plan;
     return {
       mes, cantidad_plan:plan, cantidad_real:real,
@@ -892,6 +929,8 @@ function cumplimientoMensual({categoria, centro, sop} = {}){
       cumplimiento_pct: sinComparacion ? null : Math.round((real/plan*100)*10)/10,
     };
   });
+  const primero = filas.findIndex(f => f.cantidad_plan);
+  return primero < 0 ? [] : filas.slice(primero);
 }
 
 function renderSeccion4(){
@@ -899,9 +938,9 @@ function renderSeccion4(){
   const filas = cumplimientoMensual({categoria, centro, sop: f4sop.value});
   // Como la web: el gráfico llega hasta el mes en curso y su ancho sigue a la cantidad de meses.
   const graficables = filas.filter(f => f.mes <= hoyMes);
-  const g = barrasMensuales(graficables.map(f=>[mesAbrev(f.mes), f.cumplimiento_pct]), {alto:240, ancho: Math.max(320, 72 * graficables.length + 40)});
+  const g = planRealMensual(graficables, {mesParcial: hoyMes});
 
-  document.getElementById("cumplimiento-contenido").innerHTML = svgBarras(g) + `
+  document.getElementById("cumplimiento-contenido").innerHTML = svgPlanReal(g) + `
     <div class="tabla-scroll">
       <table>
         <thead><tr><th>Mes</th><th class="num">Plan (T)</th><th class="num">Real (T)</th><th class="num">Diferencia (T)</th><th class="num">% Cumplimiento</th></tr></thead>
@@ -1509,8 +1548,8 @@ function opcionesMaterialDe(filas){
 const FECHA_CORTE = DATA.fecha_corte || HOY;
 const ULTIMO_DIA_HOY = hoyMes.slice(0, 8) + String(diasEnMes(hoyMes)).padStart(2, "0");
 
-/* Gráfico de consumo (replica charts.evolucion_consumo): barras = real,
-   línea con puntos = plan del S&OP. */
+/* Gráfico de consumo (replica charts.evolucion_consumo), notación IBCS:
+   columnas sólidas = real, columnas de contorno detrás = plan del S&OP. */
 function evolucionConsumo(real, plan, mesParcial, {ancho=960, alto=300, padX=22, padY=26} = {}){
   if(!real.length && !plan.length) return null;
   const todos = [...real.map(r=>r[0]), ...plan.map(p=>p[0])].sort();
@@ -1519,11 +1558,12 @@ function evolucionConsumo(real, plan, mesParcial, {ancho=960, alto=300, padX=22,
   const indice = new Map(meses.map((m,i) => [m,i]));
   const mayor = Math.max(...real.map(r=>r[1]), ...plan.map(p=>p[1]), 1) * 1.15;
   const base = alto - 24, paso = (ancho - 2*padX) / (meses.length - 1);
-  const anchoBarra = Math.max(Math.min(paso*0.62, 26), 3);
+  const anchoBarra = Math.max(Math.min(paso*0.5, 22), 3), corrimiento = anchoBarra*0.3;
   const xDe = m => padX + indice.get(m)*paso, yDe = v => base - (base - padY)*Math.max(v, 0)/mayor;
   const planPorMes = new Map(plan);
+  const mesesReal = new Set(real.filter(r => r[1] > 0).map(r => r[0]));
   const barras = real.map(([mes, valor]) => {
-    const x = xDe(mes), y = yDe(valor), altoBarra = base - y, dentro = altoBarra >= 30, parcial = mes === mesParcial;
+    const x = xDe(mes) + corrimiento, y = yDe(valor), altoBarra = base - y, dentro = altoBarra >= 30, parcial = mes === mesParcial;
     const p = planPorMes.get(mes);
     const textoPlan = p ? ` · plan ${numero(p)} T (${numero(valor/p*100)}%)` : "";
     return {x:(x-anchoBarra/2).toFixed(1), y:y.toFixed(1), ancho:anchoBarra.toFixed(1), alto:altoBarra.toFixed(1), parcial,
@@ -1531,12 +1571,14 @@ function evolucionConsumo(real, plan, mesParcial, {ancho=960, alto=300, padX=22,
             etiqueta: valor > 0 ? toneladasCorto(valor) : "",
             detalle:`${mesCorto(mes)}: consumo real ${numero(valor)} T${parcial ? " (mes en curso, parcial)" : ""}${textoPlan}`};
   });
-  const puntos = plan.slice().sort((a,b)=>a[0].localeCompare(b[0])).map(([m, v]) => ({
-    x:xDe(m).toFixed(1), y:yDe(v).toFixed(1), x_pct:(xDe(m)/ancho*100).toFixed(2), y_pct:(yDe(v)/alto*100).toFixed(2),
-    etiqueta:toneladasCorto(v), detalle:`${mesCorto(m)}: plan de consumo S&OP ${numero(v)} T`}));
+  const planes = plan.slice().sort((a,b)=>a[0].localeCompare(b[0])).map(([m, v]) => {
+    const x = xDe(m) - corrimiento, y = yDe(v), rotulo = !mesesReal.has(m) || m === mesParcial;
+    return {x:(x - anchoBarra/2).toFixed(1), y:y.toFixed(1), ancho:anchoBarra.toFixed(1), alto:Math.max(base - y, 0.8).toFixed(1),
+            x_pct:(x/ancho*100).toFixed(2), y_pct:(y/alto*100).toFixed(2),
+            etiqueta: rotulo && v > 0 ? toneladasCorto(v) : "", detalle:`${mesCorto(m)}: plan de consumo S&OP ${numero(v)} T`};
+  });
   const pasoEje = Math.max(1, Math.ceil(meses.length/20));
-  return {ancho, alto, base:base.toFixed(1), barras, puntos,
-          linea: puntos.map((p,i) => `${i ? "L" : "M"}${p.x} ${p.y}`).join(" "),
+  return {ancho, alto, base:base.toFixed(1), barras, planes,
           eje: meses.map((m,i) => ({m,i})).filter(o => etiquetaEjeVisible(o.i, meses.length, pasoEje))
                     .map(o => ({x_pct:(xDe(o.m)/ancho*100).toFixed(2), texto:mesCorto(o.m)}))};
 }
@@ -1545,18 +1587,17 @@ function svgConsumo(g, snapshot){
   return `<div class="chart-scroll"><div class="chart-wrap chart-consumo">
     <svg class="chart-svg" viewBox="0 0 ${g.ancho} ${g.alto}" role="img" aria-label="Consumo real mensual contra el plan de consumos">
       <line class="base-barras" x1="0" y1="${g.base}" x2="${g.ancho}" y2="${g.base}"></line>
-      ${g.barras.map(b => `<rect class="barra-consumo-real${b.parcial ? " barra-parcial" : ""} con-detalle" x="${b.x}" y="${b.y}" width="${b.ancho}" height="${b.alto}" rx="2" data-detalle="${e(b.detalle)}"></rect>`).join("")}
-      ${g.linea ? `<path class="linea-plan-consumo" d="${g.linea}"></path>` : ""}
-      ${g.puntos.map(p => `<circle class="punto-plan-consumo" cx="${p.x}" cy="${p.y}" r="3.2"></circle><circle class="zona-detalle con-detalle" cx="${p.x}" cy="${p.y}" r="9" data-detalle="${e(p.detalle)}"></circle>`).join("")}
+      ${g.planes.map(p => `<rect class="col-plan con-detalle" x="${p.x}" y="${p.y}" width="${p.ancho}" height="${p.alto}" data-detalle="${e(p.detalle)}"></rect>`).join("")}
+      ${g.barras.map(b => `<rect class="col-real${b.parcial ? " col-parcial" : ""} con-detalle" x="${b.x}" y="${b.y}" width="${b.ancho}" height="${b.alto}" data-detalle="${e(b.detalle)}"></rect>`).join("")}
     </svg>
     ${g.barras.filter(b=>b.etiqueta).map(b => `<span class="etiqueta-barra ${b.dentro ? "etiqueta-barra-dentro etiqueta-consumo-dentro" : "etiqueta-barra-encima"} con-detalle" style="left:${b.x_pct}%; top:${b.y_pct}%;" data-detalle="${e(b.detalle)}">${b.etiqueta}</span>`).join("")}
-    ${g.puntos.map(p => `<span class="etiqueta-valor etiqueta-plan-consumo con-detalle" style="left:${p.x_pct}%; top:${p.y_pct}%;" data-detalle="${e(p.detalle)}">${p.etiqueta}</span>`).join("")}
+    ${g.planes.filter(p=>p.etiqueta).map(p => `<span class="etiqueta-valor etiqueta-plan-consumo con-detalle" style="left:${p.x_pct}%; top:${p.y_pct}%;" data-detalle="${e(p.detalle)}">${p.etiqueta}</span>`).join("")}
     ${g.eje.map(x => `<span class="etiqueta-mes" style="left:${x.x_pct}%;">${x.texto}</span>`).join("")}
   </div></div>
   <div class="leyenda-curva">
-    <span class="leyenda-item"><span class="leyenda-marca barra-consumo-real"></span>Consumo real (MB51)</span>
-    <span class="leyenda-item"><span class="leyenda-marca barra-consumo-real barra-parcial"></span>Mes en curso (parcial)</span>
-    <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>Plan de consumos S&amp;OP ${mesLabel(snapshot)}</span>
+    <span class="leyenda-item"><span class="leyenda-marca marca-real"></span>Consumo real (MB51)</span>
+    <span class="leyenda-item"><span class="leyenda-marca marca-real marca-parcial"></span>Mes en curso (parcial)</span>
+    <span class="leyenda-item"><span class="leyenda-marca marca-plan"></span>Plan de consumos S&amp;OP ${mesLabel(snapshot)}</span>
   </div>`;
 }
 
