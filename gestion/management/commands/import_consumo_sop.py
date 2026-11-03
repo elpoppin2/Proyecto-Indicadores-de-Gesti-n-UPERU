@@ -72,22 +72,18 @@ class Command(BaseCommand):
         ))
 
     def _importar_archivo(self, archivo, mes_snapshot):
-        total = 0
-        positivos = 0
-        for celda in leer_matriz_mensual(archivo):
-            valor = celda["valor"]
-            if valor is not None and valor > 0:
-                positivos += 1
-            PlanConsumoSOP.objects.update_or_create(
-                material_codigo=celda["material_codigo"],
-                centro_destino=celda["centro"],
-                mes_snapshot=mes_snapshot,
-                mes_planificado=celda["mes"],
-                defaults={
-                    "material_descripcion": celda["descripcion"],
-                    "destino": celda["destino"],
-                    "cantidad_consumo": -valor if valor is not None else None,
-                },
-            )
-            total += 1
-        return total, positivos
+        # Cada archivo es una emisión completa del S&OP: reemplaza todo lo de su
+        # mes de emisión (como el de abastecimiento), así un mes o un material
+        # que el archivo corregido ya no trae no queda con el valor anterior.
+        celdas = list(leer_matriz_mensual(archivo))
+        positivos = sum(1 for c in celdas if c["valor"] is not None and c["valor"] > 0)
+        if celdas:
+            PlanConsumoSOP.objects.filter(mes_snapshot=mes_snapshot).delete()
+        unicas = {(c["material_codigo"], c["centro"], c["mes"]): c for c in celdas}
+        PlanConsumoSOP.objects.bulk_create([
+            PlanConsumoSOP(material_codigo=m, centro_destino=centro, mes_snapshot=mes_snapshot, mes_planificado=mes,
+                           material_descripcion=c["descripcion"], destino=c["destino"],
+                           cantidad_consumo=-c["valor"] if c["valor"] is not None else None)
+            for (m, centro, mes), c in unicas.items()
+        ])
+        return len(unicas), positivos

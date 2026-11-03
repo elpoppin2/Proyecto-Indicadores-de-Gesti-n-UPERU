@@ -236,3 +236,14 @@ class CorridaSOPTest(SimpleTestCase):
         self.assertEqual((cdc_b[0]["codigo"], cdc_b[0]["seccion"]), ("06-00000001", "Combustibles"))
         self.assertEqual(cdc_b[0]["datos"][("consumo", "cantidad")], {ene30.date(): 7.0, feb30.date(): 8.0})
         self.assertEqual(cdc_b[0]["datos"][("consumo", "valor")], {ene30.date(): 70.0, feb30.date(): 80.0})
+
+    def test_abastecimiento_es_la_compra_o_el_traslado_de_entrada(self):
+        from gestion.management.commands.convertir_corrida_sop import _serie
+
+        ene30 = datetime.date(2030, 1, 1)
+        comprado = {"datos": {("compra", "cantidad"): {ene30: 10.0}, ("traslado", "cantidad"): {ene30: -4.0},
+                              ("consumo", "cantidad"): {ene30: -3.0}}}
+        trasladado = {"datos": {("traslado", "cantidad"): {ene30: 7.0}, ("consumo", "cantidad"): {ene30: -2.0}}}
+        self.assertEqual(_serie(comprado, "abastecimiento"), {ene30: 10.0})
+        self.assertEqual(_serie(comprado, "consumos"), {ene30: 3.0})
+        self.assertEqual(_serie(trasladado, "abastecimiento"), {ene30: 7.0})

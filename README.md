@@ -100,8 +100,9 @@ python -m venv venv
 
 `import_todo` carga todo desde la carpeta sincronizada de SAP, en este orden:
 categorías (si está la carpeta), materiales (ZMM060), inventario (MB5B), compras (ME2N),
-movimientos (MB51), plan de abastecimiento, plan de consumos, stock mínimo/máximo y versión
-de precios del S&OP, ingresos físicos (ZMM056), solicitantes y ajustes de valor (FBL3N).
+movimientos (MB51), plan de abastecimiento, plan de consumos, traslados entre plantas, stock
+mínimo/máximo y versión de precios del S&OP, ingresos físicos (ZMM056), solicitantes y ajustes de
+valor (FBL3N).
 
 ```powershell
 .\venv\Scripts\python.exe manage.py import_todo "<carpeta DOCUMENTOS DESCARGA TABLAS MM>"
@@ -118,13 +119,16 @@ inventario proyectado a precio promedio móvil. Cada S&OP usa solo su propia ver
 .\venv\Scripts\python.exe manage.py plantilla_precios_sop "<carpeta>" [--mes "Noviembre 2026"]
 ```
 
-**Plan de consumos S&OP** (carpeta `TABLA SOP CONSUMOS`, «Consumos SOP - &lt;mes&gt; &lt;año&gt;.xlsx»):
-se arma desde la corrida de Planificación («UNACEM-PROY-INVENTARIOS SOP &lt;Mes&gt; &lt;Año&gt;.xlsx»), con
-la fila Consumo de cada material del S&OP desde el mes de emisión. Si el libro trae varias hojas
-«Mov. Inv» de una planta (escenarios), se indica cuál con `--hoja-atocongo` / `--hoja-condorcocha`.
+**Consumos, abastecimiento y traslados S&OP** (carpetas `TABLA SOP CONSUMOS`, `TABLA SOP
+ABASTECIMIENTO` y `TABLA SOP TRASLADOS`, un archivo por S&OP): se arman desde la corrida de
+Planificación («UNACEM-PROY-INVENTARIOS SOP &lt;Mes&gt; &lt;Año&gt;.xlsx»), con las filas Consumo, Compra y
+Traslado de cada material del S&OP desde el mes de emisión. Los traslados descuentan del centro que
+envía lo que el otro recibe (Carbón Importado y Carbón Trujillo de Atocongo a Condorcocha). Si el
+libro trae varias hojas «Mov. Inv» de una planta (escenarios), se indica cuál con `--hoja-atocongo` /
+`--hoja-condorcocha`.
 
 ```powershell
-.\venv\Scripts\python.exe manage.py convertir_consumos_sop "<corrida>" "<carpeta TABLA SOP CONSUMOS>"
+.\venv\Scripts\python.exe manage.py convertir_corrida_sop "<corrida>" --consumos "<carpeta>" --abastecimiento "<carpeta>" --traslados "<carpeta>"
 ```
 
 Cada tabla tiene también su comando (`import_materiales`, `import_compras`,

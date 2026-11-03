@@ -70,6 +70,12 @@ class Command(BaseCommand):
         else:
             self.stdout.write("== Plan de consumos (S&OP) == (omitido, no se encontró la carpeta)")
 
+        traslados_sop_dir = self._carpeta_opcional(base, "TABLA SOP TRASLADOS")
+        if traslados_sop_dir:
+            self._paso("Traslados entre plantas (S&OP)", "import_traslados_sop", traslados_sop_dir, forzar=forzar)
+        else:
+            self.stdout.write("== Traslados entre plantas (S&OP) == (omitido, no se encontró la carpeta)")
+
         minmax_sop_dir = self._carpeta_opcional(base, "TABLA SOP MIN MAX")
         if minmax_sop_dir:
             self._paso("Stock mínimo/máximo (S&OP)", "import_minmax_sop", minmax_sop_dir, forzar=forzar)

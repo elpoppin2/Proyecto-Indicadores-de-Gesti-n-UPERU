@@ -417,6 +417,36 @@ class PlanConsumoSOP(models.Model):
         return f"{self.material_codigo} @ {self.centro_destino} - consumo {self.mes_planificado}"
 
 
+class PlanTrasladoSOP(models.Model):
+    """Traslados entre plantas planificados en el S&OP ('Traslados SOP - <mes> <año>.xlsx', carpeta 'TABLA SOP
+    TRASLADOS'): lo que sale de un centro hacia el otro cada mes, p.ej. Carbón Importado y Carbón Trujillo de
+    Atocongo a Condorcocha. Sale de la fila Traslado de la corrida de Planificación. Lo que recibe el centro
+    destino ya está en su plan de abastecimiento; esto descuenta la salida del centro que envía. Un S&OP sin
+    traslados cargados usa la regla anterior (todo el abastecimiento de Carbón Importado en Condorcocha sale
+    de Atocongo). Pedido del usuario, 2026-11-03."""
+
+    material_codigo = models.CharField(max_length=40, db_index=True, verbose_name="Material")
+    material_descripcion = models.CharField(max_length=255, blank=True)
+    centro_origen = models.CharField(max_length=20, db_index=True, verbose_name="Centro que envía")
+    centro_destino = models.CharField(max_length=20, verbose_name="Centro que recibe")
+    mes_snapshot = models.DateField(db_index=True, verbose_name="Mes de emisión del plan")
+    mes_planificado = models.DateField(verbose_name="Mes proyectado")
+    cantidad = models.DecimalField(max_digits=18, decimal_places=4, null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Plan de traslados (S&OP)"
+        verbose_name_plural = "Planes de traslados (S&OP)"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["material_codigo", "centro_origen", "centro_destino", "mes_snapshot", "mes_planificado"],
+                name="uniq_plan_traslado_sop",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.material_codigo} {self.centro_origen} -> {self.centro_destino} - {self.mes_planificado}"
+
+
 class StockMinMaxSOP(models.Model):
     """Stock mínimo y máximo por material/centro y mes (proceso S&OP), cargado
     por Planificación en 'MinMax SOP - <mes> <año>.xlsx' (carpeta 'TABLA SOP

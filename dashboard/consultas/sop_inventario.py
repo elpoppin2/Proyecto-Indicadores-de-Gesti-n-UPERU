@@ -400,12 +400,30 @@ def _plan_sop_por_mes(tabla, columna, mes_snapshot):
     """, [mes_snapshot])
 
 
+def _plan_traslados_sop(mes_snapshot):
+    """Traslados entre plantas del S&OP de `mes_snapshot` (TABLA SOP TRASLADOS):
+    {(material, centro que envía, centro que recibe, mes): cantidad}. Un traslado
+    en cero también cuenta: dice que ese S&OP no traslada el material (no se
+    aplica la regla de _TRASLADOS_SOP)."""
+    df = _query("""
+        SELECT material_codigo AS material, centro_origen AS origen, centro_destino AS destino,
+               mes_planificado AS mes, SUM(cantidad) AS cantidad
+        FROM gestion_plantrasladosop
+        WHERE mes_snapshot = %s AND cantidad IS NOT NULL
+        GROUP BY material_codigo, centro_origen, centro_destino, mes_planificado
+    """, [mes_snapshot])
+    return {(r.material, r.origen, r.destino, datetime.date.fromisoformat(str(r.mes)[:10])): float(r.cantidad)
+            for r in df.itertuples()}
+
+
 # Traslados entre centros: el Carbón Importado llega por barco a Atocongo y lo
 # que el S&OP planifica "abastecer" a Condorcocha no es una compra aparte, es
 # un traslado desde el stock de Atocongo. Sin esto, cada embarque se contaba
 # dos veces (en Atocongo y otra vez en Condorcocha) y Atocongo se veía
 # acumulando carbón sin fin. {(material, centro que recibe): centro que envía}.
-# Definido por el usuario.
+# Definido por el usuario. Desde 2026-11-03 los S&OP que salen de la corrida
+# traen sus traslados (también el Carbón Trujillo): esta regla queda para los
+# que no (ver _plan_traslados_sop).
 _TRASLADOS_SOP = {
     ("06-00000003", "U002"): "U001",
 }
@@ -479,6 +497,26 @@ def proyeccion_inventario_sop(mes_snapshot):
     claves = sorted(
         set(zip(abast["material_codigo"], abast["centro"])) | set(zip(cons["material_codigo"], cons["centro"]))
     )
+    a = {(r.material_codigo, r.centro, r.mes): r.cantidad for r in abast.itertuples()}
+    # Salidas por traslado (t) y la parte del abastecimiento que llega por
+    # traslado (recibido), por material/centro/mes. Si el S&OP trae sus
+    # traslados (TABLA SOP TRASLADOS, de la corrida), valen esos; si no (los
+    # S&OP armados a mano), todo el Carbón Importado de Condorcocha sale de
+    # Atocongo en el mismo mes (_TRASLADOS_SOP).
+    t, recibido = {}, {}
+    explicitos = _plan_traslados_sop(mes_snapshot)
+    for (material, envia, recibe, mes), cantidad in explicitos.items():
+        t[(material, envia, mes)] = t.get((material, envia, mes), 0.0) + cantidad
+        recibido[(material, recibe, mes)] = recibido.get((material, recibe, mes), 0.0) + cantidad
+    con_explicitos = {(material, envia) for material, envia, _, _ in explicitos}
+    for (material, recibe), envia in _TRASLADOS_SOP.items():
+        if (material, envia) in con_explicitos:
+            continue
+        for (mat, centro, mes), cantidad in a.items():
+            if mat == material and centro == recibe:
+                t[(material, envia, mes)] = t.get((material, envia, mes), 0.0) + cantidad
+                recibido[(material, recibe, mes)] = recibido.get((material, recibe, mes), 0.0) + cantidad
+    claves = sorted(set(claves) | {(material, envia) for material, envia, _ in t})
     codigos_stock = {m for m, _ in claves} | {real[0] for real in fusiones}
     ids = ",".join(f"'{m}'" for m in _con_anteriores(codigos_stock))  # con los códigos antiguos (Pelets)
     fecha_inicial = fecha_inventario_inicial_sop(mes_snapshot)
@@ -499,20 +537,10 @@ def proyeccion_inventario_sop(mes_snapshot):
             stock[origen] = stock.get(origen, 0.0) + stock.pop(real, 0.0)
             valor[origen] = valor.get(origen, 0.0) + valor.pop(real, 0.0)
 
-    a = {(r.material_codigo, r.centro, r.mes): r.cantidad for r in abast.itertuples()}
     c = {(r.material_codigo, r.centro, r.mes): r.cantidad for r in cons.itertuples()}
     descripcion_plan = {}
     for df in (cons, abast):  # la de Abastecimiento pisa a la de Consumos
         descripcion_plan.update({(r.material_codigo, r.centro): r.descripcion for r in df.itertuples()})
-
-    # Salidas por traslado: lo que recibe un centro por traslado sale del stock
-    # del centro que lo envía, en el mismo mes (ver _TRASLADOS_SOP).
-    t = {}
-    for (material, recibe), envia in _TRASLADOS_SOP.items():
-        for (mat, centro, mes), cantidad in a.items():
-            if mat == material and centro == recibe:
-                t[(material, envia, mes)] = t.get((material, envia, mes), 0.0) + cantidad
-                claves = sorted(set(claves) | {(material, envia)})
 
     filas = []
     for material, centro in claves:
@@ -528,7 +556,7 @@ def proyeccion_inventario_sop(mes_snapshot):
                 # Parte del abastecimiento que en realidad es un traslado desde
                 # otro centro: al sumar los dos centros juntos, se descuenta de
                 # abastecimiento y de traslados (es un movimiento interno).
-                "traslado_recibido": entra if (material, centro) in _TRASLADOS_SOP else 0.0,
+                "traslado_recibido": min(recibido.get((material, centro, mes), 0.0), entra),
                 "stock_final": final, "descripcion_plan": descripcion_plan.get((material, centro), ""),
                 "valor_partida": valor.get((material, centro), 0.0),
             })
@@ -582,7 +610,10 @@ def minmax_sop(mes_snapshot):
     `mes_snapshot`: el archivo de ese mes de emisión, o el más reciente
     anterior si todavía no se cargó uno nuevo. Un mes vacío repite el último
     valor definido del material (solo se escribe el mes en que cambia).
-    Definido por el usuario."""
+    Definido por el usuario. Un S&OP anterior al primer archivo (la historia
+    desde 2025, cargada el 2026-11-03) usa ese primer archivo, y los meses
+    anteriores a su primera columna toman el primer valor de cada material
+    (pedido del usuario: "toma los que te dije en su momento")."""
     df = _query("""
         SELECT material_codigo AS material_codigo, centro_destino AS centro, mes_planificado AS mes,
                stock_minimo AS stock_minimo, stock_maximo AS stock_maximo
@@ -601,6 +632,13 @@ def minmax_sop(mes_snapshot):
     for columna in ("stock_minimo", "stock_maximo"):
         df[columna] = pd.to_numeric(df[columna], errors="coerce").astype(float)
         df[columna] = df.groupby(["material_codigo", "centro"])[columna].ffill()
+    primero = min(df["mes"])
+    if mes_snapshot < primero:
+        primeros = df.sort_values("mes").groupby(["material_codigo", "centro"], as_index=False)[
+            ["stock_minimo", "stock_maximo"]].first()
+        antes = [_sumar_meses(mes_snapshot, i) for i in range((primero.year - mes_snapshot.year) * 12
+                                                              + primero.month - mes_snapshot.month)]
+        df = pd.concat([primeros.assign(mes=m) for m in antes] + [df], ignore_index=True)
     return df
 
 

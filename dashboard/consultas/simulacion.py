@@ -69,7 +69,7 @@ def _valorizar(proyeccion, precio_de):
     filas = []
     for mes, grupo in proyeccion.sort_values("mes").groupby("mes", sort=True):
         # Primero los centros que envían: el que recibe necesita su PMP del mes.
-        orden = sorted(grupo.itertuples(index=False), key=lambda r: (r.material_codigo, r.centro) in _TRASLADOS_SOP)
+        orden = sorted(grupo.itertuples(index=False), key=lambda r: float(r.traslado_recibido) > 0)
         for r in orden:
             clave = (r.material_codigo, r.centro)
             if clave not in estado:
@@ -85,7 +85,8 @@ def _valorizar(proyeccion, precio_de):
             valor_compras = compras * precio_compra
             valor_recibido = 0.0
             if recibido:
-                envia = _TRASLADOS_SOP.get(clave)
+                # Solo hay dos plantas: lo recibido sale de la otra (Carbón Importado y Trujillo, de Atocongo).
+                envia = _TRASLADOS_SOP.get(clave) or {"U001": "U002", "U002": "U001"}.get(r.centro)
                 precio_envia = precio_de.get((r.material_codigo, envia, mes))
                 flete = max(precio - precio_envia, 0.0) if precio is not None and precio_envia is not None else 0.0
                 valor_recibido = recibido * (pmp_salida.get((r.material_codigo, envia, mes), precio_compra) + flete)
