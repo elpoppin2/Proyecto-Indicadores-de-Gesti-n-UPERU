@@ -431,6 +431,82 @@ def stock_real_cierres_sop():
     return df[columnas].sort_values(["material_codigo", "centro", "mes"]).reset_index(drop=True)
 
 
+@_cacheado
+def movimientos_reales_sop():
+    """Ingresos, consumo y traslados reales (MB51) de cada mes por
+    material/centro, para los meses cerrados de la Evolución de inventario
+    (pedido del usuario, 2026-11-03). Toneladas positivas, columnas
+    material_codigo, centro, mes, tipo, contraparte, cantidad:
+    - ingreso: 101/102 (compra a proveedor, producción por orden o recepción
+      de un traslado; en este último, contraparte = centro que lo envió);
+    - consumo: el mismo de la Evaluación de consumo (2xx, Z01, Z04, 353);
+    - envio: salida por traslado a otro centro (641, neto de 642; contraparte
+      = centro que lo recibe).
+    La línea del 641 que deja el traslado en tránsito en el centro que recibe
+    no cuenta: ese material entra con su 101 (si no, se contaba dos veces).
+    Mismos ajustes que el stock: códigos antiguos al vigente y, en el Carbón
+    Terceros, el consumo es el del Chancado; la entrada del Chancado por su
+    orden y la salida del Carbón Terceros a chancar son internas y no se
+    cuentan. El resto (humedad, ajustes de inventario, subcontratación) es la
+    diferencia entre la variación del stock y estos movimientos."""
+    columnas = ["material_codigo", "centro", "mes", "tipo", "contraparte", "cantidad"]
+    codigos = set(stock_real_cierres_sop()["material_codigo"]) | {real[0] for real in _MATERIALES_CONSUMO_VIA_OTRO.values()}
+    if not codigos:
+        return pd.DataFrame(columns=columnas)
+    ids = ",".join(f"'{m}'" for m in _con_anteriores(codigos))
+    df = _query(f"""
+        WITH mov AS (
+            SELECT material_codigo, centro, documento_material, pedido, clase_movimiento, cantidad,
+                   COALESCE(proveedor, '') AS proveedor, COALESCE(orden, '') AS orden,
+                   substr(fecha_contabilizacion, 1, 7) || '-01' AS mes
+            FROM gestion_movimientomaterial
+            WHERE material_codigo IN ({ids}) AND fecha_contabilizacion IS NOT NULL
+        ),
+        origen AS (  -- centro que envía cada pedido de traslado
+            SELECT pedido, material_codigo, MIN(centro) AS centro FROM mov
+            WHERE clase_movimiento = '641' AND cantidad < 0 AND COALESCE(pedido, '') <> ''
+            GROUP BY pedido, material_codigo
+        ),
+        destino AS (  -- centro que recibe cada documento de traslado
+            SELECT documento_material, material_codigo, MIN(centro) AS centro FROM mov
+            WHERE (clase_movimiento = '641' AND cantidad > 0) OR (clase_movimiento = '642' AND cantidad < 0)
+            GROUP BY documento_material, material_codigo
+        )
+        SELECT m.material_codigo AS material_codigo, m.centro AS centro, m.mes AS mes, 'ingreso' AS tipo,
+               CASE WHEN m.proveedor = '' AND m.orden = '' THEN COALESCE(o.centro, '') ELSE '' END AS contraparte,
+               SUM(m.cantidad) AS cantidad
+        FROM mov m LEFT JOIN origen o ON o.pedido = m.pedido AND o.material_codigo = m.material_codigo
+        WHERE m.clase_movimiento IN ('101', '102') AND m.centro IN ('U001', 'U002')
+        GROUP BY 1, 2, 3, 4, 5
+        UNION ALL
+        SELECT material_codigo, centro, mes, 'consumo', '', -SUM(cantidad)
+        FROM mov WHERE centro IN ('U001', 'U002') AND {_FILTRO_CLASE_MOVIMIENTO_CONSUMO_SOP}
+        GROUP BY 1, 2, 3
+        UNION ALL
+        SELECT m.material_codigo, m.centro, m.mes, 'envio', COALESCE(d.centro, ''), -SUM(m.cantidad)
+        FROM mov m LEFT JOIN destino d ON d.documento_material = m.documento_material
+                                        AND d.material_codigo = m.material_codigo
+        WHERE m.centro IN ('U001', 'U002')
+          AND ((m.clase_movimiento = '641' AND m.cantidad < 0) OR (m.clase_movimiento = '642' AND m.cantidad > 0))
+        GROUP BY 1, 2, 3, 4, 5
+    """)
+    if df.empty:
+        return pd.DataFrame(columns=columnas)
+    df["cantidad"] = pd.to_numeric(df["cantidad"], errors="coerce").fillna(0.0).astype(float)
+    df["mes"] = pd.to_datetime(df["mes"]).dt.date
+    df["material_codigo"] = df["material_codigo"].replace(CODIGOS_ANTERIORES)
+    for origen, real in _MATERIALES_CONSUMO_VIA_OTRO.items():
+        es_real = (df["material_codigo"] == real[0]) & (df["centro"] == real[1])
+        es_origen = (df["material_codigo"] == origen[0]) & (df["centro"] == origen[1])
+        con_consumo_real = (es_real & (df["tipo"] == "consumo")).any()  # como _como_material_comprado
+        df = df[~((es_real & (df["tipo"] == "ingreso")) | (con_consumo_real & es_origen & (df["tipo"] == "consumo")))].copy()
+        es_real = (df["material_codigo"] == real[0]) & (df["centro"] == real[1])
+        df.loc[es_real, ["material_codigo", "centro"]] = [origen[0], origen[1]]
+    df = df.groupby(columnas[:-1], as_index=False)["cantidad"].sum()
+    df = df[df["cantidad"].abs() > 0.0005]
+    return df[columnas].sort_values(columnas[:4]).reset_index(drop=True)
+
+
 def _plan_sop_por_mes(tabla, columna, mes_snapshot):
     return _query(f"""
         SELECT material_codigo AS material_codigo, centro_destino AS centro,

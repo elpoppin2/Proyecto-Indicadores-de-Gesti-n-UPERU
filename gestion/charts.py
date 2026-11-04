@@ -493,12 +493,17 @@ def evolucion_stock(puntos, barras=None, banda=None, detalles=None, n_real=1, an
     barras_out = []
     if barras:
         ancho_barra = min(paso * 0.3, 16.0)
-        for (x, _, etiqueta, _), par in zip(crudos, barras):
+        for i, ((x, _, etiqueta, _), par) in enumerate(zip(crudos, barras)):
             if not par:
                 continue
+            # Meses cerrados: ingresos y consumo reales de la MB51, con su propio
+            # color (pedido del usuario, 2026-11-03); el resto, lo planificado.
+            real = i < n_real
             for valor, clase, desplazamiento, nombre in (
-                (par[0], "barra-ingreso", -ancho_barra - 1, "Abastecimiento planificado"),
-                (par[1], "barra-consumo", 1, "Consumo planificado"),
+                (par[0], "barra-ingreso-real" if real else "barra-ingreso", -ancho_barra - 1,
+                 "Ingresos reales (MB51)" if real else "Abastecimiento planificado"),
+                (par[1], "barra-consumo-real" if real else "barra-consumo", 1,
+                 "Consumo real (MB51)" if real else "Consumo planificado"),
             ):
                 alto_barra = max(valor, 0.0) / rango * (base - arriba)
                 x_barra = x + desplazamiento
@@ -548,6 +553,7 @@ def evolucion_stock(puntos, barras=None, banda=None, detalles=None, n_real=1, an
         "der_pct": f"{der / ancho * 100:z.2f}",
         "y_cero": f"{y_cero:z.1f}", "hay_negativos": any(v < 0 for v in valores),
         "barras": barras_out, "banda": banda_out,
+        "hay_barras_reales": any(b["clase"].endswith("-real") for b in barras_out),
         # Ejes y grilla: eje Y a la izquierda con sus marcas en toneladas, eje
         # X abajo (en el mínimo de la escala; si hay negativos, el 0 va aparte
         # como línea punteada).

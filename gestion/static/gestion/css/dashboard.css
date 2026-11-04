@@ -47,6 +47,9 @@
      el 8.º en adelante va a "Otros" (gris). */
   --prov-0: #2f6db4; --prov-1: #d1900f; --prov-2: #2a9a86; --prov-3: #8a5fb4;
   --prov-4: #c9577f; --prov-5: #6f8a24; --prov-6: #5aa6d6; --prov-otros: #b4b4b4;
+  /* Movimientos reales de la MB51 en la Evolución de inventario (azul: se
+     distingue de lo planificado, que va en gris y blanco). */
+  --real-flujo: #2563a8; --real-flujo-texto: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -62,6 +65,7 @@
     --shadow-flotante: 0 1px 3px rgba(0, 0, 0, .4), 0 14px 36px -12px rgba(0, 0, 0, .7);
     --prov-0: #6f9fe0; --prov-1: #eab34a; --prov-2: #4fc2ac; --prov-3: #b08ddc;
     --prov-4: #e88bb0; --prov-5: #a8bf55; --prov-6: #8fcaf0; --prov-otros: #6a6a6a;
+    --real-flujo: #6f9fe0; --real-flujo-texto: #10243d;
   }
 }
 :root[data-theme="dark"] {
@@ -76,6 +80,7 @@
   --shadow-flotante: 0 1px 3px rgba(0, 0, 0, .4), 0 14px 36px -12px rgba(0, 0, 0, .7);
   --prov-0: #6f9fe0; --prov-1: #eab34a; --prov-2: #4fc2ac; --prov-3: #b08ddc;
   --prov-4: #e88bb0; --prov-5: #a8bf55; --prov-6: #8fcaf0; --prov-otros: #6a6a6a;
+  --real-flujo: #6f9fe0; --real-flujo-texto: #10243d;
 }
 
 * { box-sizing: border-box; }
@@ -476,6 +481,15 @@ td.estado-sobre_maximo { background: rgba(214, 160, 40, .2); }
   border-top: 2px solid var(--table-header); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tramos-stock .tramo-proyectado { border-top-style: dashed; padding-left: 6px; }
+/* Barras de los meses cerrados: ingresos y consumo reales de la MB51 en azul
+   (pedido del usuario, 2026-11-03), con la misma gramática que las del plan:
+   lo que entra relleno, lo que sale hueco. */
+.chart-proyeccion .barra-ingreso-real, .leyenda-marca.barra-ingreso-real { fill: var(--real-flujo); background: var(--real-flujo); }
+.chart-proyeccion .barra-consumo-real { fill: color-mix(in srgb, var(--real-flujo) 16%, var(--surface)); stroke: var(--real-flujo); stroke-width: 1.2; }
+.leyenda-marca.barra-consumo-real { background: color-mix(in srgb, var(--real-flujo) 16%, var(--surface)); border: 1.2px solid var(--real-flujo); }
+.leyenda-marca.barra-ingreso-real, .leyenda-marca.barra-consumo-real { height: 10px; width: 10px; border-radius: 2px; box-sizing: border-box; }
+.etiqueta-barra-dentro.barra-ingreso-real-texto { color: var(--real-flujo-texto); }
+.etiqueta-barra-dentro.barra-consumo-real-texto { color: var(--ink); }
 
 /* Recuadro de detalle al pasar el mouse (ver base.html): las etiquetas de
    datos, puntos y barras que lo tienen reciben el mouse (las etiquetas de

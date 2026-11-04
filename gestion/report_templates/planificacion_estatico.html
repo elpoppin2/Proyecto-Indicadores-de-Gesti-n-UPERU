@@ -196,6 +196,7 @@
       <p><strong>Stock final</strong> = stock inicial + abastecimiento S&amp;OP − consumo S&amp;OP − traslados a otro centro (el Carbón Importado llega a Atocongo y lo que se envía a Condorcocha sale de ese stock).</p>
       <p>El primer mes parte del inventario real de cierre del mes anterior al S&amp;OP (MB5B); cada mes siguiente arranca con el stock final del anterior. El mínimo y el máximo vienen del archivo MinMax S&amp;OP (un mes vacío repite el último valor definido).</p>
       <p><strong>Meses cerrados:</strong> desde el mes elegido en «Desde», el stock real de cierre de cada mes (MB5B) de los mismos materiales y centros, con el Chancado sumado al Carbón Terceros y los códigos antiguos al vigente, igual que la partida.</p>
+      <p><strong>Barras azules (reales, MB51):</strong> ingresos = entradas 101/102 (compra, producción o recepción de un traslado); consumo = el de la Evaluación de consumo (2xx, Z01, Z04, 353), más las salidas por traslado a otro centro (641/642). Un traslado entre dos centros elegidos no cuenta. Lo que estos movimientos no explican de la variación del stock (humedad, ajustes de inventario, material en tránsito) aparece en el recuadro como «otros movimientos y diferencias».</p>
     </div></details>
     <form class="filtros">
       <div class="campo"><label for="sop_proyeccion">S&amp;OP</label><select id="sop_proyeccion"></select></div>
@@ -984,6 +985,7 @@ const snapshotsSop = [...new Set(PROY.map(r=>r.snapshot))].sort();
 // Meses cerrados (filtro "Desde"): stock real de cierre por material/centro (q.stock_real_cierres_sop).
 const STOCK_REAL = DATA.stock_real_rows || [];
 const MESES_CIERRE = [...new Set(STOCK_REAL.map(r=>r.mes))].sort();
+const MOV_REAL = DATA.mov_real_rows || [];  // ingresos, consumo y traslados reales MB51 (q.movimientos_reales_sop)
 const MESES_HISTORIA_DEFECTO = 6;  // views._MESES_HISTORIA_DEFECTO
 const mesPartidaDe = snapshot => { const f = (DATA.proyeccion_inicial || {})[snapshot]; return f ? f.slice(0, 7) + "-01" : null; };
 function mesCorto(m){ const [y,mo] = m.split("-").map(Number); return MESES_ABREV[mo-1]+"-"+String(y%100).padStart(2,"0"); }
@@ -1042,7 +1044,10 @@ function evolucionStock(puntos, barras, banda, {ancho=640, alto=320, padIzq=48, 
     const anchoBarra = Math.min(paso*0.3, 16);
     crudos.forEach(([x,,et], i) => {
       const par = barras[i]; if(!par) return;
-      [[par[0], "barra-ingreso", -anchoBarra-1, "Abastecimiento planificado"], [par[1], "barra-consumo", 1, "Consumo planificado"]].forEach(([v, clase, dx, nombre]) => {
+      // Meses cerrados: ingresos y consumo reales de la MB51 en su propio color.
+      const real = i < nReal;
+      [[par[0], real ? "barra-ingreso-real" : "barra-ingreso", -anchoBarra-1, real ? "Ingresos reales (MB51)" : "Abastecimiento planificado"],
+       [par[1], real ? "barra-consumo-real" : "barra-consumo", 1, real ? "Consumo real (MB51)" : "Consumo planificado"]].forEach(([v, clase, dx, nombre]) => {
         const h = Math.max(v, 0) / rango * (base - arriba);
         const dentro = h >= 30;
         barrasOut.push({x:(x+dx).toFixed(1), y:(baseBarras-h).toFixed(1), ancho:anchoBarra.toFixed(1), alto:h.toFixed(1), clase,
@@ -1065,7 +1070,7 @@ function evolucionStock(puntos, barras, banda, {ancho=640, alto=320, padIzq=48, 
                 lineaMin: trazo(tMin), lineaMax: trazo(tMax), textoMin: toneladasCorto(ultimo[0]), textoMax: toneladasCorto(ultimo[1])};
   }
   const xCorte = crudos[partida][0];
-  return {ancho, alto, yCero: yCero.toFixed(1), barras: barrasOut, banda: bandaOut,
+  return {ancho, alto, yCero: yCero.toFixed(1), barras: barrasOut, banda: bandaOut, hayBarrasReales: barrasOut.some(r => r.clase.endsWith("-real")),
     real: tramo(0, partida), proyectado: tramo(partida, crudos.length - 1),
     hayHistoria: nReal >= 2, xCorte: xCorte.toFixed(1), xCortePct: (xCorte/ancho*100).toFixed(2), derPct: (der/ancho*100).toFixed(2),
     hayNegativos: valores.some(v => v < 0),
@@ -1078,7 +1083,7 @@ function evolucionStock(puntos, barras, banda, {ancho=640, alto=320, padIzq=48, 
       detalle: detalles ? detalles[i] : `${et}: ${numero(v)} T`,
     }))};
 }
-function svgProyeccion(g, hayTraslados, snapshot){
+function svgProyeccion(g, hayTraslados, snapshot, hayEnviosReales){
   if(!g) return "";
   const b = g.banda;
   const barrido = t => `data-barrido="${t.barrido}"`;
@@ -1117,6 +1122,8 @@ function svgProyeccion(g, hayTraslados, snapshot){
       ${b ? `<span class="leyenda-item"><span class="leyenda-marca banda-minmax"></span>Rango objetivo: mínimo ${b.textoMin} – máximo ${b.textoMax}</span>`
           : `<span class="leyenda-item leyenda-nota">Elige un material para ver su banda de mínimo y máximo</span>`}
       ${g.hayNegativos ? `<span class="leyenda-item"><span class="leyenda-marca leyenda-meta"></span>Stock 0</span>` : ""}
+      ${g.hayBarrasReales ? `<span class="leyenda-item"><span class="leyenda-marca barra-ingreso-real"></span>Ingresos reales (MB51)</span>` +
+        `<span class="leyenda-item"><span class="leyenda-marca barra-consumo-real"></span>Consumo real (MB51)${hayEnviosReales ? " + traslados a otro centro" : ""}</span>` : ""}
       <span class="leyenda-item"><span class="leyenda-marca barra-ingreso"></span>Abastecimiento planificado</span>
       <span class="leyenda-item"><span class="leyenda-marca barra-consumo"></span>Consumo planificado${hayTraslados ? " + traslados a otro centro" : ""}</span>
     </div>`;
@@ -1191,6 +1198,18 @@ function renderSeccion5(){
   const stockPrevio = new Map();
   for(const r of STOCK_REAL) if(clavesSel.has(r.m+"|"+r.c)) stockPrevio.set(r.mes, (stockPrevio.get(r.mes) || 0) + r.s);
   const historia = (mesPartida && desde) ? MESES_CIERRE.filter(m => m >= desde && m < mesPartida).map(m => [m, stockPrevio.get(m) || 0]) : [];
+  // Ingresos, consumo y traslados reales (MB51) de cada mes cerrado; un traslado entre dos centros elegidos no cuenta (como el plan).
+  const centrosSel = new Map();
+  for(const f of filas){ if(!centrosSel.has(f.material_codigo)) centrosSel.set(f.material_codigo, new Set()); centrosSel.get(f.material_codigo).add(f.centro); }
+  const flujos = new Map();
+  for(const r of MOV_REAL){
+    if(!clavesSel.has(r.m+"|"+r.c) || centrosSel.get(r.m).has(r.o)) continue;
+    flujos.set(r.mes+"|"+r.t, (flujos.get(r.mes+"|"+r.t) || 0) + r.q);
+  }
+  const flujoReal = m => ({ingreso: flujos.get(m+"|ingreso") || 0, consumo: flujos.get(m+"|consumo") || 0, envio: flujos.get(m+"|envio") || 0});
+  const mesesReales = [...historia.map(([m]) => m), ...(mesPartida ? [mesPartida] : [])];
+  const hayEnviosReales = mesesReales.some(m => flujoReal(m).envio > 0.5);
+  const barrasReales = mesesReales.map(m => { const f = flujoReal(m); return [f.ingreso, f.consumo + f.envio]; });
   if(banda) banda = [...historia.map(() => null), ...banda];  // el mínimo y el máximo son del S&OP: desde la partida
   const puntos = [...historia.map(([m, v]) => [mesCorto(m), v]),
                   [fechaIni ? mesCorto(fechaIni) : "Inicio", resumen[0].stock_inicial], ...resumen.map(r=>[mesCorto(r.mes), r.stock_final])];
@@ -1263,10 +1282,23 @@ function renderSeccion5(){
   const t = v => numero(v)+" T";
   const variacionMes = (actual, anterior) => `Variación del mes: ${actual >= anterior ? "+" : "−"}${t(Math.abs(actual - anterior))}`;
   const fechaCierre = m => { const f = (DATA.cierres_fecha || {})[m]; return f ? f.split("-").reverse().join("/") : ""; };
-  const detallesHistoria = historia.map(([m, v], i) => [`${mesCorto(m)} · Stock real al cierre: ${t(v)}`, `MB5B al ${fechaCierre(m)}`,
-    ...(i ? [variacionMes(v, historia[i-1][1])] : [])].join("\n"));
-  const detallePartida = `Stock de partida${fechaTxt ? " (cierre "+fechaTxt+")" : ""}: ${t(resumen[0].stock_inicial)}` +
-    (historia.length ? "\n" + variacionMes(resumen[0].stock_inicial, historia[historia.length-1][1]) : "");
+  const mesAnterior = m => { const [y, mo] = m.split("-").map(Number); return mo === 1 ? `${y-1}-12-01` : `${y}-${String(mo-1).padStart(2,"0")}-01`; };
+  const lineasReales = (m, stock) => {  // movimientos MB51 del mes y lo que no explican de la variación del stock
+    const f = flujoReal(m);
+    const lineas = [`+ Ingresos (MB51): ${t(f.ingreso)}`, `− Consumo (MB51): ${t(f.consumo)}`];
+    if(f.envio > 0.5) lineas.push(`− Traslados a otro centro (MB51): ${t(f.envio)}`);
+    const ant = mesAnterior(m);
+    if(MESES_CIERRE.includes(ant)){
+      const previo = stockPrevio.get(ant) || 0, otros = stock - previo - (f.ingreso - f.consumo - f.envio);
+      if(Math.abs(otros) >= 0.5) lineas.push(`${otros > 0 ? "+" : "−"} Otros movimientos y diferencias: ${t(Math.abs(otros))}`);
+      lineas.push(variacionMes(stock, previo));
+    }
+    return lineas;
+  };
+  const detallesHistoria = historia.map(([m, v]) => [`${mesCorto(m)} · Stock real al cierre: ${t(v)}`, `MB5B al ${fechaCierre(m)}`,
+    ...lineasReales(m, v)].join("\n"));
+  const detallePartida = [`Stock de partida${fechaTxt ? " (cierre "+fechaTxt+")" : ""}: ${t(resumen[0].stock_inicial)}`,
+    ...(mesPartida ? lineasReales(mesPartida, resumen[0].stock_inicial) : [])].join("\n");
   const detalles = [...detallesHistoria, detallePartida, ...resumen.map(r => {
     const variacion = r.stock_final - r.stock_inicial;
     const lineas = [`${mesCorto(r.mes)} · Stock final proyectado: ${t(r.stock_final)}`, `Stock inicial: ${t(r.stock_inicial)}`,
@@ -1286,7 +1318,7 @@ function renderSeccion5(){
     }
     return lineas.join("\n");
   })];
-  const g = evolucionStock(puntos, [...historia.map(() => null), null, ...resumen.map(r=>[r.abastecimiento, r.consumo + r.traslado])], banda,
+  const g = evolucionStock(puntos, [...(barrasReales.length ? barrasReales : [null]), ...resumen.map(r=>[r.abastecimiento, r.consumo + r.traslado])], banda,
                            {detalles, nReal: historia.length + 1});
 
   cont.innerHTML = (fechaIni ? "" : `<p class="aviso">Todavía no está cargado el inventario de cierre del mes anterior a este S&amp;OP: la proyección parte de stock 0.</p>`) + `
@@ -1296,7 +1328,7 @@ function renderSeccion5(){
       <div class="metrica"><span class="valor ${nBajo?'dato-negativo':''}">${nBajo}</span><span class="etiqueta">Materiales que caen bajo el mínimo${faltante ? " · faltan "+numero(faltante)+" T a tiempo" : ""}${deficitPlazo ? " + "+numero(deficitPlazo)+" T ya dentro del lead time" : ""}</span></div>
       <div class="metrica"><span class="valor ${nSobre?'dato-alerta':''}">${nSobre}</span><span class="etiqueta">Materiales sobre el máximo objetivo${recorte ? " · recorte posible "+numero(recorte)+" T" : ""}</span></div>
     </div>
-    ${svgProyeccion(g, hayTraslados, snapshot)}
+    ${svgProyeccion(g, hayTraslados, snapshot, hayEnviosReales)}
     ${diag.length ? `
     <h3 class="subtitulo">Diagnóstico frente a mínimos y máximos</h3>
     <p class="nota">Considera el lead time de cada material (1 mes; Carbón Importado 3; Escoria japonesa 4): la cuota de los

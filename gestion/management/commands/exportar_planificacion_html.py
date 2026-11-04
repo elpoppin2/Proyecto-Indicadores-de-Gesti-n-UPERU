@@ -127,6 +127,10 @@ class Command(BaseCommand):
         stock_real_rows = [{"m": r.material_codigo, "c": r.centro, "mes": r.mes.isoformat(), "s": round(float(r.stock), 3)}
                            for r in cierres_sop.itertuples()]
         cierres_fecha = {r.mes.isoformat(): r.fecha.isoformat() for r in cierres_sop.drop_duplicates("mes").itertuples()}
+        # Ingresos, consumo y traslados reales (MB51) de cada mes cerrado (q.movimientos_reales_sop).
+        mov_real_rows = [{"m": r.material_codigo, "c": r.centro, "mes": r.mes.isoformat(), "t": r.tipo,
+                          "o": r.contraparte, "q": round(float(r.cantidad), 3)}
+                         for r in q.movimientos_reales_sop().itertuples()]
         for snapshot in q.snapshots_sop_disponibles():
             fecha_inicial = q.fecha_inventario_inicial_sop(snapshot)
             if fecha_inicial:
@@ -233,7 +237,7 @@ class Command(BaseCommand):
             "energia_rows": energia_rows,
             "proyeccion_rows": proyeccion_rows, "proyeccion_inicial": proyeccion_inicial,
             "acopio_proyeccion": acopio_proyeccion,
-            "stock_real_rows": stock_real_rows, "cierres_fecha": cierres_fecha,
+            "stock_real_rows": stock_real_rows, "cierres_fecha": cierres_fecha, "mov_real_rows": mov_real_rows,
             "diagnostico_rows": diagnostico_rows, "estados_stock": q.ESTADOS_STOCK,            "meses": [m.isoformat() for m in meses],
             # Cumplimiento mensual con "El más reciente de cada mes": solo los meses con su propio S&OP (como la web).
             "meses_sop_propio": [m.isoformat() for m in q.meses_con_sop_propio()],

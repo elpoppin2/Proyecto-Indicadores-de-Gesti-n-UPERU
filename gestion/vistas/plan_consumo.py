@@ -483,9 +483,32 @@ def _contexto_proyeccion_sop(request):
     previos = cierres[[k in claves_sel for k in zip(cierres["material_codigo"], cierres["centro"])]] if len(cierres) else cierres
     stock_previo = previos.groupby("mes")["stock"].sum() if len(previos) else {}
     fechas_cierre = q.meses_inventario_disponibles()
+    meses_cierre = set(cierres["mes"])
     historia = [(m, float(stock_previo.get(m, 0.0))) for m in opciones_desde if desde_sel <= m < mes_partida]
 
-    puntos = ([(_mes_corto(m), v) for m, v in historia] + [(etiqueta_inicial, resumen[0]["stock_inicial"])]
+    # Ingresos, consumo y traslados reales de la MB51 de cada mes cerrado
+    # (pedido del usuario, 2026-11-03), con su propio color en el gráfico. Un
+    # traslado entre dos centros de la selección no entra ni sale del total
+    # (igual que en el plan); lo que la MB51 no explica de la variación del
+    # MB5B (humedad, ajustes de inventario, tránsito) va al recuadro.
+    movimientos = q.movimientos_reales_sop()
+    if len(movimientos):
+        centros_sel = df.groupby("material_codigo")["centro"].agg(set).to_dict()
+        externos = [
+            (m, c) in claves_sel and contraparte not in centros_sel.get(m, set())
+            for m, c, contraparte in zip(movimientos["material_codigo"], movimientos["centro"], movimientos["contraparte"])
+        ]
+        movimientos = movimientos[externos]
+    flujos = (movimientos.groupby(["mes", "tipo"])["cantidad"].sum().to_dict() if len(movimientos) else {})
+    meses_reales = [m for m, _ in historia] + ([mes_partida] if mes_partida else [])
+
+    def flujo_real(mes):
+        return {tipo: float(flujos.get((mes, tipo), 0.0)) for tipo in ("ingreso", "consumo", "envio")}
+
+    hay_envios_reales = any(flujo_real(m)["envio"] > 0.5 for m in meses_reales)
+    barras_reales = [(f["ingreso"], f["consumo"] + f["envio"]) for f in map(flujo_real, meses_reales)]
+
+    puntos =([(_mes_corto(m), v) for m, v in historia] + [(etiqueta_inicial, resumen[0]["stock_inicial"])]
               + [(_mes_corto(r["mes"]), r["stock_final"]) for r in resumen])
 
     # Con UN solo material/centro seleccionado, la banda mínimo–máximo va en el
@@ -518,18 +541,31 @@ def _contexto_proyeccion_sop(request):
     def variacion_mes(actual, anterior):
         return f"Variación del mes: {'+' if actual >= anterior else '−'}{toneladas(abs(actual - anterior))}"
 
-    detalles = []
-    for i, (mes, stock) in enumerate(historia):
-        lineas = [f"{_mes_corto(mes)} · Stock real al cierre: {toneladas(stock)}",
-                  f"MB5B al {fechas_cierre[mes]:%d/%m/%Y}"]
-        if i:
-            lineas.append(variacion_mes(stock, historia[i - 1][1]))
-        detalles.append("\n".join(lineas))
-    partida = (f"Stock de partida{f' (cierre {fecha_inicial:%d/%m/%Y})' if fecha_inicial else ''}: "
-               f"{toneladas(resumen[0]['stock_inicial'])}")
-    if historia:
-        partida += "\n" + variacion_mes(resumen[0]["stock_inicial"], historia[-1][1])
-    detalles.append(partida)
+    def lineas_reales(mes, stock):
+        """Movimientos MB51 del mes y lo que no explican de la variación del stock."""
+        f = flujo_real(mes)
+        lineas = [f"+ Ingresos (MB51): {toneladas(f['ingreso'])}", f"− Consumo (MB51): {toneladas(f['consumo'])}"]
+        if f["envio"] > 0.5:
+            lineas.append(f"− Traslados a otro centro (MB51): {toneladas(f['envio'])}")
+        anterior = q._sumar_meses(mes, -1)
+        if anterior in meses_cierre:
+            previo = float(stock_previo.get(anterior, 0.0))
+            otros = stock - previo - (f["ingreso"] - f["consumo"] - f["envio"])
+            if abs(otros) >= 0.5:
+                lineas.append(f"{'+' if otros > 0 else '−'} Otros movimientos y diferencias: {toneladas(abs(otros))}")
+            lineas.append(variacion_mes(stock, previo))
+        return lineas
+
+    detalles = [
+        "\n".join([f"{_mes_corto(mes)} · Stock real al cierre: {toneladas(stock)}", f"MB5B al {fechas_cierre[mes]:%d/%m/%Y}",
+                   *lineas_reales(mes, stock)])
+        for mes, stock in historia
+    ]
+    partida = [f"Stock de partida{f' (cierre {fecha_inicial:%d/%m/%Y})' if fecha_inicial else ''}: "
+               f"{toneladas(resumen[0]['stock_inicial'])}"]
+    if mes_partida:
+        partida += lineas_reales(mes_partida, resumen[0]["stock_inicial"])
+    detalles.append("\n".join(partida))
     estados_por_mes = {} if un_material else {
         mes: g["estado"].value_counts().to_dict() for mes, g in df.groupby("mes")
     }
@@ -644,8 +680,10 @@ def _contexto_proyeccion_sop(request):
         "deficit_plazo_total": sum(f["deficit_en_plazo"] for f in filas_diag),
         "hay_traslados": hay_traslados,
         "opciones_desde": opciones_desde, "desde_sel": desde_sel, "n_historia": len(historia),
+        "hay_envios_reales": hay_envios_reales,
         "grafico": charts.evolucion_stock(
-            puntos, barras=[None] * (len(historia) + 1) + [(r["abastecimiento"], r["consumo"] + r["traslado"]) for r in resumen],
+            puntos,
+            barras=(barras_reales or [None]) + [(r["abastecimiento"], r["consumo"] + r["traslado"]) for r in resumen],
             banda=banda, detalles=detalles, n_real=len(historia) + 1,
         ),
     })
