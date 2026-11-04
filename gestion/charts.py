@@ -496,8 +496,9 @@ def evolucion_stock(puntos, barras=None, banda=None, detalles=None, n_real=1, an
         for i, ((x, _, etiqueta, _), par) in enumerate(zip(crudos, barras)):
             if not par:
                 continue
-            # Meses cerrados: ingresos y consumo reales de la MB51, con su propio
-            # color (pedido del usuario, 2026-11-03); el resto, lo planificado.
+            # Meses cerrados: ingresos y consumo reales de la MB51, lisos; el
+            # resto, lo planificado, con la trama en degradé encima (pedido del
+            # usuario, 2026-11-04).
             real = i < n_real
             for valor, clase, desplazamiento, nombre in (
                 (par[0], "barra-ingreso-real" if real else "barra-ingreso", -ancho_barra - 1,
@@ -515,6 +516,7 @@ def evolucion_stock(puntos, barras=None, banda=None, detalles=None, n_real=1, an
                 barras_out.append({
                     "x": f"{x_barra:z.1f}", "y": f"{base_barras - alto_barra:z.1f}",
                     "ancho": f"{ancho_barra:z.1f}", "alto": f"{alto_barra:z.1f}", "clase": clase,
+                    "trama": "" if real else "trama-" + clase,
                     "titulo": f"{nombre} {etiqueta}: {valor:z,.0f} T",
                     "etiqueta": _toneladas_corto(valor) if valor > 0 and dentro else "",
                     "etiqueta_dentro": dentro,

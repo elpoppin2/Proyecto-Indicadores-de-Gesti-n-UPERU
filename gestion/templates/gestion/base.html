@@ -35,6 +35,11 @@
     <pattern id="trama-sim-mp" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect class="trama-fondo" width="6" height="6"></rect><line class="trama-sim-mp" x1="1" y1="0" x2="1" y2="6"></line></pattern>
     <pattern id="trama-sim-comb" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect class="trama-fondo" width="6" height="6"></rect><line class="trama-sim-comb" x1="1" y1="0" x2="1" y2="6"></line></pattern>
     <pattern id="trama-proy" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)"><line class="trama-proy" x1="1" y1="0" x2="1" y2="7"></line></pattern>
+    {# Barras planificadas de la Evolución de inventario: líneas en degradé (la máscara las desvanece hacia la base de cada barra). #}
+    <pattern id="trama-barra-ingreso" patternUnits="userSpaceOnUse" width="4" height="4" patternTransform="rotate(45)"><line class="trama-linea-ingreso" x1="1" y1="0" x2="1" y2="4"></line></pattern>
+    <pattern id="trama-barra-consumo" patternUnits="userSpaceOnUse" width="4" height="4" patternTransform="rotate(45)"><line class="trama-linea-consumo" x1="1" y1="0" x2="1" y2="4"></line></pattern>
+    <linearGradient id="degrade-trama" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"></stop><stop offset="1" stop-color="#ffffff" stop-opacity="0.15"></stop></linearGradient>
+    <mask id="desvanecer-trama" maskContentUnits="objectBoundingBox"><rect width="1" height="1" fill="url(#degrade-trama)"></rect></mask>
   </defs></svg>
   {% block contenido %}{% endblock %}
   <script>

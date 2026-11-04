@@ -47,9 +47,6 @@
      el 8.º en adelante va a "Otros" (gris). */
   --prov-0: #2f6db4; --prov-1: #d1900f; --prov-2: #2a9a86; --prov-3: #8a5fb4;
   --prov-4: #c9577f; --prov-5: #6f8a24; --prov-6: #5aa6d6; --prov-otros: #b4b4b4;
-  /* Movimientos reales de la MB51 en la Evolución de inventario (azul: se
-     distingue de lo planificado, que va en gris y blanco). */
-  --real-flujo: #2563a8; --real-flujo-texto: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -65,7 +62,6 @@
     --shadow-flotante: 0 1px 3px rgba(0, 0, 0, .4), 0 14px 36px -12px rgba(0, 0, 0, .7);
     --prov-0: #6f9fe0; --prov-1: #eab34a; --prov-2: #4fc2ac; --prov-3: #b08ddc;
     --prov-4: #e88bb0; --prov-5: #a8bf55; --prov-6: #8fcaf0; --prov-otros: #6a6a6a;
-    --real-flujo: #6f9fe0; --real-flujo-texto: #10243d;
   }
 }
 :root[data-theme="dark"] {
@@ -80,7 +76,6 @@
   --shadow-flotante: 0 1px 3px rgba(0, 0, 0, .4), 0 14px 36px -12px rgba(0, 0, 0, .7);
   --prov-0: #6f9fe0; --prov-1: #eab34a; --prov-2: #4fc2ac; --prov-3: #b08ddc;
   --prov-4: #e88bb0; --prov-5: #a8bf55; --prov-6: #8fcaf0; --prov-otros: #6a6a6a;
-  --real-flujo: #6f9fe0; --real-flujo-texto: #10243d;
 }
 
 * { box-sizing: border-box; }
@@ -404,12 +399,35 @@ table thead th[data-orden="desc"]::after { content: "\25BC"; }
 .chart-proyeccion .linea { fill: none; stroke: var(--accent); stroke-width: 2.2; }
 .chart-proyeccion .punto { fill: var(--accent); }
 .chart-proyeccion .base-barras { stroke: var(--line); stroke-width: 1; }
-/* Abastecimiento en gris; Consumo en blanco con borde negro (en los dos
-   temas, para que se distinga del fondo). Pedido por el usuario. */
-.chart-proyeccion .barra-ingreso, .leyenda-marca.barra-ingreso { fill: #9a9a9a; background: #9a9a9a; }
-.chart-proyeccion .barra-consumo { fill: #ffffff; stroke: #111111; stroke-width: 1; }
-.leyenda-marca.barra-consumo { background: #ffffff; border: 1px solid #111111; }
-.leyenda-marca.barra-ingreso, .leyenda-marca.barra-consumo { height: 10px; width: 10px; border-radius: 2px; }
+/* Barras (pedido del usuario, 2026-11-04): ingresos en blanco con borde
+   negro, consumo en gris, iguales en los dos temas para que se distingan del
+   fondo. Lo real (MB51) va liso; lo planificado (S&OP), el "futuro", lleva
+   encima una trama de líneas en degradé: negras sobre el blanco, blancas
+   sobre el gris, fuertes arriba y desvaneciéndose hacia la base (máscara
+   #desvanecer-trama, en base.html). */
+.chart-proyeccion .barra-ingreso, .chart-proyeccion .barra-ingreso-real { fill: #ffffff; stroke: #111111; stroke-width: 1; }
+.chart-proyeccion .barra-consumo, .chart-proyeccion .barra-consumo-real { fill: #9a9a9a; }
+.chart-proyeccion .trama-barra { pointer-events: none; }
+.chart-proyeccion .trama-barra-ingreso { fill: url(#trama-barra-ingreso); }
+.chart-proyeccion .trama-barra-consumo { fill: url(#trama-barra-consumo); }
+.trama-linea-ingreso { stroke: #111111; stroke-width: 1.3; }
+.trama-linea-consumo { stroke: #ffffff; stroke-width: 1.3; }
+/* La muestra de la leyenda repite la barra en CSS: base, trama a 135° (la
+   misma diagonal que la del SVG) y un velo del color de la base que la
+   desvanece hacia abajo. */
+.leyenda-marca.barra-ingreso, .leyenda-marca.barra-consumo,
+.leyenda-marca.barra-ingreso-real, .leyenda-marca.barra-consumo-real { height: 14px; width: 11px; border-radius: 2px; box-sizing: border-box; }
+.leyenda-marca.barra-ingreso-real { background: #ffffff; border: 1px solid #111111; }
+.leyenda-marca.barra-consumo-real { background: #9a9a9a; }
+.leyenda-marca.barra-ingreso {
+  border: 1px solid #111111;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(255, 255, 255, .85)),
+              repeating-linear-gradient(135deg, #111111 0 1.3px, #ffffff 1.3px 4px);
+}
+.leyenda-marca.barra-consumo {
+  background: linear-gradient(to bottom, rgba(154, 154, 154, 0), rgba(154, 154, 154, .85)),
+              repeating-linear-gradient(135deg, #ffffff 0 1.3px, #9a9a9a 1.3px 4px);
+}
 /* Valor de cada barra, en miles (K), en vertical dentro de la barra (o
    encima si la barra es muy baja). */
 .etiqueta-barra {
@@ -418,7 +436,11 @@ table thead th[data-orden="desc"]::after { content: "\25BC"; }
 }
 .etiqueta-barra-dentro { transform: translate(-50%, -50%) rotate(180deg); }
 .etiqueta-barra-encima { transform: translate(-50%, -100%) rotate(180deg); color: var(--muted); }
-.etiqueta-barra-dentro.barra-ingreso-texto, .etiqueta-barra-dentro.barra-consumo-texto { color: #111111; }
+.etiqueta-barra-dentro.barra-ingreso-texto, .etiqueta-barra-dentro.barra-consumo-texto,
+.etiqueta-barra-dentro.barra-ingreso-real-texto, .etiqueta-barra-dentro.barra-consumo-real-texto { color: #111111; }
+/* Sobre la trama, el valor lleva un halo del color de la barra para leerse. */
+.etiqueta-barra-dentro.barra-ingreso-texto { text-shadow: 0 0 2px #ffffff, 0 0 2px #ffffff, 0 0 3px #ffffff; }
+.etiqueta-barra-dentro.barra-consumo-texto { text-shadow: 0 0 2px #9a9a9a, 0 0 2px #9a9a9a, 0 0 3px #9a9a9a; }
 .chart-proyeccion .punto-negativo { fill: var(--down); }
 .celda-codigo { white-space: nowrap; }
 
@@ -481,15 +503,6 @@ td.estado-sobre_maximo { background: rgba(214, 160, 40, .2); }
   border-top: 2px solid var(--table-header); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tramos-stock .tramo-proyectado { border-top-style: dashed; padding-left: 6px; }
-/* Barras de los meses cerrados: ingresos y consumo reales de la MB51 en azul
-   (pedido del usuario, 2026-11-03), con la misma gramática que las del plan:
-   lo que entra relleno, lo que sale hueco. */
-.chart-proyeccion .barra-ingreso-real, .leyenda-marca.barra-ingreso-real { fill: var(--real-flujo); background: var(--real-flujo); }
-.chart-proyeccion .barra-consumo-real { fill: color-mix(in srgb, var(--real-flujo) 16%, var(--surface)); stroke: var(--real-flujo); stroke-width: 1.2; }
-.leyenda-marca.barra-consumo-real { background: color-mix(in srgb, var(--real-flujo) 16%, var(--surface)); border: 1.2px solid var(--real-flujo); }
-.leyenda-marca.barra-ingreso-real, .leyenda-marca.barra-consumo-real { height: 10px; width: 10px; border-radius: 2px; box-sizing: border-box; }
-.etiqueta-barra-dentro.barra-ingreso-real-texto { color: var(--real-flujo-texto); }
-.etiqueta-barra-dentro.barra-consumo-real-texto { color: var(--ink); }
 
 /* Recuadro de detalle al pasar el mouse (ver base.html): las etiquetas de
    datos, puntos y barras que lo tienen reciben el mouse (las etiquetas de

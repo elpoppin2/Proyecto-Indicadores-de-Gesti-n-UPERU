@@ -35,6 +35,10 @@
   <pattern id="trama-sim-mp" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect class="trama-fondo" width="6" height="6"></rect><line class="trama-sim-mp" x1="1" y1="0" x2="1" y2="6"></line></pattern>
   <pattern id="trama-sim-comb" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect class="trama-fondo" width="6" height="6"></rect><line class="trama-sim-comb" x1="1" y1="0" x2="1" y2="6"></line></pattern>
   <pattern id="trama-proy" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)"><line class="trama-proy" x1="1" y1="0" x2="1" y2="7"></line></pattern>
+  <pattern id="trama-barra-ingreso" patternUnits="userSpaceOnUse" width="4" height="4" patternTransform="rotate(45)"><line class="trama-linea-ingreso" x1="1" y1="0" x2="1" y2="4"></line></pattern>
+  <pattern id="trama-barra-consumo" patternUnits="userSpaceOnUse" width="4" height="4" patternTransform="rotate(45)"><line class="trama-linea-consumo" x1="1" y1="0" x2="1" y2="4"></line></pattern>
+  <linearGradient id="degrade-trama" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"></stop><stop offset="1" stop-color="#ffffff" stop-opacity="0.15"></stop></linearGradient>
+  <mask id="desvanecer-trama" maskContentUnits="objectBoundingBox"><rect width="1" height="1" fill="url(#degrade-trama)"></rect></mask>
 </defs></svg>
 <div class="wrap wrap-planificacion">
 
@@ -196,7 +200,8 @@
       <p><strong>Stock final</strong> = stock inicial + abastecimiento S&amp;OP − consumo S&amp;OP − traslados a otro centro (el Carbón Importado llega a Atocongo y lo que se envía a Condorcocha sale de ese stock).</p>
       <p>El primer mes parte del inventario real de cierre del mes anterior al S&amp;OP (MB5B); cada mes siguiente arranca con el stock final del anterior. El mínimo y el máximo vienen del archivo MinMax S&amp;OP (un mes vacío repite el último valor definido).</p>
       <p><strong>Meses cerrados:</strong> desde el mes elegido en «Desde», el stock real de cierre de cada mes (MB5B) de los mismos materiales y centros, con el Chancado sumado al Carbón Terceros y los códigos antiguos al vigente, igual que la partida.</p>
-      <p><strong>Barras azules (reales, MB51):</strong> ingresos = entradas 101/102 (compra, producción o recepción de un traslado); consumo = el de la Evaluación de consumo (2xx, Z01, Z04, 353), más las salidas por traslado a otro centro (641/642). Un traslado entre dos centros elegidos no cuenta. Lo que estos movimientos no explican de la variación del stock (humedad, ajustes de inventario, material en tránsito) aparece en el recuadro como «otros movimientos y diferencias».</p>
+      <p><strong>Barras:</strong> ingresos en blanco y consumo en gris; lisas en los meses cerrados (real, MB51) y con líneas en degradé en los meses proyectados (S&amp;OP).</p>
+      <p><strong>Barras reales (MB51):</strong> ingresos = entradas 101/102 (compra, producción o recepción de un traslado); consumo = el de la Evaluación de consumo (2xx, Z01, Z04, 353), más las salidas por traslado a otro centro (641/642). Un traslado entre dos centros elegidos no cuenta. Lo que estos movimientos no explican de la variación del stock (humedad, ajustes de inventario, material en tránsito) aparece en el recuadro como «otros movimientos y diferencias».</p>
     </div></details>
     <form class="filtros">
       <div class="campo"><label for="sop_proyeccion">S&amp;OP</label><select id="sop_proyeccion"></select></div>
@@ -1044,13 +1049,14 @@ function evolucionStock(puntos, barras, banda, {ancho=640, alto=320, padIzq=48, 
     const anchoBarra = Math.min(paso*0.3, 16);
     crudos.forEach(([x,,et], i) => {
       const par = barras[i]; if(!par) return;
-      // Meses cerrados: ingresos y consumo reales de la MB51 en su propio color.
+      // Meses cerrados: ingresos y consumo reales de la MB51, lisos; lo planificado lleva la trama en degradé.
       const real = i < nReal;
       [[par[0], real ? "barra-ingreso-real" : "barra-ingreso", -anchoBarra-1, real ? "Ingresos reales (MB51)" : "Abastecimiento planificado"],
        [par[1], real ? "barra-consumo-real" : "barra-consumo", 1, real ? "Consumo real (MB51)" : "Consumo planificado"]].forEach(([v, clase, dx, nombre]) => {
         const h = Math.max(v, 0) / rango * (base - arriba);
         const dentro = h >= 30;
         barrasOut.push({x:(x+dx).toFixed(1), y:(baseBarras-h).toFixed(1), ancho:anchoBarra.toFixed(1), alto:h.toFixed(1), clase,
+                        trama: real ? "" : "trama-" + clase,
                         titulo:`${nombre} ${et}: ${numero(v)} T`, etiqueta: v > 0 && dentro ? toneladasCorto(v) : "", dentro,
                         xPct:((x+dx+anchoBarra/2)/ancho*100).toFixed(2), yPct:((baseBarras-h/2)/alto*100).toFixed(2)});
       });
@@ -1100,7 +1106,8 @@ function svgProyeccion(g, hayTraslados, snapshot, hayEnviosReales){
         ${b ? `<path class="banda-minmax" d="${b.area}"></path>`
             : (g.real ? `<path class="area-real" d="${g.real.area}" ${barrido(g.real)}></path>` : "") +
               (g.proyectado ? `<path class="area-proyectada" d="${g.proyectado.area}" ${barrido(g.proyectado)}></path>` : "")}
-        ${g.barras.map(r=>`<rect class="${r.clase} con-detalle" x="${r.x}" y="${r.y}" width="${r.ancho}" height="${r.alto}" rx="1.5" data-detalle="${escaparAttr(r.titulo)}"></rect>`).join("")}
+        ${g.barras.map(r=>`<rect class="${r.clase} con-detalle" x="${r.x}" y="${r.y}" width="${r.ancho}" height="${r.alto}" rx="1.5" data-detalle="${escaparAttr(r.titulo)}"></rect>` +
+          (r.trama ? `<rect class="trama-barra ${r.trama}" x="${r.x}" y="${r.y}" width="${r.ancho}" height="${r.alto}" rx="1.5" mask="url(#desvanecer-trama)"></rect>` : "")).join("")}
         ${b ? `<path class="linea-minimo" d="${b.lineaMin}"></path><path class="linea-maximo" d="${b.lineaMax}"></path>` : ""}
         ${g.hayHistoria ? `<line class="corte-partida" x1="${g.xCorte}" y1="${g.arriba}" x2="${g.xCorte}" y2="${g.base}"></line>` : ""}
         <line class="eje" x1="${g.izq}" y1="${g.arriba}" x2="${g.izq}" y2="${g.base}"></line>

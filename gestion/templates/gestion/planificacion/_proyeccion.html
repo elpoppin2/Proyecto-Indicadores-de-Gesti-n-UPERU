@@ -15,7 +15,9 @@
     vienen del archivo MinMax S&amp;OP (un mes vacío repite el último valor definido).</p>
     <p><strong>Meses cerrados:</strong> desde el mes elegido en «Desde», el stock real de cierre de cada mes (MB5B) de los mismos
     materiales y centros, con el Chancado sumado al Carbón Terceros y los códigos antiguos al vigente, igual que la partida.</p>
-    <p><strong>Barras azules (reales, MB51):</strong> ingresos = entradas 101/102 (compra, producción o recepción de un traslado);
+    <p><strong>Barras:</strong> ingresos en blanco y consumo en gris; lisas en los meses cerrados (real, MB51) y con líneas en
+    degradé en los meses proyectados (S&amp;OP).</p>
+    <p><strong>Barras reales (MB51):</strong> ingresos = entradas 101/102 (compra, producción o recepción de un traslado);
     consumo = el de la Evaluación de consumo (2xx, Z01, Z04, 353), más las salidas por traslado a otro centro (641/642). Un
     traslado entre dos centros elegidos no cuenta. Lo que estos movimientos no explican de la variación del stock (humedad,
     ajustes de inventario, material en tránsito) aparece en el recuadro como «otros movimientos y diferencias».</p>
@@ -91,6 +93,7 @@
             {% endif %}
             {% for b in g.barras %}
               <rect class="{{ b.clase }} con-detalle" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.ancho }}" height="{{ b.alto }}" rx="1.5" data-detalle="{{ b.titulo }}"></rect>
+              {% if b.trama %}<rect class="trama-barra {{ b.trama }}" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.ancho }}" height="{{ b.alto }}" rx="1.5" mask="url(#desvanecer-trama)"></rect>{% endif %}
             {% endfor %}
             {% if g.banda %}
               <path class="linea-minimo" d="{{ g.banda.linea_min }}"></path>
