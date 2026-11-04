@@ -398,8 +398,19 @@ def _toneladas_corto(valor):
     return f"-{texto}" if valor < 0 else texto
 
 
-def evolucion_stock(puntos, barras=None, banda=None, detalles=None, ancho=640, alto=320, pad_izq=48, pad_der=12,
-                    pad_arr=26, pad_abj=24):
+def _indices_con_etiqueta(n, ancla):
+    """Puntos que llevan etiqueta de valor y de mes en un gráfico de `n`
+    meses: todos hasta 20; con más, uno cada 2 (hasta 32) o cada 3, contados
+    desde `ancla` (la partida del S&OP) para que esa siempre la tenga, y el
+    último. El vecino del último que quedaría pegado a él no la lleva."""
+    paso = 1 if n <= 20 else (2 if n <= 32 else 3)
+    marcados = {i for i in range(n) if (i - ancla) % paso == 0}
+    marcados = {i for i in marcados if i == ancla or not (0 < (n - 1) - i < paso)}
+    return marcados | {n - 1}
+
+
+def evolucion_stock(puntos, barras=None, banda=None, detalles=None, n_real=1, ancho=640, alto=320, pad_izq=48,
+                    pad_der=12, pad_arr=26, pad_abj=24):
     """Evolución de stock proyectado (toneladas) en UN solo eje de toneladas,
     con sus ejes y grilla (pedido por el usuario el 2026-10-06: antes la
     línea y las barritas iban en franjas con escalas distintas y sin ejes):
@@ -416,9 +427,17 @@ def evolucion_stock(puntos, barras=None, banda=None, detalles=None, ancho=640, a
     stock objetivo detrás de la línea (solo tiene sentido para UN material).
     `detalles`: lista paralela a `puntos` con el texto (varias líneas) del
     recuadro que aparece al pasar el mouse por el punto o su etiqueta.
-    Todos los meses llevan su etiqueta en el eje."""
+    `n_real` (pedido del usuario, 2026-11-03): cuántos de los primeros
+    `puntos` son stock real de cierre de mes; el último de ellos es la
+    partida del S&OP y el resto es proyección. Notación IBCS, como en
+    Cumplimiento y Consumo: lo real en línea continua con área lisa, lo
+    proyectado en línea punteada con área rayada, los dos en el mismo gris;
+    el rojo queda para los quiebres. Hasta 20 meses todos llevan etiqueta;
+    con más, cada 2 o 3 meses (ver _indices_con_etiqueta) y el valor de los
+    demás sigue en el recuadro del mouse."""
     if len(puntos) < 2:
         return None
+    n_real = max(1, min(n_real, len(puntos)))
     valores = [v for _, v in puntos]
     limites = [v for par in (banda or []) if par for v in par if v is not None and v == v]
     en_barras = [max(v, 0.0) for par in (barras or []) if par for v in par]
@@ -440,11 +459,24 @@ def evolucion_stock(puntos, barras=None, banda=None, detalles=None, ancho=640, a
         return arriba + (base - arriba) * (1 - (valor - minimo) / rango)
 
     crudos = [(izq + (i + 0.5) * paso, y_de(v), etiqueta, v) for i, (etiqueta, v) in enumerate(puntos)]
-    linea = " ".join(f"{'M' if i == 0 else 'L'}{x:z.1f} {y:z.1f}" for i, (x, y, _, _) in enumerate(crudos))
     y_cero = y_de(0.0)
-    area = linea + f" L{crudos[-1][0]:z.1f} {y_cero:z.1f} L{crudos[0][0]:z.1f} {y_cero:z.1f} Z"
     base_barras = y_cero
 
+    def tramo(desde, hasta):
+        """Línea y área de los puntos desde..hasta (inclusive), y su
+        fracción horizontal "inicio fin" para que graficos.js revele lo real
+        y luego lo proyectado como un solo barrido."""
+        parte = crudos[desde:hasta + 1]
+        if len(parte) < 2:
+            return None
+        linea = " ".join(f"{'M' if i == 0 else 'L'}{x:z.1f} {y:z.1f}" for i, (x, y, _, _) in enumerate(parte))
+        return {"linea": linea,
+                "area": linea + f" L{parte[-1][0]:z.1f} {y_cero:z.1f} L{parte[0][0]:z.1f} {y_cero:z.1f} Z",
+                "barrido": f"{parte[0][0] / ancho:z.4f} {parte[-1][0] / ancho:z.4f}"}
+
+    partida = n_real - 1
+    con_etiqueta = _indices_con_etiqueta(len(crudos), partida)
+    primer_quiebre = next((i for i, (_, _, _, v) in enumerate(crudos) if v < 0), None)
     puntos_out = []
     for i, (x, y, etiqueta, valor) in enumerate(crudos):
         puntos_out.append({
@@ -453,6 +485,8 @@ def evolucion_stock(puntos, barras=None, banda=None, detalles=None, ancho=640, a
             "etiqueta": etiqueta,
             "etiqueta_valor": _toneladas_corto(valor),
             "negativo": valor < 0,
+            "real": i < n_real, "partida": i == partida,
+            "con_mes": i in con_etiqueta, "con_valor": i in con_etiqueta or i == primer_quiebre,
             "detalle": detalles[i] if detalles else f"{etiqueta}: {valor:z,.0f} T",
         })
 
@@ -503,8 +537,15 @@ def evolucion_stock(puntos, barras=None, banda=None, detalles=None, ancho=640, a
                 "area": poligono, "linea_min": trazo(tramos_min), "linea_max": trazo(tramos_max),
                 "texto_min": _toneladas_corto(ultimo[0]), "texto_max": _toneladas_corto(ultimo[1]),
             }
+    x_corte = crudos[partida][0]
     return {
-        "ancho": ancho, "alto": alto, "linea": linea, "area": area, "puntos": puntos_out,
+        "ancho": ancho, "alto": alto, "puntos": puntos_out,
+        "real": tramo(0, partida), "proyectado": tramo(partida, len(crudos) - 1),
+        # Línea vertical en el cierre de partida (solo si hay meses reales
+        # antes) y la regla de dos tramos de arriba del gráfico.
+        "hay_historia": n_real >= 2,
+        "x_corte": f"{x_corte:z.1f}", "x_corte_pct": f"{x_corte / ancho * 100:z.2f}",
+        "der_pct": f"{der / ancho * 100:z.2f}",
         "y_cero": f"{y_cero:z.1f}", "hay_negativos": any(v < 0 for v in valores),
         "barras": barras_out, "banda": banda_out,
         # Ejes y grilla: eje Y a la izquierda con sus marcas en toneladas, eje

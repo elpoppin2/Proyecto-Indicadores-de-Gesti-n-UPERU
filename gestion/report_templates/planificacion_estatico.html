@@ -34,6 +34,7 @@
 <svg class="tramas-graficos" id="tramas-graficos" width="0" height="0" aria-hidden="true" focusable="false"><defs>
   <pattern id="trama-sim-mp" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect class="trama-fondo" width="6" height="6"></rect><line class="trama-sim-mp" x1="1" y1="0" x2="1" y2="6"></line></pattern>
   <pattern id="trama-sim-comb" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><rect class="trama-fondo" width="6" height="6"></rect><line class="trama-sim-comb" x1="1" y1="0" x2="1" y2="6"></line></pattern>
+  <pattern id="trama-proy" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(45)"><line class="trama-proy" x1="1" y1="0" x2="1" y2="7"></line></pattern>
 </defs></svg>
 <div class="wrap wrap-planificacion">
 
@@ -190,13 +191,15 @@
       <h2>Evolución de inventario (S&amp;OP)</h2>
       <button type="button" class="btn-link" data-imprimir="sec-proyeccion">Descargar / Imprimir</button>
     </div>
-    <p class="nota" id="proyeccion-nota">Stock proyectado de cada material mes a mes según el S&amp;OP, frente a su mínimo y máximo. Un stock negativo es un quiebre.</p>
+    <p class="nota" id="proyeccion-nota">Stock real de los meses cerrados (línea continua) y stock proyectado por el S&amp;OP (línea punteada), frente a su mínimo y máximo. Un stock negativo es un quiebre.</p>
     <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
       <p><strong>Stock final</strong> = stock inicial + abastecimiento S&amp;OP − consumo S&amp;OP − traslados a otro centro (el Carbón Importado llega a Atocongo y lo que se envía a Condorcocha sale de ese stock).</p>
       <p>El primer mes parte del inventario real de cierre del mes anterior al S&amp;OP (MB5B); cada mes siguiente arranca con el stock final del anterior. El mínimo y el máximo vienen del archivo MinMax S&amp;OP (un mes vacío repite el último valor definido).</p>
+      <p><strong>Meses cerrados:</strong> desde el mes elegido en «Desde», el stock real de cierre de cada mes (MB5B) de los mismos materiales y centros, con el Chancado sumado al Carbón Terceros y los códigos antiguos al vigente, igual que la partida.</p>
     </div></details>
     <form class="filtros">
       <div class="campo"><label for="sop_proyeccion">S&amp;OP</label><select id="sop_proyeccion"></select></div>
+      <div class="campo"><label for="desde_proyeccion">Desde</label><select id="desde_proyeccion"></select></div>
       <div class="campo"><label for="categoria_proyeccion">Categoría</label><select id="categoria_proyeccion"></select></div>
       <div class="campo"><label for="centro_proyeccion">Centro</label><select id="centro_proyeccion"></select></div>
       <div class="campo campo-multi"><label for="material_proyeccion-boton">Material</label><div class="filtro-multi"><select id="material_proyeccion" multiple hidden data-multi tabindex="-1" aria-hidden="true"></select></div></div>
@@ -970,6 +973,7 @@ f4centro.addEventListener("change", renderSeccion4);
    con mínimo/máximo y estado) y el diagnóstico por material
    (queries.diagnostico_minmax_sop); acá solo se filtra y se suma. */
 const f5sop = document.getElementById("sop_proyeccion");
+const f5desde = document.getElementById("desde_proyeccion");
 const f5cat = document.getElementById("categoria_proyeccion");
 const f5centro = document.getElementById("centro_proyeccion");
 const f5material = document.getElementById("material_proyeccion");
@@ -977,6 +981,11 @@ const PROY = DATA.proyeccion_rows || [];
 const DIAG = DATA.diagnostico_rows || [];
 const ESTADOS = DATA.estados_stock || {};
 const snapshotsSop = [...new Set(PROY.map(r=>r.snapshot))].sort();
+// Meses cerrados (filtro "Desde"): stock real de cierre por material/centro (q.stock_real_cierres_sop).
+const STOCK_REAL = DATA.stock_real_rows || [];
+const MESES_CIERRE = [...new Set(STOCK_REAL.map(r=>r.mes))].sort();
+const MESES_HISTORIA_DEFECTO = 6;  // views._MESES_HISTORIA_DEFECTO
+const mesPartidaDe = snapshot => { const f = (DATA.proyeccion_inicial || {})[snapshot]; return f ? f.slice(0, 7) + "-01" : null; };
 function mesCorto(m){ const [y,mo] = m.split("-").map(Number); return MESES_ABREV[mo-1]+"-"+String(y%100).padStart(2,"0"); }
 function toneladasCorto(v){
   const a = Math.abs(v);
@@ -985,10 +994,25 @@ function toneladasCorto(v){
 }
 const nulo = v => v === null || v === undefined || v !== v;
 function escaparAttr(s){ return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
-function evolucionStock(puntos, barras, banda, {ancho=640, alto=320, padIzq=48, padDer=12, padArr=26, padAbj=24, detalles=null} = {}){
+function indicesConEtiqueta(n, ancla){
+  /* charts._indices_con_etiqueta: todos hasta 20 meses; con más, cada 2 (hasta
+     32) o 3 contados desde la partida, y el último (sin su vecino pegado). */
+  const paso = n <= 20 ? 1 : (n <= 32 ? 2 : 3);
+  const marcados = new Set([n - 1]);
+  for(let i = 0; i < n; i++){
+    const enGrilla = (((i - ancla) % paso) + paso) % paso === 0;
+    const pegadoAlUltimo = 0 < (n - 1) - i && (n - 1) - i < paso;
+    if(enGrilla && (i === ancla || !pegadoAlUltimo)) marcados.add(i);
+  }
+  return marcados;
+}
+function evolucionStock(puntos, barras, banda, {ancho=640, alto=320, padIzq=48, padDer=12, padArr=26, padAbj=24, detalles=null, nReal=1} = {}){
   /* Un solo eje de toneladas con ejes y grilla: las barritas suben desde 0 en
-     la misma escala que el stock y el mínimo/máximo (charts.evolucion_stock). */
+     la misma escala que el stock y el mínimo/máximo (charts.evolucion_stock).
+     Los nReal primeros puntos son stock real de cierre (el último, la
+     partida): línea continua; el resto, proyección punteada. */
   if(puntos.length < 2) return null;
+  nReal = Math.max(1, Math.min(nReal, puntos.length));
   const valores = puntos.map(p=>p[1]);
   const limites = (banda || []).filter(Boolean).flat().filter(v => !nulo(v));
   const enBarras = (barras || []).filter(Boolean).flat().map(v => Math.max(v, 0));
@@ -1001,9 +1025,18 @@ function evolucionStock(puntos, barras, banda, {ancho=640, alto=320, padIzq=48, 
   const paso = (der - izq) / puntos.length;
   const yDe = v => arriba + (base - arriba) * (1 - (v - minimo) / rango);
   const crudos = puntos.map(([et, v], i) => [izq + (i + 0.5)*paso, yDe(v), et, v]);
-  const linea = crudos.map(([x,y],i) => `${i?'L':'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
   const yCero = yDe(0), baseBarras = yCero;
-  const area = linea + ` L${crudos[crudos.length-1][0].toFixed(1)} ${yCero.toFixed(1)} L${crudos[0][0].toFixed(1)} ${yCero.toFixed(1)} Z`;
+  const tramo = (desde, hasta) => {
+    const parte = crudos.slice(desde, hasta + 1);
+    if(parte.length < 2) return null;
+    const linea = parte.map(([x,y],i) => `${i?'L':'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+    const ult = parte[parte.length-1];
+    return {linea, area: linea + ` L${ult[0].toFixed(1)} ${yCero.toFixed(1)} L${parte[0][0].toFixed(1)} ${yCero.toFixed(1)} Z`,
+            barrido: `${(parte[0][0]/ancho).toFixed(4)} ${(ult[0]/ancho).toFixed(4)}`};
+  };
+  const partida = nReal - 1;
+  const conEtiqueta = indicesConEtiqueta(crudos.length, partida);
+  const primerQuiebre = crudos.findIndex(c => c[3] < 0);
   const barrasOut = [];
   if(barras){
     const anchoBarra = Math.min(paso*0.3, 16);
@@ -1031,41 +1064,56 @@ function evolucionStock(puntos, barras, banda, {ancho=640, alto=320, padIzq=48, 
     bandaOut = {area: trazo(tMax) + " " + [...tMin].reverse().map(([x,y]) => `L${x.toFixed(1)} ${y.toFixed(1)}`).join(" ") + " Z",
                 lineaMin: trazo(tMin), lineaMax: trazo(tMax), textoMin: toneladasCorto(ultimo[0]), textoMax: toneladasCorto(ultimo[1])};
   }
-  return {ancho, alto, linea, area, yCero: yCero.toFixed(1), barras: barrasOut, banda: bandaOut,
+  const xCorte = crudos[partida][0];
+  return {ancho, alto, yCero: yCero.toFixed(1), barras: barrasOut, banda: bandaOut,
+    real: tramo(0, partida), proyectado: tramo(partida, crudos.length - 1),
+    hayHistoria: nReal >= 2, xCorte: xCorte.toFixed(1), xCortePct: (xCorte/ancho*100).toFixed(2), derPct: (der/ancho*100).toFixed(2),
     hayNegativos: valores.some(v => v < 0),
     izq: izq.toFixed(1), der: der.toFixed(1), arriba: arriba.toFixed(1), base: base.toFixed(1), izqPct: (izq/ancho*100).toFixed(2),
     grilla: marcas.map(v => ({y: yDe(v).toFixed(1), yPct: (yDe(v)/alto*100).toFixed(2), texto: toneladasCorto(v)})),
     puntos: crudos.map(([x,y,et,v],i) => ({
       x: x.toFixed(1), y: y.toFixed(1), xPct: (x/ancho*100).toFixed(2), yPct: (y/alto*100).toFixed(2),
       etiqueta: et, valor: toneladasCorto(v), negativo: v < 0,
+      real: i < nReal, partida: i === partida, conMes: conEtiqueta.has(i), conValor: conEtiqueta.has(i) || i === primerQuiebre,
       detalle: detalles ? detalles[i] : `${et}: ${numero(v)} T`,
     }))};
 }
-function svgProyeccion(g, hayTraslados){
+function svgProyeccion(g, hayTraslados, snapshot){
   if(!g) return "";
   const b = g.banda;
+  const barrido = t => `data-barrido="${t.barrido}"`;
   return `
-    <div class="chart-scroll"><div class="chart-wrap chart-proyeccion">
+    <div class="chart-scroll">
+    <div class="tramos-stock" aria-hidden="true">
+      ${g.hayHistoria ? `<span class="tramo tramo-real" style="left:${g.izqPct}%; width:calc(${g.xCortePct}% - ${g.izqPct}%);" title="Real: cierres de mes (MB5B)">Real: cierres de mes (MB5B)</span>` : ""}
+      <span class="tramo tramo-proyectado" style="left:${g.xCortePct}%; width:calc(${g.derPct}% - ${g.xCortePct}%);">Proyección: S&amp;OP ${mesLabel(snapshot)}</span>
+    </div>
+    <div class="chart-wrap chart-proyeccion">
       <span class="titulo-eje-y">Toneladas (T)</span>
-      <svg class="chart-svg" viewBox="0 0 ${g.ancho} ${g.alto}" role="img" aria-label="Evolución de inventario proyectada">
+      <svg class="chart-svg" viewBox="0 0 ${g.ancho} ${g.alto}" role="img" aria-label="Evolución de inventario: stock real de los meses cerrados y proyección del S&amp;OP">
         ${g.grilla.map(t=>`<line class="grilla" x1="${g.izq}" y1="${t.y}" x2="${g.der}" y2="${t.y}"></line>`).join("")}
-        ${b ? `<path class="banda-minmax" d="${b.area}"></path>` : `<path class="area" d="${g.area}"></path>`}
+        ${b ? `<path class="banda-minmax" d="${b.area}"></path>`
+            : (g.real ? `<path class="area-real" d="${g.real.area}" ${barrido(g.real)}></path>` : "") +
+              (g.proyectado ? `<path class="area-proyectada" d="${g.proyectado.area}" ${barrido(g.proyectado)}></path>` : "")}
         ${g.barras.map(r=>`<rect class="${r.clase} con-detalle" x="${r.x}" y="${r.y}" width="${r.ancho}" height="${r.alto}" rx="1.5" data-detalle="${escaparAttr(r.titulo)}"></rect>`).join("")}
         ${b ? `<path class="linea-minimo" d="${b.lineaMin}"></path><path class="linea-maximo" d="${b.lineaMax}"></path>` : ""}
+        ${g.hayHistoria ? `<line class="corte-partida" x1="${g.xCorte}" y1="${g.arriba}" x2="${g.xCorte}" y2="${g.base}"></line>` : ""}
         <line class="eje" x1="${g.izq}" y1="${g.arriba}" x2="${g.izq}" y2="${g.base}"></line>
         <line class="eje" x1="${g.izq}" y1="${g.base}" x2="${g.der}" y2="${g.base}"></line>
         ${g.hayNegativos ? `<line class="linea-cero" x1="${g.izq}" y1="${g.yCero}" x2="${g.der}" y2="${g.yCero}"></line>` : ""}
-        <path class="linea" d="${g.linea}"></path>
-        ${g.puntos.map(p=>`<circle class="punto${p.negativo?' punto-negativo':''}" cx="${p.x}" cy="${p.y}" r="3"></circle>` +
+        ${g.real ? `<path class="linea-real-stock" d="${g.real.linea}" ${barrido(g.real)}></path>` : ""}
+        ${g.proyectado ? `<path class="linea-proyectada" d="${g.proyectado.linea}" ${barrido(g.proyectado)}></path>` : ""}
+        ${g.puntos.map(p=>`<circle class="punto ${p.real?'punto-real':'punto-proy'}${p.partida?' punto-partida':''}${p.negativo?' punto-negativo':''}" cx="${p.x}" cy="${p.y}" r="${p.partida?'4.2':'3'}"></circle>` +
           `<circle class="zona-detalle con-detalle" cx="${p.x}" cy="${p.y}" r="10" data-detalle="${escaparAttr(p.detalle)}"></circle>`).join("")}
       </svg>
       ${g.grilla.map(t=>`<span class="etiqueta-eje-y" style="top:${t.yPct}%; width:${g.izqPct}%;">${t.texto}</span>`).join("")}
       ${g.barras.filter(r=>r.etiqueta).map(r=>`<span class="etiqueta-barra ${r.clase}-texto etiqueta-barra-dentro con-detalle" style="left:${r.xPct}%; top:${r.yPct}%;" data-detalle="${escaparAttr(r.titulo)}">${r.etiqueta}</span>`).join("")}
-      ${g.puntos.map(p=>`<span class="etiqueta-valor${p.negativo?' dato-negativo':''} con-detalle" style="left:${p.xPct}%; top:${p.yPct}%;" data-detalle="${escaparAttr(p.detalle)}">${p.valor}</span>` +
-        `<span class="etiqueta-mes" style="left:${p.xPct}%;">${p.etiqueta}</span>`).join("")}
+      ${g.puntos.map(p=>(p.conValor ? `<span class="etiqueta-valor${p.negativo?' dato-negativo':''} con-detalle" style="left:${p.xPct}%; top:${p.yPct}%;" data-detalle="${escaparAttr(p.detalle)}">${p.valor}</span>` : "") +
+        (p.conMes ? `<span class="etiqueta-mes" style="left:${p.xPct}%;">${p.etiqueta}</span>` : "")).join("")}
     </div></div>
     <div class="leyenda-curva">
-      <span class="leyenda-item"><span class="leyenda-marca leyenda-plan"></span>Stock proyectado al cierre de cada mes (T)</span>
+      ${g.hayHistoria ? `<span class="leyenda-item"><span class="leyenda-marca leyenda-stock-real"></span>Stock real al cierre de cada mes (T)</span>` : ""}
+      <span class="leyenda-item"><span class="leyenda-marca leyenda-stock-proyectado"></span>Stock proyectado por el S&amp;OP (T)</span>
       ${b ? `<span class="leyenda-item"><span class="leyenda-marca banda-minmax"></span>Rango objetivo: mínimo ${b.textoMin} – máximo ${b.textoMax}</span>`
           : `<span class="leyenda-item leyenda-nota">Elige un material para ver su banda de mínimo y máximo</span>`}
       ${g.hayNegativos ? `<span class="leyenda-item"><span class="leyenda-marca leyenda-meta"></span>Stock 0</span>` : ""}
@@ -1085,6 +1133,13 @@ function opcionesProyeccion(snapshot, categoria, centro){
 }
 function poblarFiltros5(mantenerCat, mantenerCentro, mantenerMaterial){
   llenarSelect(f5sop, snapshotsSop.map(m=>({value:m,label:mesLabel(m)})), f5sop.value || snapshotsSop[snapshotsSop.length-1]);
+  // Desde: cierres hasta la partida del S&OP; se mantiene el elegido si sigue valiendo (views._contexto_proyeccion_sop).
+  const partida = mesPartidaDe(f5sop.value);
+  const desdeOps = partida ? MESES_CIERRE.filter(m => m <= partida) : [];
+  f5desde.closest(".campo").hidden = !desdeOps.length;
+  const desdeDefecto = desdeOps[Math.max(0, desdeOps.length - 1 - MESES_HISTORIA_DEFECTO)] || "";
+  llenarSelect(f5desde, desdeOps.map((m, i) => ({value:m, label: mesLabel(m) + (i === desdeOps.length - 1 ? " (solo la partida)" : "")})),
+               desdeOps.includes(f5desde.value) ? f5desde.value : desdeDefecto);
   const {categorias} = opcionesProyeccion(f5sop.value, null, null);
   const catSel = llenarSelect(f5cat, [{value:"", label:"Todas"}, ...categorias.map(c=>({value:c,label:titulo(c)}))], mantenerCat ?? "");
   const {centros} = opcionesProyeccion(f5sop.value, catSel || null, null);
@@ -1099,8 +1154,8 @@ function renderSeccion5(){
   const fechaIni = (DATA.proyeccion_inicial || {})[snapshot];
   const fechaTxt = fechaIni ? new Date(fechaIni+"T00:00:00").toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'}) : null;
   document.getElementById("proyeccion-nota").innerHTML =
-    `Stock proyectado de cada material mes a mes según el S&amp;OP, frente a su mínimo y máximo. Un stock negativo es un quiebre.` +
-    (fechaTxt ? ` Parte del inventario de cierre al ${fechaTxt}.` : "");
+    `Stock real de los meses cerrados (línea continua) y stock proyectado por el S&amp;OP (línea punteada), frente a su mínimo y máximo. Un stock negativo es un quiebre.` +
+    (fechaTxt ? ` La proyección parte del inventario de cierre al ${fechaTxt}.` : "");
   let filas = PROY.filter(r=>r.snapshot===snapshot);
   if(categoria) filas = filas.filter(f=>f.categoria===categoria);
   if(centro) filas = filas.filter(f=>f.centro===centro);
@@ -1130,7 +1185,15 @@ function renderSeccion5(){
     if(limites.some(([mi, ma]) => mi !== null || ma !== null)) banda = [limites[0], ...limites];
     resumen.forEach((r, i) => Object.assign(r, {stock_minimo: limites[i][0], stock_maximo: limites[i][1], estado: unico[i].estado}));
   }
-  const puntos = [[fechaIni ? mesCorto(fechaIni) : "Inicio", resumen[0].stock_inicial], ...resumen.map(r=>[mesCorto(r.mes), r.stock_final])];
+  // Meses cerrados antes de la partida: stock real de cierre de los mismos materiales/centros, desde el mes de "Desde".
+  const mesPartida = mesPartidaDe(snapshot), desde = f5desde.value || null;
+  const clavesSel = new Set(filas.map(f => f.material_codigo+"|"+f.centro));
+  const stockPrevio = new Map();
+  for(const r of STOCK_REAL) if(clavesSel.has(r.m+"|"+r.c)) stockPrevio.set(r.mes, (stockPrevio.get(r.mes) || 0) + r.s);
+  const historia = (mesPartida && desde) ? MESES_CIERRE.filter(m => m >= desde && m < mesPartida).map(m => [m, stockPrevio.get(m) || 0]) : [];
+  if(banda) banda = [...historia.map(() => null), ...banda];  // el mínimo y el máximo son del S&OP: desde la partida
+  const puntos = [...historia.map(([m, v]) => [mesCorto(m), v]),
+                  [fechaIni ? mesCorto(fechaIni) : "Inicio", resumen[0].stock_inicial], ...resumen.map(r=>[mesCorto(r.mes), r.stock_final])];
 
   // Cobertura (meses) = stock ÷ salidas planificadas (consumo + traslados)
   // promedio de los COB_SIGUIENTES meses siguientes (replica
@@ -1198,7 +1261,13 @@ function renderSeccion5(){
   const cierre = resumen[resumen.length-1].stock_final;
   // Recuadro al pasar el mouse (replica views._contexto_proyeccion_sop).
   const t = v => numero(v)+" T";
-  const detalles = [`Stock de partida${fechaTxt ? " (cierre "+fechaTxt+")" : ""}: ${t(resumen[0].stock_inicial)}`, ...resumen.map(r => {
+  const variacionMes = (actual, anterior) => `Variación del mes: ${actual >= anterior ? "+" : "−"}${t(Math.abs(actual - anterior))}`;
+  const fechaCierre = m => { const f = (DATA.cierres_fecha || {})[m]; return f ? f.split("-").reverse().join("/") : ""; };
+  const detallesHistoria = historia.map(([m, v], i) => [`${mesCorto(m)} · Stock real al cierre: ${t(v)}`, `MB5B al ${fechaCierre(m)}`,
+    ...(i ? [variacionMes(v, historia[i-1][1])] : [])].join("\n"));
+  const detallePartida = `Stock de partida${fechaTxt ? " (cierre "+fechaTxt+")" : ""}: ${t(resumen[0].stock_inicial)}` +
+    (historia.length ? "\n" + variacionMes(resumen[0].stock_inicial, historia[historia.length-1][1]) : "");
+  const detalles = [...detallesHistoria, detallePartida, ...resumen.map(r => {
     const variacion = r.stock_final - r.stock_inicial;
     const lineas = [`${mesCorto(r.mes)} · Stock final proyectado: ${t(r.stock_final)}`, `Stock inicial: ${t(r.stock_inicial)}`,
                     `+ Abastecimiento: ${t(r.abastecimiento)}`, `− Consumo: ${t(r.consumo)}`];
@@ -1217,7 +1286,8 @@ function renderSeccion5(){
     }
     return lineas.join("\n");
   })];
-  const g = evolucionStock(puntos, [null, ...resumen.map(r=>[r.abastecimiento, r.consumo + r.traslado])], banda, {detalles});
+  const g = evolucionStock(puntos, [...historia.map(() => null), null, ...resumen.map(r=>[r.abastecimiento, r.consumo + r.traslado])], banda,
+                           {detalles, nReal: historia.length + 1});
 
   cont.innerHTML = (fechaIni ? "" : `<p class="aviso">Todavía no está cargado el inventario de cierre del mes anterior a este S&amp;OP: la proyección parte de stock 0.</p>`) + `
     <div class="metricas">
@@ -1226,7 +1296,7 @@ function renderSeccion5(){
       <div class="metrica"><span class="valor ${nBajo?'dato-negativo':''}">${nBajo}</span><span class="etiqueta">Materiales que caen bajo el mínimo${faltante ? " · faltan "+numero(faltante)+" T a tiempo" : ""}${deficitPlazo ? " + "+numero(deficitPlazo)+" T ya dentro del lead time" : ""}</span></div>
       <div class="metrica"><span class="valor ${nSobre?'dato-alerta':''}">${nSobre}</span><span class="etiqueta">Materiales sobre el máximo objetivo${recorte ? " · recorte posible "+numero(recorte)+" T" : ""}</span></div>
     </div>
-    ${svgProyeccion(g, hayTraslados)}
+    ${svgProyeccion(g, hayTraslados, snapshot)}
     ${diag.length ? `
     <h3 class="subtitulo">Diagnóstico frente a mínimos y máximos</h3>
     <p class="nota">Considera el lead time de cada material (1 mes; Carbón Importado 3; Escoria japonesa 4): la cuota de los
@@ -1304,6 +1374,7 @@ if(snapshotsSop.length){
   f5cat.addEventListener("change", () => { poblarFiltros5(f5cat.value, null, null); renderSeccion5(); });
   f5centro.addEventListener("change", () => { poblarFiltros5(f5cat.value, f5centro.value, null); renderSeccion5(); });
   f5material.addEventListener("change", renderSeccion5);
+  f5desde.addEventListener("change", renderSeccion5);
 } else {
   document.getElementById("sec-proyeccion").hidden = true;
 }

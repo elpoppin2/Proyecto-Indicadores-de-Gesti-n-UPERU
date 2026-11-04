@@ -365,6 +365,9 @@ def _contexto_consumo_especifico(request):
 
 
 _COBERTURA_MESES_SIGUIENTES = 3
+# Evolución de inventario: cierres reales que se ven antes de la partida si
+# no se elige otro "Desde".
+_MESES_HISTORIA_DEFECTO = 6
 
 
 def _cobertura_meses(stock, salidas):
@@ -427,6 +430,7 @@ def _contexto_proyeccion_sop(request):
         "categorias": ["Todas"], "categoria_sel": "Todas", "centros": ["Todos"], "centro_sel": "Todos",
         "materiales": [{"codigo": "Todos", "texto": "Todos"}], "material_sel": [],
         "grafico": None, "meses": [], "resumen": [], "matriz": [],
+        "opciones_desde": [], "desde_sel": None, "n_historia": 0,
     }
     if base.empty:
         return contexto
@@ -463,7 +467,26 @@ def _contexto_proyeccion_sop(request):
     ]
     hay_traslados = any(abs(r["traslado"]) > 0.5 for r in resumen)
     etiqueta_inicial = _mes_corto(fecha_inicial) if fecha_inicial else "Inicio"
-    puntos = [(etiqueta_inicial, resumen[0]["stock_inicial"])] + [(_mes_corto(r["mes"]), r["stock_final"]) for r in resumen]
+
+    # Meses cerrados antes de la partida (pedido del usuario, 2026-11-03): el
+    # stock real de cierre (MB5B) de los mismos materiales y centros de la
+    # selección, desde el mes elegido en "Desde" (por defecto,
+    # _MESES_HISTORIA_DEFECTO meses antes de la partida). El último cierre es
+    # la partida misma, que ya es el primer punto de la proyección.
+    mes_partida = fecha_inicial.replace(day=1) if fecha_inicial else None
+    cierres = q.stock_real_cierres_sop()
+    opciones_desde = sorted(m for m in set(cierres["mes"]) if mes_partida and m <= mes_partida)
+    desde_sel = _por_str(request.GET.get("desde_proyeccion"), opciones_desde)
+    if desde_sel is None and opciones_desde:
+        desde_sel = opciones_desde[max(0, len(opciones_desde) - 1 - _MESES_HISTORIA_DEFECTO)]
+    claves_sel = set(zip(df["material_codigo"], df["centro"]))
+    previos = cierres[[k in claves_sel for k in zip(cierres["material_codigo"], cierres["centro"])]] if len(cierres) else cierres
+    stock_previo = previos.groupby("mes")["stock"].sum() if len(previos) else {}
+    fechas_cierre = q.meses_inventario_disponibles()
+    historia = [(m, float(stock_previo.get(m, 0.0))) for m in opciones_desde if desde_sel <= m < mes_partida]
+
+    puntos = ([(_mes_corto(m), v) for m, v in historia] + [(etiqueta_inicial, resumen[0]["stock_inicial"])]
+              + [(_mes_corto(r["mes"]), r["stock_final"]) for r in resumen])
 
     # Con UN solo material/centro seleccionado, la banda mínimo–máximo va en el
     # gráfico y en el Detalle mensual (sumar mínimos de materiales distintos
@@ -479,7 +502,8 @@ def _contexto_proyeccion_sop(request):
             for mi, ma in zip(unico["stock_minimo"], unico["stock_maximo"])
         ]
         if any(mi is not None or ma is not None for mi, ma in limites):
-            banda = [limites[0]] + limites
+            # Solo desde la partida: el mínimo y el máximo son del S&OP.
+            banda = [None] * len(historia) + [limites[0]] + limites
         for fila, (mi, ma), estado in zip(resumen, limites, unico["estado"]):
             fila.update({"stock_minimo": mi, "stock_maximo": ma, "estado": estado,
                          "estado_texto": q.ESTADOS_STOCK[estado]})
@@ -491,10 +515,21 @@ def _contexto_proyeccion_sop(request):
     def toneladas(valor):
         return f"{valor:z,.0f} T"
 
-    detalles = [
-        f"Stock de partida{f' (cierre {fecha_inicial:%d/%m/%Y})' if fecha_inicial else ''}: "
-        f"{toneladas(resumen[0]['stock_inicial'])}"
-    ]
+    def variacion_mes(actual, anterior):
+        return f"Variación del mes: {'+' if actual >= anterior else '−'}{toneladas(abs(actual - anterior))}"
+
+    detalles = []
+    for i, (mes, stock) in enumerate(historia):
+        lineas = [f"{_mes_corto(mes)} · Stock real al cierre: {toneladas(stock)}",
+                  f"MB5B al {fechas_cierre[mes]:%d/%m/%Y}"]
+        if i:
+            lineas.append(variacion_mes(stock, historia[i - 1][1]))
+        detalles.append("\n".join(lineas))
+    partida = (f"Stock de partida{f' (cierre {fecha_inicial:%d/%m/%Y})' if fecha_inicial else ''}: "
+               f"{toneladas(resumen[0]['stock_inicial'])}")
+    if historia:
+        partida += "\n" + variacion_mes(resumen[0]["stock_inicial"], historia[-1][1])
+    detalles.append(partida)
     estados_por_mes = {} if un_material else {
         mes: g["estado"].value_counts().to_dict() for mes, g in df.groupby("mes")
     }
@@ -608,9 +643,10 @@ def _contexto_proyeccion_sop(request):
         "faltante_total": sum(f["faltante"] for f in filas_diag),
         "deficit_plazo_total": sum(f["deficit_en_plazo"] for f in filas_diag),
         "hay_traslados": hay_traslados,
+        "opciones_desde": opciones_desde, "desde_sel": desde_sel, "n_historia": len(historia),
         "grafico": charts.evolucion_stock(
-            puntos, barras=[None] + [(r["abastecimiento"], r["consumo"] + r["traslado"]) for r in resumen], banda=banda,
-            detalles=detalles,
+            puntos, barras=[None] * (len(historia) + 1) + [(r["abastecimiento"], r["consumo"] + r["traslado"]) for r in resumen],
+            banda=banda, detalles=detalles, n_real=len(historia) + 1,
         ),
     })
     return contexto

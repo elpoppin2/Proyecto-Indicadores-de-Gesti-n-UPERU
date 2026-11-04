@@ -389,6 +389,48 @@ def fecha_inventario_inicial_sop(mes_snapshot):
     return meses_inventario_disponibles().get(mes_anterior)
 
 
+@_cacheado
+def stock_real_cierres_sop():
+    """Stock real (MB5B) al cierre de cada mes cerrado, por material/centro
+    (Atocongo y Condorcocha), de los materiales que alguna vez trajo un S&OP:
+    el pasado de la Evolución de inventario (pedido del usuario, 2026-11-03).
+    Mismos ajustes que la partida de proyeccion_inventario_sop: los códigos
+    antiguos van al vigente y el Chancado se suma al Carbón Terceros
+    (_MATERIALES_CONSUMO_VIA_OTRO). El mes en curso no entra: sus cortes son
+    intermedios, no un cierre."""
+    columnas = ["material_codigo", "centro", "mes", "fecha", "stock"]
+    cierres = {mes: fecha for mes, fecha in meses_inventario_disponibles().items()
+               if (fecha + datetime.timedelta(days=1)).day == 1}
+    codigos = set(_query("""
+        SELECT material_codigo FROM gestion_planabastecimientosop
+        UNION SELECT material_codigo FROM gestion_planconsumosop
+        UNION SELECT material_codigo FROM gestion_plantrasladosop
+    """)["material_codigo"]) | {real[0] for real in _MATERIALES_CONSUMO_VIA_OTRO.values()}
+    if not cierres or not codigos:
+        return pd.DataFrame(columns=columnas)
+    ids = ",".join(f"'{m}'" for m in _con_anteriores(codigos))
+    fechas = ",".join(f"'{f:%Y-%m-%d}'" for f in cierres.values())
+    df = _query(f"""
+        SELECT material_codigo AS material_codigo, area_valoracion AS centro, fecha AS fecha,
+               SUM(stock_cierre) AS stock
+        FROM gestion_inventariomensual
+        WHERE fecha IN ({fechas}) AND material_codigo IN ({ids}) AND area_valoracion IN ('U001', 'U002')
+        GROUP BY material_codigo, area_valoracion, fecha
+    """)
+    if df.empty:
+        return pd.DataFrame(columns=columnas)
+    df["stock"] = pd.to_numeric(df["stock"], errors="coerce").fillna(0.0).astype(float)
+    df["fecha"] = pd.to_datetime(df["fecha"]).dt.date
+    df["material_codigo"] = df["material_codigo"].replace(CODIGOS_ANTERIORES)
+    for origen, real in _MATERIALES_CONSUMO_VIA_OTRO.items():
+        es_real = (df["material_codigo"] == real[0]) & (df["centro"] == real[1])
+        df.loc[es_real, "material_codigo"] = origen[0]
+        df.loc[es_real, "centro"] = origen[1]
+    df["mes"] = [f.replace(day=1) for f in df["fecha"]]
+    df = df.groupby(["material_codigo", "centro", "mes", "fecha"], as_index=False)["stock"].sum()
+    return df[columnas].sort_values(["material_codigo", "centro", "mes"]).reset_index(drop=True)
+
+
 def _plan_sop_por_mes(tabla, columna, mes_snapshot):
     return _query(f"""
         SELECT material_codigo AS material_codigo, centro_destino AS centro,

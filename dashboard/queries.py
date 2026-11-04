@@ -96,7 +96,7 @@ from .consultas.sop_inventario import (
     _reenvios_en_ventana, _separar_acopio, _sumar_consumo_via_otro, cobertura_stock_planificacion,
     cobertura_stock_planificacion_por_mes, diagnostico_minmax_sop, fecha_inventario_inicial_sop,
     lead_time_sop, meses_inventario_disponibles, minmax_sop, participacion_propia_acopio,
-    proyeccion_inventario_sop, snapshots_sop_disponibles,
+    proyeccion_inventario_sop, snapshots_sop_disponibles, stock_real_cierres_sop,
 )
 from .consultas.importados import (
     ACOPIO_IMPORTADOS, AJUSTES_CODIGOS_ANTERIORES, ALMACENES_TRASLADO, ANULACIONES_ERRONEAS,

@@ -33,6 +33,16 @@
     var x0 = caja ? caja.x : 0, ancho = caja && caja.width ? caja.width : svg.getBoundingClientRect().width;
 
     svg.querySelectorAll(LINEAS).forEach(function (el) {
+      // data-barrido="inicio fin" (fracciones del ancho): un tramo de una línea que sigue en otro, p.ej. el stock
+      // real y luego el proyectado (punteado); se revelan a la misma velocidad, uno detrás del otro.
+      var barrido = (el.getAttribute('data-barrido') || '').split(' ').map(parseFloat);
+      if (barrido.length === 2 && !isNaN(barrido[0]) && !isNaN(barrido[1])) {
+        el.animate([{ clipPath: 'inset(-6px 100% -6px -6px)' }, { clipPath: 'inset(-6px -6px -6px -6px)' }], {
+          duration: Math.max(120, BARRIDO * (barrido[1] - barrido[0])), delay: BARRIDO * barrido[0],
+          easing: 'linear', fill: 'backwards'
+        });
+        return;
+      }
       // Las líneas punteadas de referencia (mínimo, máximo, plan lineal, promedio) quedan quietas.
       var trazo = getComputedStyle(el).strokeDasharray;
       if (trazo && trazo !== 'none') return;
