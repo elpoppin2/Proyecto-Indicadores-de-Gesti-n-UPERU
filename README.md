@@ -68,9 +68,10 @@ tablero nuevo del área.
 9. **Seguro por defecto.** Todas las páginas piden sesión, las claves están fuera del
    código y el servidor escucha solo en `127.0.0.1`.
 10. **Plan, real y proyección se distinguen por la forma (notación IBCS).** El real va
-    sólido en gris oscuro, el plan solo en contorno y lo proyectado rayado (tramas en
-    `base.html`); el cumplimiento contra el plan, como pin desde la línea del 100%. El
-    color queda para el semáforo (bien, regular, mal), no para decir qué es cada serie.
+    liso y lo planificado o proyectado rayado (tramas en `base.html`). En las barras de
+    ingresos (blancas) y consumo (grises), el plan lleva líneas en degradé; el
+    cumplimiento contra el plan, como pin desde la línea del 100%. El color queda para el
+    semáforo (bien, regular, mal), no para decir qué es cada serie.
 
 ## Agregar un indicador
 

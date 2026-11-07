@@ -399,17 +399,22 @@ table thead th[data-orden="desc"]::after { content: "\25BC"; }
 .chart-proyeccion .linea { fill: none; stroke: var(--accent); stroke-width: 2.2; }
 .chart-proyeccion .punto { fill: var(--accent); }
 .chart-proyeccion .base-barras { stroke: var(--line); stroke-width: 1; }
-/* Barras (pedido del usuario, 2026-11-04): ingresos en blanco con borde
-   negro, consumo en gris, iguales en los dos temas para que se distingan del
-   fondo. Lo real (MB51) va liso; lo planificado (S&OP), el "futuro", lleva
-   encima una trama de líneas en degradé: negras sobre el blanco, blancas
-   sobre el gris, fuertes arriba y desvaneciéndose hacia la base (máscara
-   #desvanecer-trama, en base.html). */
-.chart-proyeccion .barra-ingreso, .chart-proyeccion .barra-ingreso-real { fill: #ffffff; stroke: #111111; stroke-width: 1; }
-.chart-proyeccion .barra-consumo, .chart-proyeccion .barra-consumo-real { fill: #9a9a9a; }
-.chart-proyeccion .trama-barra { pointer-events: none; }
-.chart-proyeccion .trama-barra-ingreso { fill: url(#trama-barra-ingreso); }
-.chart-proyeccion .trama-barra-consumo { fill: url(#trama-barra-consumo); }
+/* Barras de ingresos y consumo, plan contra real (pedido del usuario,
+   2026-11-04): ingresos en blanco con borde negro, consumo en gris, iguales
+   en los dos temas para que se distingan del fondo. Lo real (MB51) va liso;
+   lo planificado (S&OP), el "futuro", lleva encima una trama de líneas en
+   degradé: negras sobre el blanco, blancas sobre el gris, fuertes arriba y
+   desvaneciéndose hacia la base (máscara #desvanecer-trama, en base.html).
+   Las usan la Evolución de inventario, el Cumplimiento mensual (ingresos, en
+   Planificación, Logística y cada categoría) y la Evaluación de consumo. El
+   mes en curso (barra-parcial) lleva el borde punteado: todavía no cierra. */
+rect.barra-ingreso, rect.barra-ingreso-real { fill: #ffffff; stroke: #111111; stroke-width: 1; }
+rect.barra-consumo, rect.barra-consumo-real { fill: #9a9a9a; }
+rect.barra-ingreso-real.barra-parcial { stroke-dasharray: 3 2; }
+rect.barra-consumo-real.barra-parcial { fill-opacity: .45; stroke: #9a9a9a; stroke-width: 1; stroke-dasharray: 3 2; }
+rect.trama-barra { pointer-events: none; }
+rect.trama-barra-ingreso { fill: url(#trama-barra-ingreso); }
+rect.trama-barra-consumo { fill: url(#trama-barra-consumo); }
 .trama-linea-ingreso { stroke: #111111; stroke-width: 1.3; }
 .trama-linea-consumo { stroke: #ffffff; stroke-width: 1.3; }
 /* La muestra de la leyenda repite la barra en CSS: base, trama a 135° (la
@@ -419,6 +424,8 @@ table thead th[data-orden="desc"]::after { content: "\25BC"; }
 .leyenda-marca.barra-ingreso-real, .leyenda-marca.barra-consumo-real { height: 14px; width: 11px; border-radius: 2px; box-sizing: border-box; }
 .leyenda-marca.barra-ingreso-real { background: #ffffff; border: 1px solid #111111; }
 .leyenda-marca.barra-consumo-real { background: #9a9a9a; }
+.leyenda-marca.barra-ingreso-real.barra-parcial { border-style: dashed; }
+.leyenda-marca.barra-consumo-real.barra-parcial { background: rgba(154, 154, 154, .45); border: 1px dashed #9a9a9a; }
 .leyenda-marca.barra-ingreso {
   border: 1px solid #111111;
   background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(255, 255, 255, .85)),
@@ -900,11 +907,12 @@ body:has(> .login-shell) { padding: 0; }
 }
 
 /* --- Evaluación de consumo (notación IBCS desde 2026-11-03; antes el plan
-   era una línea roja): consumo real en columnas sólidas (el mes en curso más
-   claro, todavía no cierra) y el plan de consumos S&OP en contorno. --- */
+   era una línea roja): columnas grises, el consumo real liso (el mes en curso
+   con borde punteado, todavía no cierra) y el plan de consumos S&OP con la
+   trama en degradé (barra-consumo). --- */
 .chart-consumo .base-barras { stroke: var(--line); stroke-width: 1; }
 .chart-consumo .etiqueta-plan-consumo { color: var(--muted); font-size: 10px; font-weight: 500; }
-.etiqueta-consumo-dentro { color: var(--surface); }
+.etiqueta-consumo-dentro { color: #111111; }
 .pill-consumo {
   display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap;
   border: 1px solid currentColor;
@@ -1052,17 +1060,13 @@ tbody.tabla-ordenada { animation: filas-asentar .25s ease-out; }
 .tabla-panel-marco tfoot { position: sticky; bottom: 0; z-index: 2; }
 .tabla-panel-marco tfoot td { background: var(--th-bg); border-top: 0; box-shadow: inset 0 2px 0 var(--table-line); }
 /* --- Notación IBCS (pedido del usuario, 2026-11-03): el real va sólido en
-   gris oscuro, el plan solo en contorno y lo proyectado rayado (tramas de
-   base.html). La categoría se distingue por el tono de gris, no por color. --- */
+   gris oscuro y lo proyectado rayado (tramas de base.html). La categoría se
+   distingue por el tono de gris, no por color. Plan contra real de ingresos
+   y consumo: barra-ingreso / barra-consumo (más arriba). --- */
 .tramas-graficos { position: absolute; width: 0; height: 0; overflow: hidden; }
 .trama-fondo { fill: var(--surface); }
-.col-plan { fill: var(--surface); stroke: var(--table-header); stroke-width: 1.3; }
-.col-real { fill: var(--table-header); }
-.col-real.col-parcial { fill: color-mix(in srgb, var(--table-header) 40%, var(--surface)); }
-.leyenda-marca.marca-real, .leyenda-marca.marca-plan, .leyenda-marca.marca-proyeccion { width: 10px; height: 10px; border-radius: 1px; }
+.leyenda-marca.marca-real, .leyenda-marca.marca-proyeccion { width: 10px; height: 10px; border-radius: 1px; }
 .leyenda-marca.marca-real { background: var(--table-header); }
-.leyenda-marca.marca-real.marca-parcial { background: color-mix(in srgb, var(--table-header) 40%, var(--surface)); }
-.leyenda-marca.marca-plan { background: var(--surface); box-shadow: inset 0 0 0 1.3px var(--table-header); }
 .leyenda-marca.marca-proyeccion {
   background: repeating-linear-gradient(-45deg, var(--table-header) 0 1.6px, transparent 1.6px 3.6px);
   box-shadow: inset 0 0 0 1px var(--table-header);

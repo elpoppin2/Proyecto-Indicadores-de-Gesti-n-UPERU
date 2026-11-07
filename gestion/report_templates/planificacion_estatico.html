@@ -542,7 +542,7 @@ function curvaDoble(puntosA, puntosB, {ancho=640, alto=220, padX=8, padY=24, for
 }
 
 /* ---------- plan contra real mes a mes, notación IBCS (replica charts.py::plan_real_mensual) ----------
-   Plan en contorno detrás, real sólido delante y el cumplimiento como pin desde la línea del plan (100%). */
+   Ingresos en blanco: plan con la trama en degradé detrás, real liso delante y el cumplimiento como pin desde la línea del plan (100%). */
 function planRealMensual(filas, {mesParcial=null, meta=100, alto=300, padIzq=14, padDer=14} = {}){
   if(!filas.length) return null;
   const n = filas.length;
@@ -621,8 +621,9 @@ function svgPlanReal(g){
   if(!g) return `<p class="aviso">Sin datos suficientes para graficar la tendencia mensual.</p>`;
   const e = escaparAttr;
   const formas = g.columnas.map(c =>
-    (c.plan ? `<rect class="col-plan" x="${c.plan.x}" y="${c.plan.y}" width="${c.plan.ancho}" height="${c.plan.alto}"></rect>` : "") +
-    (c.real ? `<rect class="col-real${c.parcial ? " col-parcial" : ""}" x="${c.real.x}" y="${c.real.y}" width="${c.real.ancho}" height="${c.real.alto}"></rect>` : "") +
+    (c.plan ? `<rect class="barra-ingreso" x="${c.plan.x}" y="${c.plan.y}" width="${c.plan.ancho}" height="${c.plan.alto}"></rect>` +
+      `<rect class="trama-barra trama-barra-ingreso" x="${c.plan.x}" y="${c.plan.y}" width="${c.plan.ancho}" height="${c.plan.alto}" mask="url(#desvanecer-trama)"></rect>` : "") +
+    (c.real ? `<rect class="barra-ingreso-real${c.parcial ? " barra-parcial" : ""}" x="${c.real.x}" y="${c.real.y}" width="${c.real.ancho}" height="${c.real.alto}"></rect>` : "") +
     (c.pin ? `<rect class="pin ${c.pin.clase}" x="${c.pin.x}" y="${c.pin.y}" width="${c.pin.ancho}" height="${c.pin.alto}"${c.pin.abajo ? ' data-abajo="1"' : ""}></rect><circle class="pin-cabeza ${c.pin.clase}" cx="${c.cx}" cy="${c.pin.cy}" r="4"></circle>` : "")
   ).join("");
   const zonas = g.columnas.map(c => `<rect class="zona-detalle con-detalle" x="${c.zona_x}" y="${g.zona_y}" width="${c.zona_ancho}" height="${g.zona_alto}" data-detalle="${e(c.detalle)}"></rect>`).join("");
@@ -642,9 +643,9 @@ function svgPlanReal(g){
       ${etiquetas}
     </div></div>
     <div class="leyenda-curva">
-      <span class="leyenda-item"><span class="leyenda-marca marca-real"></span>Real ingresado (T)</span>
-      <span class="leyenda-item"><span class="leyenda-marca marca-plan"></span>Plan S&amp;OP (T)</span>
-      ${g.hay_parcial ? `<span class="leyenda-item"><span class="leyenda-marca marca-real marca-parcial"></span>Mes en curso (parcial)</span>` : ""}
+      <span class="leyenda-item"><span class="leyenda-marca barra-ingreso-real"></span>Real ingresado (T)</span>
+      <span class="leyenda-item"><span class="leyenda-marca barra-ingreso"></span>Plan S&amp;OP (T)</span>
+      ${g.hay_parcial ? `<span class="leyenda-item"><span class="leyenda-marca barra-ingreso-real barra-parcial"></span>Mes en curso (parcial)</span>` : ""}
       <span class="leyenda-item"><span class="leyenda-marca marca-pin pin-bueno"></span>&ge; 100%</span>
       <span class="leyenda-item"><span class="leyenda-marca marca-pin pin-regular"></span>80–99%</span>
       <span class="leyenda-item"><span class="leyenda-marca marca-pin pin-malo"></span>&lt; 80%</span>
@@ -1658,8 +1659,8 @@ function opcionesMaterialDe(filas){
 const FECHA_CORTE = DATA.fecha_corte || HOY;
 const ULTIMO_DIA_HOY = hoyMes.slice(0, 8) + String(diasEnMes(hoyMes)).padStart(2, "0");
 
-/* Gráfico de consumo (replica charts.evolucion_consumo), notación IBCS:
-   columnas sólidas = real, columnas de contorno detrás = plan del S&OP. */
+/* Gráfico de consumo (replica charts.evolucion_consumo): columnas grises, lisas = real,
+   con la trama en degradé detrás = plan del S&OP. */
 function evolucionConsumo(real, plan, mesParcial, {ancho=960, alto=300, padX=22, padY=26} = {}){
   if(!real.length && !plan.length) return null;
   const todos = [...real.map(r=>r[0]), ...plan.map(p=>p[0])].sort();
@@ -1697,17 +1698,18 @@ function svgConsumo(g, snapshot){
   return `<div class="chart-scroll"><div class="chart-wrap chart-consumo">
     <svg class="chart-svg" viewBox="0 0 ${g.ancho} ${g.alto}" role="img" aria-label="Consumo real mensual contra el plan de consumos">
       <line class="base-barras" x1="0" y1="${g.base}" x2="${g.ancho}" y2="${g.base}"></line>
-      ${g.planes.map(p => `<rect class="col-plan con-detalle" x="${p.x}" y="${p.y}" width="${p.ancho}" height="${p.alto}" data-detalle="${e(p.detalle)}"></rect>`).join("")}
-      ${g.barras.map(b => `<rect class="col-real${b.parcial ? " col-parcial" : ""} con-detalle" x="${b.x}" y="${b.y}" width="${b.ancho}" height="${b.alto}" data-detalle="${e(b.detalle)}"></rect>`).join("")}
+      ${g.planes.map(p => `<rect class="barra-consumo con-detalle" x="${p.x}" y="${p.y}" width="${p.ancho}" height="${p.alto}" data-detalle="${e(p.detalle)}"></rect>` +
+        `<rect class="trama-barra trama-barra-consumo" x="${p.x}" y="${p.y}" width="${p.ancho}" height="${p.alto}" mask="url(#desvanecer-trama)"></rect>`).join("")}
+      ${g.barras.map(b => `<rect class="barra-consumo-real${b.parcial ? " barra-parcial" : ""} con-detalle" x="${b.x}" y="${b.y}" width="${b.ancho}" height="${b.alto}" data-detalle="${e(b.detalle)}"></rect>`).join("")}
     </svg>
     ${g.barras.filter(b=>b.etiqueta).map(b => `<span class="etiqueta-barra ${b.dentro ? "etiqueta-barra-dentro etiqueta-consumo-dentro" : "etiqueta-barra-encima"} con-detalle" style="left:${b.x_pct}%; top:${b.y_pct}%;" data-detalle="${e(b.detalle)}">${b.etiqueta}</span>`).join("")}
     ${g.planes.filter(p=>p.etiqueta).map(p => `<span class="etiqueta-valor etiqueta-plan-consumo con-detalle" style="left:${p.x_pct}%; top:${p.y_pct}%;" data-detalle="${e(p.detalle)}">${p.etiqueta}</span>`).join("")}
     ${g.eje.map(x => `<span class="etiqueta-mes" style="left:${x.x_pct}%;">${x.texto}</span>`).join("")}
   </div></div>
   <div class="leyenda-curva">
-    <span class="leyenda-item"><span class="leyenda-marca marca-real"></span>Consumo real (MB51)</span>
-    <span class="leyenda-item"><span class="leyenda-marca marca-real marca-parcial"></span>Mes en curso (parcial)</span>
-    <span class="leyenda-item"><span class="leyenda-marca marca-plan"></span>Plan de consumos S&amp;OP ${mesLabel(snapshot)}</span>
+    <span class="leyenda-item"><span class="leyenda-marca barra-consumo-real"></span>Consumo real (MB51)</span>
+    <span class="leyenda-item"><span class="leyenda-marca barra-consumo-real barra-parcial"></span>Mes en curso (parcial)</span>
+    <span class="leyenda-item"><span class="leyenda-marca barra-consumo"></span>Plan de consumos S&amp;OP ${mesLabel(snapshot)}</span>
   </div>`;
 }
 

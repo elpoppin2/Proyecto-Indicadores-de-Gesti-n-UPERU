@@ -1,12 +1,12 @@
-{# Plan contra real mes a mes con la notación IBCS (charts.plan_real_mensual, g): plan en contorno, real sólido y el cumplimiento como pin desde la línea del plan. Lo usan Cumplimiento mensual de Planificación y Abastecimiento S&OP de cada categoría; el HTML estático lo replica en svgPlanReal. #}
+{# Plan contra real mes a mes (charts.plan_real_mensual, g): ingresos en blanco, el real liso delante y el plan con la trama en degradé detrás; el cumplimiento como pin desde la línea del plan. Lo usan Cumplimiento mensual de Planificación y Abastecimiento S&OP de cada categoría; el HTML estático lo replica en svgPlanReal. #}
 <div class="chart-scroll" style="max-width: {{ g.ancho }}px;">
 <div class="chart-wrap chart-plan-real">
   <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="{{ titulo }}">
     <line class="linea-plan-pin" x1="{{ g.x0 }}" y1="{{ g.y_plan }}" x2="{{ g.x1 }}" y2="{{ g.y_plan }}"></line>
     <line class="base-barras" x1="{{ g.x0 }}" y1="{{ g.base }}" x2="{{ g.x1 }}" y2="{{ g.base }}"></line>
     {% for c in g.columnas %}
-      {% if c.plan %}<rect class="col-plan" x="{{ c.plan.x }}" y="{{ c.plan.y }}" width="{{ c.plan.ancho }}" height="{{ c.plan.alto }}"></rect>{% endif %}
-      {% if c.real %}<rect class="col-real{% if c.parcial %} col-parcial{% endif %}" x="{{ c.real.x }}" y="{{ c.real.y }}" width="{{ c.real.ancho }}" height="{{ c.real.alto }}"></rect>{% endif %}
+      {% if c.plan %}<rect class="barra-ingreso" x="{{ c.plan.x }}" y="{{ c.plan.y }}" width="{{ c.plan.ancho }}" height="{{ c.plan.alto }}"></rect><rect class="trama-barra trama-barra-ingreso" x="{{ c.plan.x }}" y="{{ c.plan.y }}" width="{{ c.plan.ancho }}" height="{{ c.plan.alto }}" mask="url(#desvanecer-trama)"></rect>{% endif %}
+      {% if c.real %}<rect class="barra-ingreso-real{% if c.parcial %} barra-parcial{% endif %}" x="{{ c.real.x }}" y="{{ c.real.y }}" width="{{ c.real.ancho }}" height="{{ c.real.alto }}"></rect>{% endif %}
       {% if c.pin %}<rect class="pin {{ c.pin.clase }}" x="{{ c.pin.x }}" y="{{ c.pin.y }}" width="{{ c.pin.ancho }}" height="{{ c.pin.alto }}"{% if c.pin.abajo %} data-abajo="1"{% endif %}></rect><circle class="pin-cabeza {{ c.pin.clase }}" cx="{{ c.cx }}" cy="{{ c.pin.cy }}" r="4"></circle>{% endif %}
     {% endfor %}
     {% for c in g.columnas %}<rect class="zona-detalle con-detalle" x="{{ c.zona_x }}" y="{{ g.zona_y }}" width="{{ c.zona_ancho }}" height="{{ g.zona_alto }}" data-detalle="{{ c.detalle }}"></rect>{% endfor %}
@@ -19,9 +19,9 @@
 </div>
 </div>
 <div class="leyenda-curva">
-  <span class="leyenda-item"><span class="leyenda-marca marca-real"></span>Real ingresado (T)</span>
-  <span class="leyenda-item"><span class="leyenda-marca marca-plan"></span>Plan S&amp;OP (T)</span>
-  {% if g.hay_parcial %}<span class="leyenda-item"><span class="leyenda-marca marca-real marca-parcial"></span>Mes en curso (parcial)</span>{% endif %}
+  <span class="leyenda-item"><span class="leyenda-marca barra-ingreso-real"></span>Real ingresado (T)</span>
+  <span class="leyenda-item"><span class="leyenda-marca barra-ingreso"></span>Plan S&amp;OP (T)</span>
+  {% if g.hay_parcial %}<span class="leyenda-item"><span class="leyenda-marca barra-ingreso-real barra-parcial"></span>Mes en curso (parcial)</span>{% endif %}
   <span class="leyenda-item"><span class="leyenda-marca marca-pin pin-bueno"></span>≥ 100%</span>
   <span class="leyenda-item"><span class="leyenda-marca marca-pin pin-regular"></span>80–99%</span>
   <span class="leyenda-item"><span class="leyenda-marca marca-pin pin-malo"></span>&lt; 80%</span>

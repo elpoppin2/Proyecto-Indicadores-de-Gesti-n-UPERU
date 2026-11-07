@@ -68,10 +68,11 @@
         <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Consumo real mensual contra el plan de consumos">
           <line class="base-barras" x1="0" y1="{{ g.base }}" x2="{{ g.ancho }}" y2="{{ g.base }}"></line>
           {% for p in g.planes %}
-            <rect class="col-plan con-detalle" x="{{ p.x }}" y="{{ p.y }}" width="{{ p.ancho }}" height="{{ p.alto }}" data-detalle="{{ p.detalle }}"></rect>
+            <rect class="barra-consumo con-detalle" x="{{ p.x }}" y="{{ p.y }}" width="{{ p.ancho }}" height="{{ p.alto }}" data-detalle="{{ p.detalle }}"></rect>
+            <rect class="trama-barra trama-barra-consumo" x="{{ p.x }}" y="{{ p.y }}" width="{{ p.ancho }}" height="{{ p.alto }}" mask="url(#desvanecer-trama)"></rect>
           {% endfor %}
           {% for b in g.barras %}
-            <rect class="col-real{% if b.parcial %} col-parcial{% endif %} con-detalle" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.ancho }}" height="{{ b.alto }}" data-detalle="{{ b.detalle }}"></rect>
+            <rect class="barra-consumo-real{% if b.parcial %} barra-parcial{% endif %} con-detalle" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.ancho }}" height="{{ b.alto }}" data-detalle="{{ b.detalle }}"></rect>
           {% endfor %}
         </svg>
         {% for b in g.barras %}{% if b.etiqueta %}
@@ -84,9 +85,9 @@
       </div>
       </div>
       <div class="leyenda-curva">
-        <span class="leyenda-item"><span class="leyenda-marca marca-real"></span>Consumo real (MB51)</span>
-        <span class="leyenda-item"><span class="leyenda-marca marca-real marca-parcial"></span>Mes en curso (parcial)</span>
-        <span class="leyenda-item"><span class="leyenda-marca marca-plan"></span>Plan de consumos S&amp;OP {{ co.ultimo_snapshot|mesanio }}</span>
+        <span class="leyenda-item"><span class="leyenda-marca barra-consumo-real"></span>Consumo real (MB51)</span>
+        <span class="leyenda-item"><span class="leyenda-marca barra-consumo-real barra-parcial"></span>Mes en curso (parcial)</span>
+        <span class="leyenda-item"><span class="leyenda-marca barra-consumo"></span>Plan de consumos S&amp;OP {{ co.ultimo_snapshot|mesanio }}</span>
       </div>
     {% endif %}
     {% endwith %}

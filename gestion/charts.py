@@ -223,8 +223,9 @@ def barras_mensuales(puntos, ancho=640, alto=240, pad_x=10, pad_y=28, meta=100, 
 
 def plan_real_mensual(filas, etiqueta_mes, mes_parcial=None, meta=100, alto=300, pad_izq=14, pad_der=14):
     """Plan contra real mes a mes con la notación IBCS (pedido del usuario,
-    2026-11-03). Abajo, las toneladas: el plan como columna de contorno
-    (detrás, corrida a la izquierda) y el real como columna sólida delante.
+    2026-11-03). Abajo, las toneladas de ingreso, en blanco: el plan con la
+    trama en degradé (detrás, corrido a la izquierda) y el real liso delante
+    (pedido del usuario, 2026-11-04).
     Arriba, un "pin" por mes desde la línea del plan (100%) hasta el
     cumplimiento del mes, con el semáforo de siempre (≥ meta verde, 80–99%
     gris, < 80% rojo) y el % como etiqueta. El mes en curso (`mes_parcial`)
@@ -281,7 +282,7 @@ def plan_real_mensual(filas, etiqueta_mes, mes_parcial=None, meta=100, alto=300,
             "plan": caja(cx - corrimiento - ancho_col / 2, y_plan_col, base) if plan > 0 else None,
             "real": caja(cx + corrimiento - ancho_col / 2, y_real_col, base) if real > 0 else None,
             "parcial": parcial, "pin": pin, "cx": f"{cx:z.1f}", "x_pct": f"{cx / ancho * 100:z.2f}",
-            # El valor del real va encima de la columna más alta: así no cruza el contorno del plan.
+            # El valor del real va encima de la columna más alta: así no cruza la columna del plan.
             "texto_real": _toneladas_corto(real) if real > 0 else "",
             "real_x_pct": f"{(cx + corrimiento) / ancho * 100:z.2f}",
             "texto_y_pct": f"{min(y_plan_col, y_real_col) / alto * 100:z.2f}",
@@ -821,9 +822,9 @@ def evolucion_calidad(serie, promedio, formato, etiqueta_fecha, referencia=None,
 
 def evolucion_consumo(real, plan, etiqueta_mes, mes_parcial=None, ancho=960, alto=300, pad_x=22, pad_y=26):
     """Consumo mes a mes (toneladas) con la notación IBCS (pedido del usuario,
-    2026-11-03; antes el plan era una línea roja): el consumo REAL (MB51) en
-    columnas sólidas y el PLAN de consumos del S&OP en columnas de contorno,
-    detrás y corridas a la izquierda; los meses sin real muestran solo el
+    2026-11-03; antes el plan era una línea roja), en gris: el consumo REAL
+    (MB51) en columnas lisas y el PLAN de consumos del S&OP con la trama en
+    degradé (2026-11-04), detrás y corridas a la izquierda; los meses sin real muestran solo el
     plan. Eje de meses continuo. `real` y `plan`: listas de (mes, toneladas).
     `mes_parcial`: mes en curso (su columna va más clara: todavía no
     cierra). El valor del plan se rotula solo donde no hay real cerrado."""
