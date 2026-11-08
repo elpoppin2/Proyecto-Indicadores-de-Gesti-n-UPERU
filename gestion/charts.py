@@ -1134,7 +1134,8 @@ def columnas(etiquetas, pilas, formato, linea=None, textos=None, ancho=960, alto
     # por etiqueta de mes), siempre la última.
     paso_eje = max(1, math.ceil(52 / paso))
     return {
-        "ancho": ancho, "alto": alto, "x0": pad_izq, "x1": ancho - pad_der, "y_cero": f"{y_de(0.0):z.1f}",
+        # x1 como texto: con la etiqueta final pad_der es decimal y la plantilla lo escribiría con coma ("437,0").
+        "ancho": ancho, "alto": alto, "x0": pad_izq, "x1": f"{ancho - pad_der:z.1f}", "y_cero": f"{y_de(0.0):z.1f}",
         "columnas": columnas_out, "linea": linea_out, "arriba": f"{pad_arr:z.1f}", "alto_util": f"{base - pad_arr:z.1f}",
         "grilla": [{"y": f"{y_de(v):z.1f}", "y_pct": f"{y_de(v) / alto * 100:z.2f}", "texto": formato(v)} for v in marcas],
         "eje": [{"x_pct": f"{x_de(i) / ancho * 100:z.2f}", "texto": e}

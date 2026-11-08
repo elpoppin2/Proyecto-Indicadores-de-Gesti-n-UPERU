@@ -689,7 +689,7 @@ def proyeccion_inventario_sop(mes_snapshot):
     df.loc[df["categoria"].isna(), "categoria"] = "MATERIAS PRIMAS"
     df["familia"] = df["familia"].fillna("")
 
-    minmax = minmax_sop(mes_snapshot)
+    minmax = minmax_sop(mes_snapshot, hasta=meses[-1] if meses else None)
     if minmax.empty:
         df["stock_minimo"] = float("nan")
         df["stock_maximo"] = float("nan")
@@ -723,7 +723,7 @@ def _estado_stock(final, minimo, maximo):
     return "sin_parametro"
 
 
-def minmax_sop(mes_snapshot):
+def minmax_sop(mes_snapshot, hasta=None):
     """Stock mínimo/máximo por material/centro/mes para el S&OP de
     `mes_snapshot`: el archivo de ese mes de emisión, o el más reciente
     anterior si todavía no se cargó uno nuevo. Un mes vacío repite el último
@@ -731,7 +731,10 @@ def minmax_sop(mes_snapshot):
     Definido por el usuario. Un S&OP anterior al primer archivo (la historia
     desde 2025, cargada el 2026-11-03) usa ese primer archivo, y los meses
     anteriores a su primera columna toman el primer valor de cada material
-    (pedido del usuario: "toma los que te dije en su momento")."""
+    (pedido del usuario: "toma los que te dije en su momento"). Con `hasta`
+    (último mes del horizonte del S&OP), los meses después de la última
+    columna del archivo también repiten el último valor (pedido del usuario,
+    2026-11-07: el horizonte del S&OP puede ir más allá del archivo)."""
     df = _query("""
         SELECT material_codigo AS material_codigo, centro_destino AS centro, mes_planificado AS mes,
                stock_minimo AS stock_minimo, stock_maximo AS stock_maximo
@@ -757,6 +760,18 @@ def minmax_sop(mes_snapshot):
         antes = [_sumar_meses(mes_snapshot, i) for i in range((primero.year - mes_snapshot.year) * 12
                                                               + primero.month - mes_snapshot.month)]
         df = pd.concat([primeros.assign(mes=m) for m in antes] + [df], ignore_index=True)
+    if hasta is not None:
+        ultimos = df.sort_values("mes").groupby(["material_codigo", "centro"], as_index=False).agg(
+            mes=("mes", "last"), stock_minimo=("stock_minimo", "last"), stock_maximo=("stock_maximo", "last"))
+        despues = []
+        for r in ultimos.itertuples():
+            mes = _sumar_meses(r.mes, 1)
+            while mes <= hasta:
+                despues.append({"material_codigo": r.material_codigo, "centro": r.centro, "mes": mes,
+                                "stock_minimo": r.stock_minimo, "stock_maximo": r.stock_maximo})
+                mes = _sumar_meses(mes, 1)
+        if despues:
+            df = pd.concat([df, pd.DataFrame(despues)], ignore_index=True)
     return df
 
 

@@ -233,6 +233,11 @@ ejecuta `C:\Users\BLAZO\Scripts\actualizar_tablas_mm.ps1`:
   la consulta lo corrige con `+columna` (comentado en cada caso).
 - **Respuestas comprimidas** (gzip) y estáticos con nombre versionado (whitenoise): el
   navegador guarda los estilos y solo los vuelve a pedir cuando cambian.
+- **Las fuentes no frenan el primer pintado**: la hoja de Google Fonts carga sin bloquear
+  (se ve la fuente de respaldo y cambia al llegar).
+- **HTML compartido de Planificación con los datos comprimidos** (deflate + base64): el
+  navegador los descomprime al abrirlo, con Indicadores ya visible. Las vistas de cada
+  opción de Simulación viajan en los mismos datos y se arman solo al elegirlas.
 
 | | Antes | Ahora |
 |---|---|---|
@@ -240,6 +245,7 @@ ejecuta `C:\Users\BLAZO\Scripts\actualizar_tablas_mm.ps1`:
 | Primera apertura de cada pestaña de categoría | 0.1 a 1 s | ~0.01 s |
 | Las 63 páginas y pestañas, desde la caché en disco | ~11 s | ~1 s |
 | Carga diaria (mes en curso y ME2N completo) | ~21 min | ~2 min |
+| Apertura del HTML de Planificación (peso del archivo / primer pintado) | 13.6 MB / ~0.5 s | 3.4 MB / ~0.12 s |
 
 ## Despliegue en Azure
 

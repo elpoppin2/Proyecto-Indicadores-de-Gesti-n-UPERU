@@ -1,6 +1,9 @@
+import base64
 import datetime
 import json
 import os
+import re
+import zlib
 
 from django.core.management.base import BaseCommand, CommandError
 
@@ -261,14 +264,12 @@ class Command(BaseCommand):
         with open(os.path.join(ESTATICOS, "js", "graficos.js"), encoding="utf-8") as f:
             zonas_js += "\n" + f.read()
         # Logo de UNACEM incrustado (el archivo se abre sin servidor).
-        import base64
         with open(os.path.join(ESTATICOS, "img", "unacem-logo.svg"), "rb") as f:
             logo = "data:image/svg+xml;base64," + base64.b64encode(f.read()).decode("ascii")
         # Pestaña Indicadores: los cuatro cuadrantes (IPU, plazo medio de pago,
         # valor del inventario e IRI) que dibuja el mismo código del localhost,
         # al último dato (pedido del usuario, 2026-10-23; antes un gráfico por
         # indicador con filtro Mes).
-        import re
         from django.test import RequestFactory
         from gestion import views
         indicadores = views._html_indicadores_cuadrantes(RequestFactory().get("/planificacion/"), estatico=True)
@@ -286,15 +287,30 @@ class Command(BaseCommand):
         simulacion += [f'<template id="sop_simprecios-{v.isoformat()}">{seccion("sec-precios-sop", sop_simprecios=v.isoformat())}</template>'
                        for v in q.versiones_precios_sop()]
         simulacion = re.sub(r"\n\s+", "\n", "\n".join(simulacion))
-        # "</" escapado: un texto de SAP con "</script>" no puede cortar el <script> de los datos.
-        # Sin espacios tras "," y ":" (decenas de miles de filas: ~1 MB menos que leer al abrirlo).
-        datos_json = json.dumps(datos, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+        # Las vistas ya dibujadas de cada opción (<template>, ~2 MB) van dentro de los
+        # datos comprimidos: el navegador no las lee al abrir el archivo, solo arma la
+        # que se elige en el selector (ver plantillaDe en la plantilla).
+        plantillas = {}
+
+        def sacar_plantillas(html_seccion):
+            def guardar(m):
+                plantillas[m.group(1)] = m.group(2)
+                return ""
+            return re.sub(r'<template id="([^"]+)">(.*?)</template>', guardar, html_seccion, flags=re.S)
+        indicadores = sacar_plantillas(indicadores)
+        simulacion = sacar_plantillas(simulacion)
+        datos["plantillas"] = plantillas
+        # Datos comprimidos (deflate + base64): ~12 MB de JSON quedan en ~2 MB y el
+        # navegador los descomprime al abrir (DecompressionStream). Base64 no tiene
+        # "<" ni "_": no puede cortar el <script> ni confundirse con las marcas.
+        datos_json = json.dumps(datos, ensure_ascii=False, separators=(",", ":"))
+        datos_comprimidos = base64.b64encode(zlib.compress(datos_json.encode("utf-8"), 9)).decode("ascii")
         html = (plantilla.replace("/*__DASHBOARD_CSS__*/", css)
                 .replace("/*__ZONAS_JS__*/", zonas_js)
                 .replace("__LOGO_UNACEM__", logo)
                 .replace("<!--__INDICADORES_HTML__-->", indicadores)
                 .replace("<!--__SIMULACION_HTML__-->", simulacion)
-                .replace("__DATA_JSON__", datos_json))
+                .replace("__DATA_COMPRIMIDO__", datos_comprimidos))
 
         # Se escribe a un temporal y se reemplaza al final: si algo falla a
         # medias, el archivo compartido anterior queda intacto.
@@ -303,8 +319,9 @@ class Command(BaseCommand):
             f.write(html)
         os.replace(tmp, salida)
         self.stdout.write(self.style.SUCCESS(
-            f"HTML generado: {salida} ({len(html) // 1024} KB, {len(plan_rows)} filas plan, "
-            f"{len(daily_rows)} diarias, {len(cobertura_rows)} cobertura)"
+            f"HTML generado: {salida} ({len(html) // 1024} KB; datos {len(datos_json) // 1024} KB comprimidos a "
+            f"{len(datos_comprimidos) // 1024} KB; {len(plan_rows)} filas plan, {len(daily_rows)} diarias, "
+            f"{len(cobertura_rows)} cobertura, {len(plantillas)} vistas por opción)"
         ))
 
     @staticmethod

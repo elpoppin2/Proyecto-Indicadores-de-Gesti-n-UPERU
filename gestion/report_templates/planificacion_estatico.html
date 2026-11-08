@@ -16,7 +16,10 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<!-- Fuentes sin bloquear el primer pintado (esperar a Google demoraba ~0.3 s la
+     apertura, más sin internet): se ve la fuente de respaldo y cambia al llegar. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap"></noscript>
 <style>
 /*__DASHBOARD_CSS__*/
 </style>
@@ -345,9 +348,44 @@
 
 </div>
 
+<!-- Datos del reporte: JSON comprimido (deflate) en base64, ~1/6 del JSON. El
+     navegador lo descomprime al abrir el archivo y recién ahí corre
+     iniciarPlanificacion; Indicadores ya viene dibujada y no espera. -->
+<script type="application/octet-stream" id="datos-planificacion">__DATA_COMPRIMIDO__</script>
 <script>
-const DATA = __DATA_JSON__;
+// Filtro Material de varios (como views._selector_material): su .value son
+// los códigos elegidos separados por coma ("" = todos). Antes que zonas.js,
+// que arma el botón de estos filtros al cargar.
+for(const s of document.querySelectorAll("select[data-multi]")) Object.defineProperty(s, "value", {
+  get(){ return Array.from(s.selectedOptions, o => o.value).join(","); },
+  set(v){ const elegidos = new Set(String(v || "").split(",").filter(Boolean)); for(const o of s.options) o.selected = elegidos.has(o.value); },
+});
+// Las zonas que pida zonas.js mientras se leen los datos esperan en cola.
+let dibujarZona = null;
+const zonasEnEspera = [];
+window.uperuCargarZona = function(zona){
+  if(dibujarZona) dibujarZona(zona);
+  else if(!zonasEnEspera.includes(zona)) zonasEnEspera.push(zona);
+};
+async function leerDatos(){
+  const bloque = document.getElementById("datos-planificacion");
+  const texto = atob(bloque.textContent.trim());
+  bloque.remove();  // ~2 MB de texto que ya no hace falta en el documento
+  const bytes = new Uint8Array(texto.length);
+  for(let i = 0; i < texto.length; i++) bytes[i] = texto.charCodeAt(i);
+  const flujo = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"));
+  return JSON.parse(await new Response(flujo).text());
+}
+leerDatos().then(iniciarPlanificacion, error => {
+  const aviso = document.createElement("p");
+  aviso.className = "zona-error";
+  aviso.textContent = "Este navegador no pudo leer los datos del reporte. Ábrelo con Edge o Chrome actualizados.";
+  document.querySelector(".zonas").after(aviso);
+  console.error(error);
+});
 
+// Todo lo que sigue usa los datos (hasta el final de este <script>).
+function iniciarPlanificacion(DATA){
 const MESES_NOMBRE = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 const MESES_ABREV = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 function mesLabel(m){ const [y,mo] = m.split("-").map(Number); return MESES_NOMBRE[mo-1].charAt(0).toUpperCase()+MESES_NOMBRE[mo-1].slice(1)+" - "+y; }
@@ -359,27 +397,33 @@ function sumarDias(fechaStr, delta){ const d = new Date(fechaStr+"T00:00:00"); d
 // (2,920.5) va al par (2,920). toLocaleString redondea el texto decimal hacia
 // arriba y el HTML difería del localhost en 1 centavo/unidad. toFixed(100)
 // da la expansión decimal exacta del número.
+// Un formateador por cantidad de decimales: toLocaleString con opciones arma
+// uno nuevo en cada llamada (miles de cifras por pestaña); da el mismo texto.
+const FORMATO_NUMERO = [];
+function formatoNumero(d){ return FORMATO_NUMERO[d] ??= new Intl.NumberFormat('es-PE',{maximumFractionDigits:d,minimumFractionDigits:d}); }
 function numero(v,d=0){
   if(v==null||v!==v) return "";
-  const x = Number(v), abs = Math.abs(x), exacto = abs.toFixed(100), punto = exacto.indexOf(".");
-  let r;
-  if(/^50*$/.test(exacto.slice(punto + 1 + d))){
-    const corte = exacto.slice(0, d ? punto + 1 + d : punto);
-    r = Number(corte);
-    if(Number(corte[corte.length-1]) % 2) r += 1/10**d;
-  } else r = Number(abs.toFixed(d));
+  const x = Number(v), abs = Math.abs(x);
+  let r = Number(abs.toFixed(d));
+  // toFixed ya redondea el valor binario exacto, pero un empate exacto lo sube
+  // y Python lo lleva al par. Solo si puede ser empate (el decimal d+1 queda
+  // en 5) hace falta la expansión exacta, que es lenta.
+  const siguiente = abs.toFixed(d + 1);
+  if(siguiente[siguiente.length-1] === "5"){
+    const exacto = abs.toFixed(100), punto = exacto.indexOf(".");
+    if(/^50*$/.test(exacto.slice(punto + 1 + d))){
+      const corte = exacto.slice(0, d ? punto + 1 + d : punto);
+      r = Number(corte);
+      if(Number(corte[corte.length-1]) % 2) r += 1/10**d;
+    }
+  }
   // r && : un negativo que redondea a 0 se muestra "0.0", no "-0.0" (como f"{v:z.1f}").
-  return (x < 0 && r ? -r : r).toLocaleString('es-PE',{maximumFractionDigits:d,minimumFractionDigits:d});
+  return formatoNumero(d).format(x < 0 && r ? -r : r);
 }
 function titulo(s){ return s ? s.charAt(0)+s.slice(1).toLowerCase() : ""; }
-// Filtro Material de varios (como views._selector_material): su .value son
-// los códigos elegidos separados por coma ("" = todos).
+// Filtro Material de varios: ver el .value de estos select al comienzo del script.
 function enSel(sel, codigo){ return !sel || sel.split(",").includes(codigo); }
 function cuantosSel(sel){ return sel ? sel.split(",").length : 0; }
-for(const s of document.querySelectorAll("select[data-multi]")) Object.defineProperty(s, "value", {
-  get(){ return Array.from(s.selectedOptions, o => o.value).join(","); },
-  set(v){ const elegidos = new Set(String(v || "").split(",").filter(Boolean)); for(const o of s.options) o.selected = elegidos.has(o.value); },
-});
 function claseCumplimiento(v){ if(v==null) return ""; return v>=100? "dato-positivo": (v<80? "dato-negativo": ""); }
 
 const HOY = DATA.generado;
@@ -3233,9 +3277,18 @@ fEver.addEventListener("change", renderEntregas);
 
 /* ---------- Zonas: cada una se dibuja la primera vez que se abre (o antes,
    en segundo plano, ver zonas.js), no todas al abrir el archivo. ---------- */
-// Simulación: la dibuja el localhost al exportar. El S&OP y la versión de
-// precios traen cada opción ya dibujada (<template id="sop_simulacion-AAAA-MM-DD">
-// y "sop_simprecios-..."); los demás filtros y las descargas quedan para el localhost.
+// Vistas ya dibujadas por el localhost al exportar, una por opción (ids
+// "sop_simulacion-AAAA-MM-DD", "sop_simprecios-..." e "indicadores-mes-..."):
+// llegan como texto en los datos y se arman solo al elegir esa opción.
+const PLANTILLAS = DATA.plantillas || {};
+function plantillaDe(id){
+  if(!(id in PLANTILLAS)) return null;
+  const t = document.createElement("template");
+  t.innerHTML = PLANTILLAS[id];
+  return t.content.firstElementChild;
+}
+// Simulación: la dibuja el localhost al exportar, con cada S&OP y cada versión
+// de precios ya dibujados; los demás filtros y las descargas quedan para el localhost.
 const AVISO_SIMULACION = "Filtro disponible en el localhost: esta copia muestra la vista por defecto.";
 const SELECTORES_SIMULACION = ["sop_simulacion", "sop_simprecios"];
 function prepararSimulacion(raiz){
@@ -3246,16 +3299,15 @@ function prepararSimulacion(raiz){
   raiz.querySelectorAll(".acciones-version").forEach(a => a.remove());  // las descargas necesitan el localhost
   for(const id of SELECTORES_SIMULACION){
     const sel = raiz.querySelector("select#" + id);
-    if(sel) for(const o of [...sel.options]) if(!document.getElementById(`${id}-${o.value}`)) o.remove();
+    if(sel) for(const o of [...sel.options]) if(!(`${id}-${o.value}` in PLANTILLAS)) o.remove();
   }
 }
 document.addEventListener("change", evento => {
   const id = evento.target.id;
   if(!SELECTORES_SIMULACION.includes(id)) return;
-  const plantilla = document.getElementById(`${id}-${evento.target.value}`);
+  const nueva = plantillaDe(`${id}-${evento.target.value}`);
   const actual = evento.target.closest("section.bloque");
-  if(!plantilla || !actual) return;
-  const nueva = plantilla.content.firstElementChild.cloneNode(true);
+  if(!nueva || !actual) return;
   actual.replaceWith(nueva);
   prepararSimulacion(nueva);
   setTimeout(() => prepararSimulacion(nueva), 0);  // el botón del filtro Material lo arma zonas.js después
@@ -3292,26 +3344,25 @@ const INICIO_ZONA = {
   },
 };
 const zonasIniciadas = new Set();
-window.uperuCargarZona = function(zona){
+dibujarZona = function(zona){
   if(zonasIniciadas.has(zona) || !INICIO_ZONA[zona]) return;
   zonasIniciadas.add(zona);
   INICIO_ZONA[zona]();
   renderKpis(zona);
 };
 // Filtro Mes de Indicadores: cada mes viene ya dibujado por el localhost al
-// exportar (<template id="indicadores-mes-AAAA-MM-DD">); el selector solo
+// exportar (plantilla "indicadores-mes-AAAA-MM-DD"); el selector solo
 // ofrece esos meses y al cambiarlo se pone el del mes elegido.
 function prepararMesIndicadores(){
   const sel = document.getElementById("mes_indicadores");
   if(!sel) return;
-  for(const o of [...sel.options]) if(!document.getElementById("indicadores-mes-" + o.value)) o.remove();
+  for(const o of [...sel.options]) if(!(("indicadores-mes-" + o.value) in PLANTILLAS)) o.remove();
 }
 document.addEventListener("change", evento => {
   if(evento.target.id !== "mes_indicadores") return;
-  const plantilla = document.getElementById("indicadores-mes-" + evento.target.value);
+  const nueva = plantillaDe("indicadores-mes-" + evento.target.value);
   const actual = document.getElementById("sec-indicadores");
-  if(!plantilla || !actual) return;
-  const nueva = plantilla.content.firstElementChild.cloneNode(true);
+  if(!nueva || !actual) return;
   if(!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) nueva.classList.add("seccion-actualizada");
   actual.replaceWith(nueva);
   prepararMesIndicadores();
@@ -3325,6 +3376,16 @@ document.addEventListener("change", evento => {
   if(!seccion || (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) return;
   seccion.classList.remove("seccion-actualizada"); void seccion.offsetWidth; seccion.classList.add("seccion-actualizada");
 });
+// Las zonas pedidas mientras se leían los datos (la abierta por un enlace
+// #inventario, la precarga de zonas.js): se dibujan ahora.
+for(const zona of zonasEnEspera.splice(0)){
+  dibujarZona(zona);
+  const panel = document.getElementById("zona-" + zona);
+  if(!panel) continue;
+  if(window.uperuAlinearMes) window.uperuAlinearMes(panel);
+  if(!panel.hidden) document.dispatchEvent(new CustomEvent("uperu:zona-entrando", {detail: {panel}}));
+}
+}  // fin de iniciarPlanificacion
 </script>
 <script>
 /*__ZONAS_JS__*/
