@@ -229,6 +229,8 @@ class Command(BaseCommand):
             "meses_fbl3n": sorted(m.isoformat() for m in q.meses_con_fbl3n()),
             "pcs_fijo": next(iter(q.regla_local("pcs_fijo_energia", {}).values()), None),
             "proyeccion_rows": proyeccion_rows, "proyeccion_inicial": proyeccion_inicial,
+            # Lo que Condorcocha recibe solo por traslado (Movimiento de inventario por material).
+            "solo_traslado": [f"{m}|{q.CENTRO_CONDORCOCHA}" for m in q.MATERIALES_TRASLADO_ATOCONGO_CONDORCOCHA],
             "acopio_proyeccion": acopio_proyeccion,
             "stock_real_rows": stock_real_rows, "cierres_fecha": cierres_fecha, "mov_real_rows": mov_real_rows,
             "diagnostico_rows": diagnostico_rows, "estados_stock": q.ESTADOS_STOCK,            "meses": [m.isoformat() for m in meses],

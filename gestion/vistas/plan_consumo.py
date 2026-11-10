@@ -422,9 +422,13 @@ def _movimientos_por_material(grupos, matriz):
     Traslados a otro centro (solo si los tiene) e Inventario final, con los
     meses en columnas. Las salidas van en negativo, así cada columna suma su
     inventario final. Mismo orden que la matriz de stock (primero el quiebre
-    más cercano). Lo recibido por traslado (Carbón Importado de Condorcocha)
-    va en Abastecimiento, como en el resto de la sección. Un movimiento
-    menor a media tonelada se muestra como "—" (None)."""
+    más cercano). Lo que llega por traslado va en su propia fila, "Traslado
+    recibido", y Abastecimiento queda solo para las compras (pedido del
+    usuario, 2026-11-10: "abastecimiento se entiende como compra"): el
+    traslado que trae el S&OP y, en Condorcocha, todo el abastecimiento de lo
+    que solo llega desde Atocongo (q.MATERIALES_TRASLADO_ATOCONGO_CONDORCOCHA:
+    Clinker y Carbón Importado). Sin compras, la fila Abastecimiento no va.
+    Un movimiento menor a media tonelada se muestra como "—" (None)."""
     por_clave = {clave: g.sort_values("mes") for clave, g in grupos}
 
     def flujo(valores, signo):
@@ -433,10 +437,18 @@ def _movimientos_por_material(grupos, matriz):
     bloques = []
     for f in matriz:
         g = por_clave[(f["material_codigo"], f["centro"])]
-        traslados = flujo(g["traslado"], -1)
-        filas = [("Inventario inicial", [float(v) for v in g["stock_inicial"]], "inicial"),
-                 ("Abastecimiento", flujo(g["abastecimiento"], 1), "entrada"),
-                 ("Consumo", flujo(g["consumo"], -1), "salida")]
+        solo_traslado = (f["centro"] == q.CENTRO_CONDORCOCHA
+                         and f["material_codigo"] in q.MATERIALES_TRASLADO_ATOCONGO_CONDORCOCHA)
+        recibido = g["abastecimiento"] if solo_traslado else g["traslado_recibido"]
+        compras, recibidos, traslados = (flujo(g["abastecimiento"] - recibido, 1), flujo(recibido, 1),
+                                         flujo(g["traslado"], -1))
+        filas = [("Inventario inicial", [float(v) for v in g["stock_inicial"]], "inicial")]
+        hay_recibidos = any(v is not None for v in recibidos)
+        if not hay_recibidos or any(v is not None for v in compras):
+            filas.append(("Abastecimiento", compras, "entrada"))
+        if hay_recibidos:
+            filas.append(("Traslado recibido", recibidos, "entrada"))
+        filas.append(("Consumo", flujo(g["consumo"], -1), "salida"))
         if any(v is not None for v in traslados):
             filas.append(("Traslados a otro centro", traslados, "salida"))
         bloques.append({

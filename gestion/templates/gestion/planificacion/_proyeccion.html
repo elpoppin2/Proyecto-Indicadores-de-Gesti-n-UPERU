@@ -225,14 +225,14 @@
 
     {# Movimiento por material, como las hojas de la corrida S&OP en Excel (pedido del usuario, 2026-11-10). #}
     <h3 class="subtitulo">Movimiento de inventario por material (T)</h3>
-    <p class="nota">Cada material con su inventario inicial, abastecimiento, consumo, traslados a otro centro (si los tiene) e inventario final de cada mes, como en la corrida S&amp;OP. Las salidas van en negativo: cada columna suma su inventario final. Primero los materiales con el quiebre más cercano.</p>
+    <p class="nota">Cada material con su inventario inicial, abastecimiento (compras), traslado recibido (si lo tiene), consumo, traslados a otro centro (si los tiene) e inventario final de cada mes, como en la corrida S&amp;OP. Las salidas van en negativo: cada columna suma su inventario final. Primero los materiales con el quiebre más cercano.</p>
     <div class="leyenda-curva">
       <span class="leyenda-item"><span class="leyenda-marca estado-quiebre"></span>Quiebre (negativo)</span>
       <span class="leyenda-item"><span class="leyenda-marca estado-bajo_minimo"></span>Bajo mínimo</span>
       <span class="leyenda-item"><span class="leyenda-marca estado-en_rango"></span>En rango</span>
       <span class="leyenda-item"><span class="leyenda-marca estado-sobre_maximo"></span>Sobre máximo</span>
     </div>
-    <div class="tabla-scroll">
+    <div class="tabla-scroll tabla-movimiento">
       <table class="matriz-movimiento" data-sin-orden>
         <thead>
           <tr>

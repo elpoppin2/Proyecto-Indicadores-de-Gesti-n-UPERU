@@ -1331,14 +1331,20 @@ function renderSeccion5(){
                    a.centro.localeCompare(b.centro) || a.material_codigo.localeCompare(b.material_codigo));
   const matrizCobertura = matriz.flatMap(f => f.filasCobertura);
   // Movimiento de inventario por material, como la corrida S&OP en Excel (replica
-  // views._movimientos_por_material): salidas en negativo; menos de media tonelada = "—".
-  const flujo = (g, k, signo) => g.map(f => Math.abs(f[k]) >= 0.5 ? signo * f[k] : null);
+  // views._movimientos_por_material): lo recibido por traslado en su propia fila
+  // (todo, en lo que Condorcocha recibe solo desde Atocongo) y Abastecimiento solo
+  // con las compras; salidas en negativo; menos de media tonelada = "—".
+  const SOLO_TRASLADO = new Set(DATA.solo_traslado || []);
+  const flujo = (valores, signo) => valores.map(v => Math.abs(v) >= 0.5 ? signo * v : null);
   const movimientos = matriz.map(f => {
     const g = grupos.get(f.material_codigo+"|"+f.centro);
-    const traslados = flujo(g, "traslado", -1);
-    const filasMov = [["Inventario inicial", g.map(r => r.stock_inicial), "inicial"],
-                      ["Abastecimiento", flujo(g, "abastecimiento", 1), "entrada"],
-                      ["Consumo", flujo(g, "consumo", -1), "salida"]];
+    const recibido = g.map(r => SOLO_TRASLADO.has(f.material_codigo+"|"+f.centro) ? r.abastecimiento : (r.traslado_recibido || 0));
+    const compras = flujo(g.map((r, i) => r.abastecimiento - recibido[i]), 1), recibidos = flujo(recibido, 1);
+    const traslados = flujo(g.map(r => r.traslado), -1), hayRecibidos = recibidos.some(v => v !== null);
+    const filasMov = [["Inventario inicial", g.map(r => r.stock_inicial), "inicial"]];
+    if(!hayRecibidos || compras.some(v => v !== null)) filasMov.push(["Abastecimiento", compras, "entrada"]);
+    if(hayRecibidos) filasMov.push(["Traslado recibido", recibidos, "entrada"]);
+    filasMov.push(["Consumo", flujo(g.map(r => r.consumo), -1), "salida"]);
     if(traslados.some(v => v !== null)) filasMov.push(["Traslados a otro centro", traslados, "salida"]);
     return {...f, filasMov};
   });
@@ -1457,14 +1463,14 @@ function renderSeccion5(){
       </table>
     </div>
     <h3 class="subtitulo">Movimiento de inventario por material (T)</h3>
-    <p class="nota">Cada material con su inventario inicial, abastecimiento, consumo, traslados a otro centro (si los tiene) e inventario final de cada mes, como en la corrida S&amp;OP. Las salidas van en negativo: cada columna suma su inventario final. Primero los materiales con el quiebre más cercano.</p>
+    <p class="nota">Cada material con su inventario inicial, abastecimiento (compras), traslado recibido (si lo tiene), consumo, traslados a otro centro (si los tiene) e inventario final de cada mes, como en la corrida S&amp;OP. Las salidas van en negativo: cada columna suma su inventario final. Primero los materiales con el quiebre más cercano.</p>
     <div class="leyenda-curva">
       <span class="leyenda-item"><span class="leyenda-marca estado-quiebre"></span>Quiebre (negativo)</span>
       <span class="leyenda-item"><span class="leyenda-marca estado-bajo_minimo"></span>Bajo mínimo</span>
       <span class="leyenda-item"><span class="leyenda-marca estado-en_rango"></span>En rango</span>
       <span class="leyenda-item"><span class="leyenda-marca estado-sobre_maximo"></span>Sobre máximo</span>
     </div>
-    <div class="tabla-scroll">
+    <div class="tabla-scroll tabla-movimiento">
       <table class="matriz-movimiento" data-sin-orden>
         <thead><tr><th class="mov-fija mov-f1">Material</th><th class="mov-fija mov-f2">Concepto</th>
           ${meses.map(m=>`<th class="num">${mesCorto(m)}</th>`).join("")}</tr></thead>
@@ -2599,7 +2605,7 @@ function renderSeccion9b(){
     </div>
     ${grafico}
     ${sinFbl3n.length ? `<p class="aviso">Sin FBL3N cargada en ${sinFbl3n.length === 1 ? "el mes marcado" : "los meses marcados"} con *: ahí el precio real es el de MB51, sin sus ajustes.</p>` : ""}
-    <div class="tabla-scroll">
+    <div class="tabla-scroll tabla-movimiento">
       <table class="matriz-movimiento" data-sin-orden>
         <thead><tr><th class="mov-fija mov-f1">Material</th><th class="mov-fija mov-f2">Concepto</th>
           ${meses.map(m => `<th class="num">${mesCorto(m)}${MESES_FBL3N.has(m) ? "" : " *"}</th>`).join("")}<th class="num">Período</th></tr></thead>
