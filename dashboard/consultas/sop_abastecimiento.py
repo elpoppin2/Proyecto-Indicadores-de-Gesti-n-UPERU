@@ -1,4 +1,4 @@
-"""Planificación S&OP > Cumplimiento: plan de abastecimiento vs ingresos físicos (ZMM056), entregas por proveedor, viajes de recepción y traslados."""
+"""Planificación S&OP > Cumplimiento: plan de abastecimiento vs ingresos físicos (ZMM056), viajes de recepción y traslados."""
 
 import datetime
 
@@ -7,7 +7,7 @@ import pandas as pd
 from .base import _cacheado, _en_alcance, _limites_mes, _lista_materiales, _plan_extra_alcance, _query, _sql_proveedores_alcance
 from .importados import reparto_por_embarque
 from .inventario import catalogo_materiales
-from .sop_base import CATEGORIAS_PLANIFICACION_SOP, FECHA_INGRESO_EFECTIVA, _FILTRO_CON_CODIGO_SOP, _IN_TIPOS_OPERACION_RECEPCION, materiales_planificados_sop
+from .sop_base import CATEGORIAS_PLANIFICACION_SOP, FECHA_INGRESO_EFECTIVA, _FILTRO_CON_CODIGO_SOP, _IN_TIPOS_OPERACION_RECEPCION
 
 
 # Importados que llegan por barco (pedido del usuario, 2026-10-23): en el
@@ -168,41 +168,6 @@ def ingresos_fisicos_por_proveedor(mes):
         df = pd.concat([df[~df["material_codigo"].isin(MATERIALES_REAL_MB51)], pd.DataFrame(filas, columns=df.columns)],
                        ignore_index=True)
     return _en_alcance(df, mes=mes)
-
-
-@_cacheado
-def entregas_por_proveedor_sop():
-    """Entregas mes a mes por material/centro/proveedor (ZMM056, mismas reglas
-    de Recepción que ingresos_fisicos_por_material: Tipo 1/5), en toneladas y
-    carros, de los materiales de Planificación (misma categoría efectiva que
-    Plan vs Real). En los Tipo 5 el "proveedor" es la planta o cantera de
-    origen. Para Evolución de entregas por proveedor (pestaña Cumplimiento).
-    Pedido por el usuario."""
-    columnas = ["material_codigo", "texto_breve", "centro", "proveedor_codigo", "proveedor", "tipo",
-                "mes", "toneladas", "carros"]
-    df = _query(f"""
-        SELECT material_codigo AS material_codigo, centro AS centro, proveedor_codigo AS proveedor_codigo,
-               proveedor AS proveedor, MAX(tipo_operacion) AS tipo_operacion,
-               MAX(descripcion_material) AS descripcion,
-               substr({FECHA_INGRESO_EFECTIVA}, 1, 7) || '-01' AS mes, SUM(cantidad) AS toneladas, COUNT(*) AS carros
-        FROM gestion_ingresofisicosop
-        WHERE fecha_ingreso IS NOT NULL AND tipo_operacion IN ({_IN_TIPOS_OPERACION_RECEPCION}){_sql_proveedores_alcance()}
-        GROUP BY material_codigo, centro, proveedor_codigo, proveedor, mes
-    """)
-    if df.empty:
-        return pd.DataFrame(columns=columnas)
-    df["mes"] = pd.to_datetime(df["mes"]).dt.date
-    df["toneladas"] = df["toneladas"].fillna(0.0).astype(float)
-    df["carros"] = df["carros"].astype(int)
-    df["proveedor"] = df["proveedor"].fillna("").str.strip().replace("", "(sin proveedor)")
-    df["tipo"] = df["tipo_operacion"].map(lambda t: "Propio" if t == "5" else "Terceros")
-    catalogo = catalogo_materiales()[["material_codigo", "texto_breve", "categoria"]].drop_duplicates("material_codigo")
-    df = df.merge(catalogo, on="material_codigo", how="left")
-    df["texto_breve"] = df["texto_breve"].where(df["texto_breve"].notna() & (df["texto_breve"] != ""), df["descripcion"]).fillna("")
-    sin_categoria_en_plan = df["categoria"].isna() & df["material_codigo"].isin(materiales_planificados_sop())
-    df.loc[sin_categoria_en_plan, "categoria"] = "MATERIAS PRIMAS"
-    df = _en_alcance(df[df["categoria"].isin(CATEGORIAS_PLANIFICACION_SOP)])
-    return df[columnas].sort_values(["mes", "material_codigo", "centro", "proveedor"]).reset_index(drop=True)
 
 
 # Materiales que Condorcocha recibe SOLO por traslado desde Atocongo: todo su

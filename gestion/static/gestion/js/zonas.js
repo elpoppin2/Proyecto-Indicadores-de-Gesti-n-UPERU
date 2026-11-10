@@ -12,11 +12,13 @@
    - Si cambia un filtro en cualquier zona, Indicadores (gráficos de todas)
      se vuelve a pedir la próxima vez que se abre, y los números clave de
      arriba de esa zona (?_kpis=zona) se actualizan al momento.
-   - Animaciones sutiles: la barra de la pestaña activa se desliza, la zona
-     entra desde el lado hacia el que se movió (desde un estado ya visible,
-     sin pantallazo en blanco), los paneles de Indicadores aparecen en
-     cascada, las barras crecen, y al ordenar una tabla las filas
-     se asientan. Todo se apaga con "reducir movimiento" del sistema. */
+   - Animaciones sutiles: la zona entra desde el lado hacia el que se movió
+     (desde un estado ya visible, sin pantallazo en blanco), los paneles de
+     Indicadores aparecen en cascada, las barras crecen, y al ordenar una
+     tabla las filas se asientan. Todo se apaga con "reducir movimiento" del
+     sistema.
+   - Desde el 2026-11-09 la barra de pestañas no se ve: sus botones siguen
+     acá (activan cada zona) y el menú lateral (navegacion.js) los muestra. */
 
 /* Mes alineado en toda Planificación (web y HTML estático): al elegir un mes
    en cualquier sección, todos los demás filtros de mes que tengan ese mes
@@ -71,10 +73,11 @@
     });
   }
 
-  document.addEventListener('change', function (evento) {
-    var select = evento.target;
+  // También la usa el panel de filtros (navegacion.js), que cambia los
+  // filtros por código: sus cambios no son del usuario (isTrusted).
+  function alinearDesde(select) {
     var grupo = select && select.id ? grupoDe(select.id) : -1;
-    if (!evento.isTrusted || grupo === -1 || !select.value) return;
+    if (grupo === -1 || !select.value) return;
     vigentes[grupo] = select.value;
     if (!estatico()) {
       // En la URL: el de cada sección ya cargada solo si tiene ese valor (si
@@ -88,7 +91,11 @@
       window.history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : '') + window.location.hash);
     }
     alinear(document, grupo, select.value, select);
+  }
+  document.addEventListener('change', function (evento) {
+    if (evento.isTrusted) alinearDesde(evento.target);
   }, true);
+  window.uperuAlinearDesde = alinearDesde;
 
   window.uperuAlinearMes = function (raiz) {
     vigentes.forEach(function (valor, grupo) { if (valor) alinear(raiz, grupo, valor, null); });
@@ -597,6 +604,8 @@
       var arriba = panel.getBoundingClientRect().top + window.scrollY - barra.offsetHeight - 14;
       if (window.scrollY > arriba) window.scrollTo({ top: Math.max(arriba, 0), behavior: 'auto' });
     }
+    // Aviso para el menú lateral (navegacion.js): marca la pestaña y la cabecera.
+    if (tab !== anterior) document.dispatchEvent(new CustomEvent('uperu:zona-activada', { detail: { zona: tab.dataset.zona, panel: panel } }));
     return panel;
   }
 
@@ -728,6 +737,14 @@
     if (panel) refrescarKpis(panel.id.replace(/^zona-/, ''));
   });
   window.addEventListener('hashchange', desdeHash);
+
+  // Para el menú lateral (navegacion.js): qué pestaña está abierta, abrir una
+  // y cargarla (sus accesos directos necesitan los títulos de la pestaña).
+  window.uperuZonas = {
+    activa: function () { return tabActiva().dataset.zona; },
+    activar: function (zona) { var tab = tabDeZona(zona); return tab ? activar(tab, { subir: true }) : null; },
+    cargar: function (zona) { var tab = tabDeZona(zona); return tab ? cargarZona(panelDe(tab)) : Promise.resolve(); }
+  };
 
   if (!desdeHash()) {
     cargarZona(panelDe(tabs[0]));

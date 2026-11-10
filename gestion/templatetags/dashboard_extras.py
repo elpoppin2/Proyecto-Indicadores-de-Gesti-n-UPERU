@@ -99,3 +99,13 @@ def centro(codigo):
 @register.filter
 def fechaiso(fecha):
     return fecha.isoformat() if fecha else ""
+
+
+@register.inclusion_tag("gestion/_estado_datos.html")
+def estado_datos():
+    """Indicador "Datos al …" de la cabecera con el estado de cada fuente
+    (queries.estado_datos). Pedido del usuario, 2026-11-10."""
+    try:
+        return {"e": q.estado_datos()}
+    except Exception:  # noqa: BLE001 - la cabecera nunca debe romper una página
+        return {"e": None}

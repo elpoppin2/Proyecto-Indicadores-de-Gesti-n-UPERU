@@ -1,100 +1,94 @@
 /* Transición de los gráficos (rediseño de octubre 2026, pedido del usuario:
    "transiciones entre gráficos y diseño"). Cuando se carga la página, se
    abre una pestaña o un filtro trae una sección nueva, cada gráfico visible
-   "se arma" una sola vez:
-   - líneas y áreas se revelan de izquierda a derecha (el sentido del tiempo);
-   - barras y columnas crecen desde su base (hacia abajo las negativas);
-   - puntos, burbujas y etiquetas de valor aparecen cuando la línea llega a
-     ellos.
+   se descubre de izquierda a derecha (el sentido del tiempo).
    El estado final es el gráfico de siempre: no se deja nada oculto si algo
    falla, y con "reducir movimiento" del sistema no se anima nada.
    Disparadores: carga de la página, evento 'uperu:zona-entrando' (zonas.js)
-   y 'uperu:seccion-actualizada' (filtros de base.html). */
+   y 'uperu:seccion-actualizada' (filtros de base.html).
+   Desde el 2026-11-10 (pedido del usuario: las animaciones de los gráficos de
+   inventario iban "con pocos fps"): antes se animaba cada línea, barra y
+   punto dentro del SVG (recorte, escala, opacidad), y el navegador volvía a
+   pintar el gráfico entero en cada cuadro; con las tramas y máscaras del de
+   inventario no llegaba a 60 cuadros por segundo. Ahora el gráfico se pinta
+   una sola vez y lo que se mueve es una cortina del color del fondo que se
+   corre hacia la derecha (solo transform, lo hace la tarjeta de video).
+   Cada gráfico dibujado se descubre una sola vez: volver a una pestaña ya
+   vista no lo repite (un filtro trae un gráfico nuevo, y ese sí). */
 (function () {
   if (!Element.prototype.animate) return;
   var reducido = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
-  var CURVA = 'cubic-bezier(.25, .1, .25, 1)';
-  var BARRIDO = 650;     // ms que tarda la línea en cruzar el gráfico
-  var LINEAS = 'path:not(.zona-detalle):not([class*="grilla"]):not([class*="eje"])';
-  var ETIQUETAS = '.etiqueta-valor, .etiqueta-barra, .etiqueta-barra-t, .etiqueta-burbuja';
+  var CURVA = 'cubic-bezier(.33, .1, .25, 1)';
+  var BARRIDO = 700;     // ms que tarda la cortina en cruzar el gráfico
+  var armados = new WeakSet();  // los <svg> que ya se descubrieron
 
-  function visible(nodo) {
-    var r = nodo.getBoundingClientRect();
+  function visible(r) {
     return r.width > 0 && r.bottom > -40 && r.top < (window.innerHeight || 800) + 120;
   }
 
-  // Fracción horizontal (0 a 1) de un elemento dentro de su gráfico.
-  function fraccion(x, x0, ancho) {
-    return ancho > 0 ? Math.min(1, Math.max(0, (x - x0) / ancho)) : 0;
+  // Color del fondo que se ve detrás de un elemento (el de la tarjeta, o el de la página).
+  function fondoDe(el) {
+    for (var n = el; n && n.nodeType === 1; n = n.parentElement) {
+      var c = getComputedStyle(n).backgroundColor;
+      var m = c && c.match(/rgba?\(([^)]+)\)/);
+      if (m && (m[1].split(',').length < 4 || parseFloat(m[1].split(',')[3]) > 0.98)) return c;
+    }
+    return getComputedStyle(document.documentElement).getPropertyValue('--bg') || '#fff';
   }
 
-  function animarSvg(svg) {
-    var caja = svg.viewBox && svg.viewBox.baseVal;
-    var x0 = caja ? caja.x : 0, ancho = caja && caja.width ? caja.width : svg.getBoundingClientRect().width;
+  function cortina(envoltura, fondo) {
+    var caja = document.createElement('div');
+    caja.className = 'cortina-grafico';
+    caja.setAttribute('aria-hidden', 'true');
+    var tela = document.createElement('i');
+    tela.style.setProperty('--fondo-cortina', fondo);
+    caja.appendChild(tela);
+    envoltura.appendChild(caja);
+    var a = tela.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(100%)' }],
+                         { duration: BARRIDO, easing: CURVA });
+    a.onfinish = a.oncancel = function () { caja.remove(); };
+  }
 
-    svg.querySelectorAll(LINEAS).forEach(function (el) {
-      // data-barrido="inicio fin" (fracciones del ancho): un tramo de una línea que sigue en otro, p.ej. el stock
-      // real y luego el proyectado (punteado); se revelan a la misma velocidad, uno detrás del otro.
-      var barrido = (el.getAttribute('data-barrido') || '').split(' ').map(parseFloat);
-      if (barrido.length === 2 && !isNaN(barrido[0]) && !isNaN(barrido[1])) {
-        el.animate([{ clipPath: 'inset(-6px 100% -6px -6px)' }, { clipPath: 'inset(-6px -6px -6px -6px)' }], {
-          duration: Math.max(120, BARRIDO * (barrido[1] - barrido[0])), delay: BARRIDO * barrido[0],
-          easing: 'linear', fill: 'backwards'
-        });
-        return;
-      }
-      // Las líneas punteadas de referencia (mínimo, máximo, plan lineal, promedio) quedan quietas.
-      var trazo = getComputedStyle(el).strokeDasharray;
-      if (trazo && trazo !== 'none') return;
-      el.animate([{ clipPath: 'inset(-6px 100% -6px -6px)' }, { clipPath: 'inset(-6px -6px -6px -6px)' }],
-        { duration: BARRIDO, easing: CURVA });
-    });
-
-    var cero = svg.querySelector('.linea-cero');
-    var yCero = cero ? parseFloat(cero.getAttribute('y1')) : null;
-    svg.querySelectorAll('rect:not(.zona-detalle):not([class*="banda"])').forEach(function (el) {
-      var x = parseFloat(el.getAttribute('x')) || 0, y = parseFloat(el.getAttribute('y')) || 0;
-      if (!(parseFloat(el.getAttribute('height')) > 0)) return;
-      // data-abajo: barras que bajan desde una línea que no es el cero (los pines de cumplimiento bajo el plan).
-      var haciaAbajo = el.getAttribute('data-abajo') === '1' || (yCero !== null && y >= yCero - 0.5);
-      var origen = haciaAbajo ? 'center top' : 'center bottom';
-      el.animate([
-        { transformBox: 'fill-box', transformOrigin: origen, transform: 'scaleY(0)' },
-        { transformBox: 'fill-box', transformOrigin: origen, transform: 'scaleY(1)' }
-      ], { duration: 480, delay: fraccion(x, x0, ancho) * 260, easing: 'cubic-bezier(.2, .8, .2, 1)', fill: 'backwards' });
-    });
-
-    svg.querySelectorAll('circle:not(.zona-detalle)').forEach(function (el) {
-      var cx = parseFloat(el.getAttribute('cx')) || 0;
-      var esBurbuja = el.classList.contains('burbuja') || el.classList.contains('punto-pago');
-      el.animate(esBurbuja ? [
-        { transformBox: 'fill-box', transformOrigin: 'center', transform: 'scale(0)', opacity: 0 },
-        { transformBox: 'fill-box', transformOrigin: 'center', transform: 'scale(1)', opacity: 1 }
-      ] : [{ opacity: 0 }, { opacity: 1 }], {
-        duration: esBurbuja ? 360 : 200, delay: 80 + fraccion(cx, x0, ancho) * (BARRIDO - 120),
-        easing: 'ease-out', fill: 'backwards'
+  // Lo pedido en un mismo cuadro (zona que entra + sección que se actualiza)
+  // se resuelve junto: primero se leen todas las medidas y colores, después
+  // se ponen las cortinas (sin alternar lecturas y escrituras).
+  var pendientes = [], programado = false;
+  function procesar() {
+    programado = false;
+    var envolturas = [], enLote = new Set();
+    pendientes.splice(0).forEach(function (raiz) {
+      if (!raiz.isConnected) return;
+      raiz.querySelectorAll('.chart-wrap, svg.minigrafico').forEach(function (g) {
+        var svg = g.tagName === 'svg' ? g : g.querySelector('svg');
+        var clave = svg || g;
+        if (enLote.has(clave) || (svg && armados.has(svg)) || g.closest('[hidden]')) return;
+        enLote.add(clave);
+        envolturas.push([g, svg]);
       });
     });
-  }
-
-  function animarGrafico(envoltura) {
-    var svg = envoltura.tagName === 'svg' ? envoltura : envoltura.querySelector('svg');
-    if (svg) animarSvg(svg);
-    if (envoltura.tagName === 'svg') return;
-    envoltura.querySelectorAll(ETIQUETAS).forEach(function (el) {
-      var izq = parseFloat(el.style.left);
-      var f = isNaN(izq) ? 1 : Math.min(1, Math.max(0, izq / 100));
-      el.animate([{ opacity: 0 }, { opacity: 1 }],
-        { duration: 220, delay: 140 + f * (BARRIDO - 80), easing: 'ease-out', fill: 'backwards' });
+    var planes = [];
+    envolturas.forEach(function (par) {
+      if (!visible(par[0].getBoundingClientRect())) return;
+      try {
+        planes.push({ envoltura: par[0], svg: par[1], mini: par[0] === par[1], fondo: par[0] === par[1] ? null : fondoDe(par[0]) });
+      } catch (e) { /* un gráfico raro no frena al resto */ }
+    });
+    planes.forEach(function (plan) {
+      if (plan.svg) armados.add(plan.svg);
+      try {
+        // Los minigráficos de las tablas aparecen (opacidad: tampoco se vuelve a pintar).
+        if (plan.mini) plan.svg.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 360, easing: 'ease-out' });
+        else cortina(plan.envoltura, plan.fondo);
+      } catch (e) { /* idem */ }
     });
   }
 
   function animar(raiz) {
     if (reducido.matches || !raiz || !raiz.querySelectorAll) return;
-    raiz.querySelectorAll('.chart-wrap, svg.minigrafico').forEach(function (g) {
-      if (g.closest('[hidden]') || !visible(g)) return;
-      try { animarGrafico(g); } catch (e) { /* un gráfico raro no frena al resto */ }
-    });
+    pendientes.push(raiz);
+    if (programado) return;
+    programado = true;
+    requestAnimationFrame(procesar);
   }
   window.uperuAnimarGraficos = animar;
 

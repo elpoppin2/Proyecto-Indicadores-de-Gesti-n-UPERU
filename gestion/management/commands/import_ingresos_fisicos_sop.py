@@ -160,6 +160,44 @@ def _analisis(valor):
     return float(numero) if numero else None
 
 
+def _ticket(fila, ix, ix_calidad, planta_origen):
+    """Campos de IngresoFisicoSOP de una fila de la ZMM056 (posiciones de
+    _indices), o None si el ticket está anulado o no trae número. Los pesos
+    vienen en kg aunque la unidad diga "T": se pasan a toneladas."""
+    if texto(fila[ix["estado"]]) == _ESTADO_TICKET_ANULADO:
+        return None
+    ticket_registro = texto(fila[ix["ticket"]])
+    if not ticket_registro:
+        return None
+    peso_neto_humedo = decimal(fila[ix["humedo"]])
+    return dict(
+        planta_origen=planta_origen,
+        ticket_registro=ticket_registro,
+        centro=texto(fila[ix["centro"]]),
+        material_codigo=texto(fila[ix["material"]]),
+        descripcion_material=texto(fila[ix["descripcion"]]),
+        fecha_ingreso=fecha(fila[ix["fecha"]]),
+        cantidad=peso_neto_humedo / _KG_A_TONELADAS if peso_neto_humedo is not None else None,
+        unidad_medida_base=texto(fila[ix["umb"]]),
+        proveedor_codigo=texto(fila[ix["proveedor_codigo"]]),
+        proveedor=texto(fila[ix["proveedor"]]),
+        documento_material=texto(fila[ix["documento"]]),
+        posicion=texto(fila[ix["posicion"]]),
+        tipo_operacion=texto(fila[ix["tipo"]]),
+        numero_muestra=texto(fila[ix["muestra"]]),
+        **{campo: _analisis(fila[indice]) for indice, campo in ix_calidad.items()},
+        premio=float(premio) if (premio := decimal(fila[ix["premio"]])) else None,
+        cantidad_seca=float(seco) / _KG_A_TONELADAS if (seco := decimal(fila[ix["seco"]])) else None,
+        transportista_codigo=texto(fila[ix["transportista_codigo"]]),
+        transportista=texto(fila[ix["transportista"]]),
+        placa=texto(fila[ix["placa"]]),
+        fecha_pesaje_lleno=_fecha(fila[ix["f_lleno"]]),
+        hora_pesaje_lleno=_hora(fila[ix["h_lleno"]]),
+        fecha_pesaje_vacio=_fecha(fila[ix["f_vacio"]]),
+        hora_pesaje_vacio=_hora(fila[ix["h_vacio"]]),
+    )
+
+
 class Command(BaseCommand):
     help = (
         "Importa los ingresos físicos de Materias Primas y Energía/Combustibles "
@@ -250,48 +288,16 @@ class Command(BaseCommand):
         for fila in filas:
             if not fila or not any(v is not None and v != "" for v in fila):
                 continue
-            if texto(fila[ix["estado"]]) == _ESTADO_TICKET_ANULADO:
-                continue
-
-            ticket_registro = texto(fila[ix["ticket"]])
-            if not ticket_registro:
+            datos = _ticket(fila, ix, ix_calidad, planta_origen)
+            if datos is None:
                 continue
             # Un mismo ticket puede venir en más de una fila (columna "Sec."):
             # se queda la primera, igual que antes.
-            clave = (texto(fila[ix["centro"]]), ticket_registro)
+            clave = (datos["centro"], datos["ticket_registro"])
             if clave in vistos:
                 continue
             vistos.add(clave)
-
-            peso_neto_humedo = decimal(fila[ix["humedo"]])
-            cantidad_toneladas = peso_neto_humedo / _KG_A_TONELADAS if peso_neto_humedo is not None else None
-
-            lote.append(IngresoFisicoSOP(
-                planta_origen=planta_origen,
-                ticket_registro=ticket_registro,
-                centro=texto(fila[ix["centro"]]),
-                material_codigo=texto(fila[ix["material"]]),
-                descripcion_material=texto(fila[ix["descripcion"]]),
-                fecha_ingreso=fecha(fila[ix["fecha"]]),
-                cantidad=cantidad_toneladas,
-                unidad_medida_base=texto(fila[ix["umb"]]),
-                proveedor_codigo=texto(fila[ix["proveedor_codigo"]]),
-                proveedor=texto(fila[ix["proveedor"]]),
-                documento_material=texto(fila[ix["documento"]]),
-                posicion=texto(fila[ix["posicion"]]),
-                tipo_operacion=texto(fila[ix["tipo"]]),
-                numero_muestra=texto(fila[ix["muestra"]]),
-                **{campo: _analisis(fila[indice]) for indice, campo in ix_calidad.items()},
-                premio=float(premio) if (premio := decimal(fila[ix["premio"]])) else None,
-                cantidad_seca=float(seco) / _KG_A_TONELADAS if (seco := decimal(fila[ix["seco"]])) else None,
-                transportista_codigo=texto(fila[ix["transportista_codigo"]]),
-                transportista=texto(fila[ix["transportista"]]),
-                placa=texto(fila[ix["placa"]]),
-                fecha_pesaje_lleno=_fecha(fila[ix["f_lleno"]]),
-                hora_pesaje_lleno=_hora(fila[ix["h_lleno"]]),
-                fecha_pesaje_vacio=_fecha(fila[ix["f_vacio"]]),
-                hora_pesaje_vacio=_hora(fila[ix["h_vacio"]]),
-            ))
+            lote.append(IngresoFisicoSOP(**datos))
             total += 1
             if len(lote) >= batch_size:
                 volcar_lote()

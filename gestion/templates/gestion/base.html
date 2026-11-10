@@ -6,14 +6,22 @@
   <title>{% block titulo %}Indicadores Supply Chain{% endblock %}</title>
   <script>
     /* Aplica el tema guardado ANTES de pintar la página, para que no haya
-       parpadeo entre el tema del sistema y el elegido a mano. */
+       parpadeo entre el tema del sistema y el elegido a mano. .js-menu: las
+       barras de páginas y pestañas no se pintan en la cabecera (las muestra
+       el menú lateral de navegacion.js); si el menú no llega a armarse,
+       vuelven. */
     (function () {
+      var raiz = document.documentElement;
       try {
         var guardado = localStorage.getItem("uperu_tema");
         if (guardado === "light" || guardado === "dark") {
-          document.documentElement.setAttribute("data-theme", guardado);
+          raiz.setAttribute("data-theme", guardado);
         }
       } catch (e) {}
+      raiz.classList.add("js-menu");
+      document.addEventListener("DOMContentLoaded", function () {
+        setTimeout(function () { if (!document.getElementById("menu-lateral")) raiz.classList.remove("js-menu"); }, 1500);
+      });
     })();
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -30,6 +38,8 @@
   {% endcomment %}
   <link rel="stylesheet" href="{% static 'gestion/css/dashboard.css' %}?v={% version_estatico 'gestion/css/dashboard.css' %}">
   <script src="{% static 'gestion/js/graficos.js' %}?v={% version_estatico 'gestion/js/graficos.js' %}" defer></script>
+  {# Menú lateral, accesos directos, tema y filtros flotantes (pedido del usuario, 2026-11-09). #}
+  <script src="{% static 'gestion/js/navegacion.js' %}?v={% version_estatico 'gestion/js/navegacion.js' %}" defer></script>
 </head>
 <body>
   {# Tramas de los gráficos (notación IBCS: lo proyectado va rayado). Van aquí y no dentro de cada gráfico: un <pattern> dentro de una pestaña oculta no se pinta en Edge/Chrome. El HTML estático de Planificación lleva la misma copia. #}
@@ -44,29 +54,7 @@
     <mask id="desvanecer-trama" maskContentUnits="objectBoundingBox"><rect width="1" height="1" fill="url(#degrade-trama)"></rect></mask>
   </defs></svg>
   {% block contenido %}{% endblock %}
-  <script>
-    (function () {
-      var boton = document.getElementById("theme-toggle");
-      if (!boton) return;
-
-      function temaActual() {
-        var explicito = document.documentElement.getAttribute("data-theme");
-        if (explicito === "light" || explicito === "dark") return explicito;
-        return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-      }
-      function actualizarEtiqueta() {
-        boton.textContent = temaActual() === "dark" ? "Tema claro" : "Tema oscuro";
-      }
-
-      actualizarEtiqueta();
-      boton.addEventListener("click", function () {
-        var nuevo = temaActual() === "dark" ? "light" : "dark";
-        document.documentElement.setAttribute("data-theme", nuevo);
-        try { localStorage.setItem("uperu_tema", nuevo); } catch (e) {}
-        actualizarEtiqueta();
-      });
-    })();
-  </script>
+  {# El botón de tema claro/oscuro (el ojo) está en navegacion.js. #}
   <script>
     /* Cada tabla del dashboard tiene sus propios segmentadores (Mes/Familia/
        Centro), en un <form class="filtros" data-target="id-de-la-sección">.
@@ -273,7 +261,8 @@
         // Las tablas con scroll infinito (data-paginado) y el detalle fila por
         // fila (data-desglose, ver desglose.js) ordenan pidiendo al servidor,
         // no barajando el DOM local.
-        if (!th || th.closest('table[data-paginado], table[data-desglose]')) return;
+        // Tampoco las de bloques por material (data-sin-orden): sus filas van juntas.
+        if (!th || th.closest('table[data-paginado], table[data-desglose], table[data-sin-orden]')) return;
         var tabla = th.closest('table');
         var tbody = tabla.querySelector('tbody');
         if (!tbody) return;
@@ -570,30 +559,43 @@
     /* Recuadro de detalle de los gráficos: cualquier elemento con
        data-detalle (varias líneas) lo muestra junto al mouse. Delegado en el
        documento, así sigue funcionando cuando una sección se reemplaza al
-       cambiar un filtro. Pedido por el usuario. */
+       cambiar un filtro. Pedido por el usuario. Sigue al mouse con transform,
+       una vez por cuadro, y mide su tamaño solo al cambiar de texto (antes
+       medía y movía left/top en cada movimiento: la página se recalculaba en
+       cada píxel y el recuadro iba a saltos sobre los gráficos). */
     (function () {
       var caja = document.createElement('div');
       caja.className = 'detalle-grafico';
       caja.hidden = true;
       document.body.appendChild(caja);
-      function ubicar(evento) {
-        var margen = 14, ancho = caja.offsetWidth, alto = caja.offsetHeight;
-        var x = evento.clientX + margen, y = evento.clientY + margen;
-        if (x + ancho > window.innerWidth - 8) x = evento.clientX - ancho - margen;
-        if (y + alto > window.innerHeight - 8) y = evento.clientY - alto - margen;
-        caja.style.left = Math.max(8, x) + 'px';
-        caja.style.top = Math.max(8, y) + 'px';
+      var ancho = 0, alto = 0, mx = 0, my = 0, cuadro = 0;
+      function ubicar() {
+        cuadro = 0;
+        var margen = 14, x = mx + margen, y = my + margen;
+        if (x + ancho > window.innerWidth - 8) x = mx - ancho - margen;
+        if (y + alto > window.innerHeight - 8) y = my - alto - margen;
+        caja.style.transform = 'translate(' + Math.max(8, x) + 'px, ' + Math.max(8, y) + 'px)';
+      }
+      function seguir(evento) {
+        mx = evento.clientX;
+        my = evento.clientY;
+        if (!cuadro) cuadro = requestAnimationFrame(ubicar);
       }
       document.addEventListener('mouseover', function (evento) {
         var objetivo = evento.target.closest ? evento.target.closest('[data-detalle]') : null;
         if (!objetivo) return;
-        caja.textContent = objetivo.getAttribute('data-detalle');
-        caja.hidden = false;
-        ubicar(evento);
+        var texto = objetivo.getAttribute('data-detalle');
+        if (caja.hidden || caja.textContent !== texto) {
+          caja.textContent = texto;
+          caja.hidden = false;
+          ancho = caja.offsetWidth;
+          alto = caja.offsetHeight;
+        }
+        seguir(evento);
       });
       document.addEventListener('mousemove', function (evento) {
-        if (!caja.hidden) ubicar(evento);
-      });
+        if (!caja.hidden) seguir(evento);
+      }, { passive: true });
       document.addEventListener('mouseout', function (evento) {
         var objetivo = evento.target.closest ? evento.target.closest('[data-detalle]') : null;
         if (!objetivo) return;

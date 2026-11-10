@@ -1,6 +1,7 @@
 import time
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.test import Client
 
@@ -51,5 +52,13 @@ class Command(BaseCommand):
             f"Caché lista: {len(paginas)} páginas en {time.monotonic() - inicio:.0f} s"
             + (f" ({fallidas} con error)" if fallidas else "")
         ))
+        # Con los datos del día ya cargados, la foto de cifras se pone al día
+        # (solo si el código no cambió desde la última foto; si cambió, avisa).
+        # Así verificar_calculos compara siempre contra los datos vigentes y una
+        # diferencia apunta a un cambio de código. Un error aquí no frena la carga.
+        try:
+            call_command("verificar_calculos", "--renovar", stdout=self.stdout)
+        except Exception as error:  # noqa: BLE001
+            self.stdout.write(self.style.WARNING(f"Foto de cifras sin renovar: {error}"))
         if fallidas:
             raise CommandError(f"{fallidas} página(s) no se pudieron abrir")

@@ -65,7 +65,7 @@ _FILTRO_CON_CODIGO_SOP = f"material_codigo NOT GLOB '{PREFIJO_SIN_CODIGO_SOP}*'"
 #   cuenta el 1-oct y sale de setiembre (el usuario eligió moverlo, no
 #   contarlo dos veces).
 # Rige el Plan vs Real (Detalle por material, Evaluación diaria, Curva S,
-# Cumplimiento mensual), las entregas por proveedor y los traslados; no la
+# Cumplimiento mensual) y los traslados; no la
 # calidad ni los premios (esos van por la fecha real del análisis).
 INGRESOS_CON_OTRA_FECHA = {
     ("06-00000003", "U002", datetime.date(2026, 9, 30)): datetime.date(2026, 10, 1),

@@ -129,7 +129,7 @@ class Command(BaseCommand):
 
     @staticmethod
     def _paginas():
-        paginas = ["/portada/", "/overview/", "/informe-mensual/", "/planificacion/"]
+        paginas = ["/portada/", "/overview/", "/informe-mensual/", "/reglas-y-metas/", "/planificacion/"]
         paginas += [f"/planificacion/?_zona={c}" for c, _, _, secciones in views._ZONAS_PLANIFICACION if secciones]
         paginas += ["/logistica-materias-primas/"] + [
             f"/logistica-materias-primas/?_zona={c}" for c, _, _, secciones in views._ZONAS_LOGISTICA if secciones

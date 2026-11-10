@@ -6,6 +6,7 @@ import re
 import zlib
 
 from django.core.management.base import BaseCommand, CommandError
+from django.template.loader import render_to_string
 
 from dashboard import queries as q
 
@@ -64,19 +65,6 @@ class Command(BaseCommand):
                     "tipo": {"5": "Propio", "MB51": "Importado"}.get(str(r.tipo_operacion), "Terceros"),
                     "real": round(float(r.cantidad_real), 3), "carros": int(r.carros),
                 })
-
-        # Evolución de entregas por proveedor (replica views._contexto_entregas):
-        # entregas por mes/material/centro/proveedor de los últimos meses.
-        from gestion.vistas.plan_cumplimiento import _ENTREGAS_MESES
-        entregas = q.entregas_por_proveedor_sop()
-        if not entregas.empty:
-            entregas = entregas[entregas["mes"].isin(sorted(entregas["mes"].unique())[-_ENTREGAS_MESES:])]
-        entregas_rows = [
-            {"mes": r.mes.isoformat(), "material_codigo": r.material_codigo, "texto_breve": r.texto_breve,
-             "centro": r.centro, "proveedor": r.proveedor, "tipo": r.tipo,
-             "toneladas": round(float(r.toneladas), 3), "carros": int(r.carros)}
-            for r in entregas.itertuples()
-        ]
 
         catalogo = q.catalogo_materiales()[["material_codigo", "categoria"]]
         daily_rows = []
@@ -173,12 +161,11 @@ class Command(BaseCommand):
                 })
 
         # Costo por energía de los carbones: sumas por mes/material/centro/
-        # proveedor (el HTML filtra y calcula S/ por Gcal, ver sección 6 de la
+        # proveedor (el HTML filtra y calcula S/ por GJ, ver sección 6 de la
         # plantilla y views._contexto_energia).
         energia_rows = []
-        premios = q.premios_calidad_sop()
-        if not premios.empty:
-            energia = q.ingresos_con_energia(premios)
+        energia = q.ingresos_energia_sop()
+        if not energia.empty:
             con_cenizas = energia["cenizas"].notna()
             energia = energia.assign(
                 mes=energia["fecha"].map(lambda f: f.replace(day=1).isoformat()),
@@ -188,8 +175,8 @@ class Command(BaseCommand):
             claves = ["mes", "material_codigo", "texto_breve", "centro", "proveedor"]
             for k, g in energia.groupby(claves):
                 energia_rows.append({
-                    **dict(zip(claves, k)), "documentos": int(len(g)),
-                    **{c: round(float(g[c].sum()), 3) for c in ("toneladas", "gcal", "importe", "premio", "cen_t", "t_cen")},
+                    **dict(zip(claves, k)), "documentos": int(g["documentos"].sum()),
+                    **{c: round(float(g[c].sum()), 3) for c in ("toneladas", "gj", "importe", "premio", "ajuste", "cen_t", "t_cen")},
                 })
 
         # Evaluación de consumo (sección 7, replica views._contexto_consumo):
@@ -233,11 +220,14 @@ class Command(BaseCommand):
         datos = {
             "generado": datetime.date.today().isoformat(),
             "pcq": self._precios_calidad_premios(), "centro_importacion": q.CENTRO_IMPORTACION,
+            "precio_real_sop": self._precio_real_sop(),
             "parametros_calidad": [list(p) for p in q.PARAMETROS_CALIDAD],
             "consumo_plan_rows": consumo_plan_rows, "consumo_real_rows": consumo_real_rows,
             "consumo_nombres": consumo_nombres, "fecha_corte": str(fecha_corte)[:10] if fecha_corte else None,
             "factor_rows": factor_rows, "produccion_rows": produccion_rows,
             "energia_rows": energia_rows,
+            "meses_fbl3n": sorted(m.isoformat() for m in q.meses_con_fbl3n()),
+            "pcs_fijo": next(iter(q.regla_local("pcs_fijo_energia", {}).values()), None),
             "proyeccion_rows": proyeccion_rows, "proyeccion_inicial": proyeccion_inicial,
             "acopio_proyeccion": acopio_proyeccion,
             "stock_real_rows": stock_real_rows, "cierres_fecha": cierres_fecha, "mov_real_rows": mov_real_rows,
@@ -249,7 +239,7 @@ class Command(BaseCommand):
             "meses_inventario": {k.isoformat(): v.isoformat() for k, v in sorted(meses_inv.items())},
             "centros_desc": q.descripcion_centros_planificacion(), "nombres_centro": q.NOMBRES_CENTRO,
             "plan_rows": plan_rows, "daily_rows": daily_rows, "cobertura_rows": cobertura_rows,
-            "proveedor_rows": proveedor_rows, "entregas_rows": entregas_rows,
+            "proveedor_rows": proveedor_rows,
         }
 
         with open(PLANTILLA, encoding="utf-8") as f:
@@ -260,9 +250,11 @@ class Command(BaseCommand):
             css = f.read()
         with open(os.path.join(ESTATICOS, "js", "zonas.js"), encoding="utf-8") as f:
             zonas_js = f.read()
-        # Transición de los gráficos al abrir cada zona (mismo archivo que el localhost).
-        with open(os.path.join(ESTATICOS, "js", "graficos.js"), encoding="utf-8") as f:
-            zonas_js += "\n" + f.read()
+        # Transición de los gráficos al abrir cada zona y menú lateral, accesos directos,
+        # tema y filtros flotantes (mismos archivos que el localhost).
+        for nombre in ("graficos.js", "navegacion.js"):
+            with open(os.path.join(ESTATICOS, "js", nombre), encoding="utf-8") as f:
+                zonas_js += "\n" + f.read()
         # Logo de UNACEM incrustado (el archivo se abre sin servidor).
         with open(os.path.join(ESTATICOS, "img", "unacem-logo.svg"), "rb") as f:
             logo = "data:image/svg+xml;base64," + base64.b64encode(f.read()).decode("ascii")
@@ -300,6 +292,7 @@ class Command(BaseCommand):
         indicadores = sacar_plantillas(indicadores)
         simulacion = sacar_plantillas(simulacion)
         datos["plantillas"] = plantillas
+        datos["tco"] = self._vistas_tco()
         # Datos comprimidos (deflate + base64): ~12 MB de JSON quedan en ~2 MB y el
         # navegador los descomprime al abrir (DecompressionStream). Base64 no tiene
         # "<" ni "_": no puede cortar el <script> ni confundirse con las marcas.
@@ -310,6 +303,8 @@ class Command(BaseCommand):
                 .replace("__LOGO_UNACEM__", logo)
                 .replace("<!--__INDICADORES_HTML__-->", indicadores)
                 .replace("<!--__SIMULACION_HTML__-->", simulacion)
+                # Estado de los datos al exportar (el mismo panel de la cabecera del localhost).
+                .replace("<!--__ESTADO_DATOS_HTML__-->", render_to_string("gestion/_estado_datos.html", {"e": q.estado_datos()}))
                 .replace("__DATA_COMPRIMIDO__", datos_comprimidos))
 
         # Se escribe a un temporal y se reemplaza al final: si algo falla a
@@ -323,6 +318,59 @@ class Command(BaseCommand):
             f"{len(datos_comprimidos) // 1024} KB; {len(plan_rows)} filas plan, {len(daily_rows)} diarias, "
             f"{len(cobertura_rows)} cobertura, {len(plantillas)} vistas por opción)"
         ))
+
+    @staticmethod
+    def _vistas_tco():
+        """Detalle de precios TCO de Precios de entrada, dibujado por el
+        localhost (pedido del usuario, 2026-11-10: la copia con la misma tabla
+        de precios mes a mes): una vista por Período × Categoría × Centro con
+        Material en Todos y con cada material solo. Clave
+        "periodo|categoría|centro|material" ("" = todos) -> índice en
+        "vistas" (las repetidas se guardan una vez). Con varios materiales,
+        la copia toma las filas de la vista con Todos."""
+        from django.test import RequestFactory
+        from gestion.vistas.plan_precios import _PERIODOS_PRECIOS, _filtrar_precios_entrada, _matriz_tco
+
+        claves, vistas, indice_de, por_seleccion = {}, [], {}, {}
+
+        def vista(parametros):
+            historia, _, df, filtros = _filtrar_precios_entrada(RequestFactory().get("/", parametros))
+            # Lo que se dibuja depende solo de los pares material/centro elegidos.
+            pares = tuple(sorted(set(zip(df["material_codigo"], df["centro"]))))
+            if pares not in por_seleccion:
+                html = render_to_string("gestion/planificacion/_precios_tco.html", {"mt": _matriz_tco(historia, df)})
+                html = re.sub(r"\n\s+", "\n", html).strip()
+                por_seleccion[pares] = indice_de.setdefault(html, len(indice_de))
+                if por_seleccion[pares] == len(vistas):
+                    vistas.append(html)
+            return por_seleccion[pares], filtros
+
+        for periodo in _PERIODOS_PRECIOS:
+            _, f = vista({"periodo_precios": periodo})
+            for categoria in f["categorias"]:
+                _, f = vista({"periodo_precios": periodo, "categoria_precios": categoria})
+                for centro in f["centros"]:
+                    parametros = {"periodo_precios": periodo, "categoria_precios": categoria, "centro_precios": centro}
+                    i, f = vista(parametros)
+                    claves[f"{periodo}|{categoria}|{centro}|"] = i
+                    for m in f["materiales"]:
+                        if m["codigo"] != "Todos":
+                            claves[f"{periodo}|{categoria}|{centro}|{m['codigo']}"] = vista({**parametros, "material_precios": m["codigo"]})[0]
+        return {"claves": claves, "vistas": vistas}
+
+    @staticmethod
+    def _precio_real_sop():
+        """Precio real de cada mes vs el de su propio S&OP (sección
+        sec-precio-real-sop, replica plan_precios._contexto_precio_real_vs_sop):
+        [material, centro, mes, precio S&OP, precio real, importe real] y el
+        nombre y la categoría de cada material."""
+        df = q.precision_precios_sop()
+        df = df[df["horizonte"] == 0]
+        return {
+            "filas": [[r.material_codigo, r.centro, r.mes.isoformat(), float(r.proyectado), float(r.real), round(float(r.importe), 2)]
+                      for r in df.itertuples()],
+            "nombres": {m: [t, c] for m, t, c in df[["material_codigo", "texto_breve", "categoria"]].drop_duplicates("material_codigo").itertuples(index=False)},
+        }
 
     @staticmethod
     def _precios_calidad_premios():

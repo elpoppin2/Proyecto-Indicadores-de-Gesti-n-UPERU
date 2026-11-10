@@ -12,7 +12,7 @@
   <div class="portada-cabecera">
     <div class="portada-titulo">
       <span class="portada-eyebrow">Resumen ejecutivo{% if e.area %} · {{ e.area }}{% endif %}{% if en_curso %} · mes en curso{% endif %}</span>
-      <h2>{{ e.mes|mesanio }}</h2>
+      <h2 data-atajo="Resumen del mes">{{ e.mes|mesanio }}</h2>
       {% with c=e.compras %}
         <p class="portada-compras">{% if e.enlace_compras %}<a href="{{ e.enlace_compras }}">{% endif %}<strong>{{ c.total|soles_mm }}</strong>{% if e.enlace_compras %}</a>{% endif %} comprados en {{ e.tramo }}{% if c.variacion is not None %}, {% if c.variacion > 0 %}+{% endif %}{{ c.variacion|numero:1 }}% frente al mismo tramo de {{ c.anio_anterior }}{% endif %} ({{ c.diario|soles_mm }} por día)</p>
       {% endwith %}

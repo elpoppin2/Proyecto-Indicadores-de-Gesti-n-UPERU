@@ -223,6 +223,48 @@
       </table>
     </div>
 
+    {# Movimiento por material, como las hojas de la corrida S&OP en Excel (pedido del usuario, 2026-11-10). #}
+    <h3 class="subtitulo">Movimiento de inventario por material (T)</h3>
+    <p class="nota">Cada material con su inventario inicial, abastecimiento, consumo, traslados a otro centro (si los tiene) e inventario final de cada mes, como en la corrida S&amp;OP. Las salidas van en negativo: cada columna suma su inventario final. Primero los materiales con el quiebre más cercano.</p>
+    <div class="leyenda-curva">
+      <span class="leyenda-item"><span class="leyenda-marca estado-quiebre"></span>Quiebre (negativo)</span>
+      <span class="leyenda-item"><span class="leyenda-marca estado-bajo_minimo"></span>Bajo mínimo</span>
+      <span class="leyenda-item"><span class="leyenda-marca estado-en_rango"></span>En rango</span>
+      <span class="leyenda-item"><span class="leyenda-marca estado-sobre_maximo"></span>Sobre máximo</span>
+    </div>
+    <div class="tabla-scroll">
+      <table class="matriz-movimiento" data-sin-orden>
+        <thead>
+          <tr>
+            <th class="mov-fija mov-f1">Material</th><th class="mov-fija mov-f2">Concepto</th>
+            {% for m in p.meses %}<th class="num">{{ m.corto }}</th>{% endfor %}
+          </tr>
+        </thead>
+        {% for b in p.movimientos %}
+          <tbody>
+            {% for fila in b.filas %}
+              <tr class="mov-{{ fila.clase }}">
+                {% if forloop.first %}
+                  <th scope="rowgroup" rowspan="{{ b.filas|length|add:1 }}" class="mov-fija mov-f1">
+                    <span class="mov-codigo">{{ b.material_codigo }} · {{ b.centro|centro }}</span>
+                    <span class="mov-texto">{{ b.texto_breve }}</span>
+                    <span class="mov-limites">Mín. {{ b.stock_minimo|numero:0|default:"—" }} · Máx. {{ b.stock_maximo|numero:0|default:"—" }}</span>
+                    {% if b.quiebre_corto %}<span class="mov-quiebre">Quiebre: {{ b.quiebre_corto }}</span>{% endif %}
+                  </th>
+                {% endif %}
+                <td class="mov-fija mov-f2">{{ fila.concepto }}</td>
+                {% for v in fila.valores %}<td class="num">{{ v|numero:0|default:"—" }}</td>{% endfor %}
+              </tr>
+            {% endfor %}
+            <tr class="mov-final">
+              <td class="mov-fija mov-f2">Inventario final</td>
+              {% for c in b.finales %}<td class="num estado-{{ c.estado }}">{{ c.valor|numero:0 }}</td>{% endfor %}
+            </tr>
+          </tbody>
+        {% endfor %}
+      </table>
+    </div>
+
     <h3 class="subtitulo">Stock final proyectado por material (T)</h3>
     <div class="leyenda-curva">
       <span class="leyenda-item"><span class="leyenda-marca estado-quiebre"></span>Quiebre (negativo)</span>

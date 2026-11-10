@@ -1,0 +1,145 @@
+{% load dashboard_extras %}
+{# Precio real de cada mes contra el que proyectó el S&OP de ese mismo mes (pedido del usuario, 2026-11-10). Contexto: plan_precios._contexto_precio_real_vs_sop. #}
+{% with rs=planificacion_real_sop %}
+{% if rs %}
+<section class="bloque" id="sec-precio-real-sop">
+  <div class="bloque-cabecera">
+    <h2>Precio real vs S&amp;OP de cada mes</h2>
+    <button type="button" class="btn-link" data-imprimir="sec-precio-real-sop">Descargar / Imprimir</button>
+  </div>
+  <p class="nota">Lo que se pagó cada mes frente al precio que proyectó el S&amp;OP de ese mismo mes: el real de Ene-26 contra el S&amp;OP de enero 2026, y así con cada S&amp;OP.</p>
+  <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+    <p><strong>Precio S&amp;OP del mes</strong>: el que trae para ese mes la versión de precios del S&amp;OP emitido ese mismo mes
+    («Precios SOP - &lt;mes&gt; &lt;año&gt;.xlsx»). <strong>Precio real</strong> = (importe de MB51 + ajustes de la FBL3N) ÷ toneladas,
+    el mismo de la Evolución de precios de entrada y del IPU. Solo meses cerrados, con compra y con la versión de precios de su S&amp;OP.</p>
+    <p><strong>Real vs S&amp;OP</strong> = precio real ÷ precio S&amp;OP − 1: positivo es que se pagó más de lo proyectado. En rojo desde
+    +{{ rs.umbral }}% y en verde desde −{{ rs.umbral }}%. El total y la columna Período ponderan por lo comprado: el importe real contra
+    esas mismas toneladas al precio S&amp;OP.</p>
+  </div></details>
+  <form class="filtros" method="get" data-target="sec-precio-real-sop">
+    <div class="campo">
+      <label for="categoria_realsop">Categoría</label>
+      <select name="categoria_realsop" id="categoria_realsop">
+        {% for cat in rs.categorias %}
+          <option value="{{ cat }}" {% if cat == rs.categoria_sel %}selected{% endif %}>{{ cat }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="centro_realsop">Centro</label>
+      <select name="centro_realsop" id="centro_realsop">
+        {% for c in rs.centros %}
+          <option value="{{ c }}" {% if c == rs.centro_sel %}selected{% endif %}>{{ c|centro }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% include "gestion/planificacion/_filtro_material.html" with nombre="material_realsop" opciones=rs.materiales seleccion=rs.material_sel %}
+    <noscript><button type="submit">Aplicar</button></noscript>
+  </form>
+
+  {% if not rs.bloques %}
+    <p class="aviso">Sin meses con compra y con precio de su S&amp;OP para los filtros seleccionados.</p>
+  {% else %}
+    {% if not rs.un_material %}
+      <p class="nota">Elige un material para ver su gráfico. Primero los materiales con más compras en el período.</p>
+    {% endif %}
+    {% with d=rs.total.diferencia %}
+    <div class="metricas">
+      <div class="metrica"><span class="valor {{ d.clase }}">{% if d %}{% if d.pct > 0 %}+{% endif %}{{ d.pct|numero:1 }}%{% else %}—{% endif %}</span><span class="etiqueta">Precio real vs S&amp;OP, ponderado ({{ rs.desde|mesanio }} a {{ rs.hasta|mesanio }})</span></div>
+      <div class="metrica"><span class="valor">{{ rs.total.importe|soles }}</span><span class="etiqueta">Importe real · a precio S&amp;OP {{ rs.total.importe_sop|soles }}</span></div>
+      <div class="metrica"><span class="valor">{{ rs.mayores }} de {{ rs.n }}</span><span class="etiqueta">Meses de cada material con el precio real sobre el S&amp;OP</span></div>
+    </div>
+    {% endwith %}
+
+    {% with g=rs.grafico %}
+    {% if g %}
+      <div class="chart-scroll">
+      <div class="chart-wrap chart-lineas">
+        <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Precio real y precio S&amp;OP de cada mes">
+          {% for m in g.grilla %}<line class="grilla-lineas" x1="{{ g.x0 }}" y1="{{ m.y }}" x2="{{ g.x1 }}" y2="{{ m.y }}"></line>{% endfor %}
+          {% for s in g.series %}
+            {% for t in s.tramos %}<path class="linea-serie {{ s.clase }}" d="{{ t }}"></path>{% endfor %}
+            {% for p in s.puntos %}
+              <circle class="punto-serie {{ s.clase }}" cx="{{ p.x }}" cy="{{ p.y }}" r="3"></circle>
+              <circle class="zona-detalle con-detalle" cx="{{ p.x }}" cy="{{ p.y }}" r="9" data-detalle="{{ p.detalle }}"></circle>
+            {% endfor %}
+          {% endfor %}
+        </svg>
+        {% for m in g.grilla %}<span class="etiqueta-grilla" style="top:{{ m.y_pct }}%;">{{ m.texto }}</span>{% endfor %}
+        {% for s in g.series %}{% for p in s.puntos %}{% if p.etiqueta %}
+          <span class="etiqueta-valor{% if p.derecha %} etiqueta-derecha{% endif %} con-detalle" style="left:{{ p.x_pct }}%; top:{{ p.y_pct }}%;" data-detalle="{{ p.detalle }}">{{ p.etiqueta }}</span>
+        {% endif %}{% endfor %}{% endfor %}
+        {% for e in g.eje %}<span class="etiqueta-mes" style="left:{{ e.x_pct }}%;">{{ e.texto }}</span>{% endfor %}
+      </div>
+      </div>
+      <div class="leyenda-curva">
+        {% for s in g.series %}<span class="leyenda-item"><span class="leyenda-marca leyenda-linea {{ s.clase }}"></span>{{ s.nombre }}</span>{% endfor %}
+      </div>
+    {% endif %}
+    {% endwith %}
+
+    {% if rs.sin_fbl3n %}
+      <p class="aviso">Sin FBL3N cargada en {{ rs.sin_fbl3n|length|pluralize:"el mes,los meses" }} marcado{{ rs.sin_fbl3n|length|pluralize }} con *: ahí el precio real es el de MB51, sin sus ajustes.</p>
+    {% endif %}
+    <div class="tabla-scroll">
+      <table class="matriz-movimiento" data-sin-orden>
+        <thead>
+          <tr>
+            <th class="mov-fija mov-f1">Material</th><th class="mov-fija mov-f2">Concepto</th>
+            {% for m in rs.meses %}<th class="num">{{ m.corto }}{% if m.sin_fbl3n %} *{% endif %}</th>{% endfor %}
+            <th class="num">Período</th>
+          </tr>
+        </thead>
+        {% if not rs.un_material %}
+          <tbody class="mov-total">
+            <tr>
+              <th scope="rowgroup" rowspan="3" class="mov-fija mov-f1">
+                <span class="mov-texto">Total de la selección</span>
+                <span class="mov-limites">{{ rs.bloques|length }} materiales · en S/</span>
+              </th>
+              <td class="mov-fija mov-f2">A precio S&amp;OP</td>
+              {% for t in rs.total_meses %}<td class="num">{{ t.importe_sop|numero:0 }}</td>{% endfor %}
+              <td class="num">{{ rs.total.importe_sop|numero:0 }}</td>
+            </tr>
+            <tr>
+              <td class="mov-fija mov-f2">Real</td>
+              {% for t in rs.total_meses %}<td class="num">{{ t.importe|numero:0 }}</td>{% endfor %}
+              <td class="num">{{ rs.total.importe|numero:0 }}</td>
+            </tr>
+            <tr class="mov-final">
+              <td class="mov-fija mov-f2">Real vs S&amp;OP</td>
+              {% for t in rs.total_meses %}{% with d=t.diferencia %}<td class="num {{ d.clase }}">{% if d %}{% if d.pct > 0 %}+{% endif %}{{ d.pct|numero:1 }}%{% else %}—{% endif %}</td>{% endwith %}{% endfor %}
+              {% with d=rs.total.diferencia %}<td class="num {{ d.clase }}">{% if d %}{% if d.pct > 0 %}+{% endif %}{{ d.pct|numero:1 }}%{% else %}—{% endif %}</td>{% endwith %}
+            </tr>
+          </tbody>
+        {% endif %}
+        {% for b in rs.bloques %}
+          <tbody>
+            <tr>
+              <th scope="rowgroup" rowspan="3" class="mov-fija mov-f1">
+                <span class="mov-codigo">{{ b.material_codigo }} · {{ b.centro|centro }}</span>
+                <span class="mov-texto">{{ b.texto_breve }}</span>
+                <span class="mov-limites">S/ por {{ b.unidad }} · {{ b.meses }} mes{{ b.meses|pluralize:"es" }}</span>
+              </th>
+              <td class="mov-fija mov-f2">S&amp;OP del mes</td>
+              {% for v in b.sop %}<td class="num">{{ v|numero:2|default:"—" }}</td>{% endfor %}
+              <td class="num">{{ b.periodo.sop|numero:2 }}</td>
+            </tr>
+            <tr>
+              <td class="mov-fija mov-f2">Real</td>
+              {% for v in b.real %}<td class="num">{{ v|numero:2|default:"—" }}</td>{% endfor %}
+              <td class="num">{{ b.periodo.real|numero:2 }}</td>
+            </tr>
+            <tr class="mov-final">
+              <td class="mov-fija mov-f2">Real vs S&amp;OP</td>
+              {% for d in b.diferencias %}<td class="num {{ d.clase }}">{% if d %}{% if d.pct > 0 %}+{% endif %}{{ d.pct|numero:1 }}%{% else %}—{% endif %}</td>{% endfor %}
+              {% with d=b.periodo.diferencia %}<td class="num {{ d.clase }}">{% if d %}{% if d.pct > 0 %}+{% endif %}{{ d.pct|numero:1 }}%{% else %}—{% endif %}</td>{% endwith %}
+            </tr>
+          </tbody>
+        {% endfor %}
+      </table>
+    </div>
+  {% endif %}
+</section>
+{% endif %}
+{% endwith %}

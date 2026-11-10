@@ -414,6 +414,40 @@ def _fila_cobertura(material, texto, centro, inicial, finales, flujo, minimos, m
             "cobertura_inicial": _cobertura_meses(inicial, flujo[:_COBERTURA_MESES_SIGUIENTES]), "celdas": celdas}
 
 
+def _movimientos_por_material(grupos, matriz):
+    """Movimiento de inventario por material, como las hojas de la corrida
+    S&OP en Excel (pedido del usuario, 2026-11-10: "a fin de dar un vistazo
+    rápido de cuándo es el mes donde existe quiebre de stock"): por cada
+    material/centro, filas Inventario inicial, Abastecimiento, Consumo,
+    Traslados a otro centro (solo si los tiene) e Inventario final, con los
+    meses en columnas. Las salidas van en negativo, así cada columna suma su
+    inventario final. Mismo orden que la matriz de stock (primero el quiebre
+    más cercano). Lo recibido por traslado (Carbón Importado de Condorcocha)
+    va en Abastecimiento, como en el resto de la sección. Un movimiento
+    menor a media tonelada se muestra como "—" (None)."""
+    por_clave = {clave: g.sort_values("mes") for clave, g in grupos}
+
+    def flujo(valores, signo):
+        return [signo * float(v) if abs(v) >= 0.5 else None for v in valores]
+
+    bloques = []
+    for f in matriz:
+        g = por_clave[(f["material_codigo"], f["centro"])]
+        traslados = flujo(g["traslado"], -1)
+        filas = [("Inventario inicial", [float(v) for v in g["stock_inicial"]], "inicial"),
+                 ("Abastecimiento", flujo(g["abastecimiento"], 1), "entrada"),
+                 ("Consumo", flujo(g["consumo"], -1), "salida")]
+        if any(v is not None for v in traslados):
+            filas.append(("Traslados a otro centro", traslados, "salida"))
+        bloques.append({
+            "material_codigo": f["material_codigo"], "texto_breve": f["texto_breve"], "centro": f["centro"],
+            "stock_minimo": f["stock_minimo"], "stock_maximo": f["stock_maximo"], "quiebre_corto": f["quiebre_corto"],
+            "filas": [{"concepto": c, "valores": v, "clase": k} for c, v, k in filas],
+            "finales": f["celdas"],
+        })
+    return bloques
+
+
 def _contexto_proyeccion_sop(request):
     """Evolución de inventario proyectada (S&OP): inventario de cierre del mes
     anterior + Abastecimiento − Consumo, mes a mes (ver
@@ -642,6 +676,7 @@ def _contexto_proyeccion_sop(request):
         })
     matriz.sort(key=lambda f: (f["quiebre"] is None, f["quiebre"] or datetime.date.max, f["centro"], f["material_codigo"]))
     matriz_cobertura = [fc for f in matriz for fc in f["filas_cobertura"]]
+    movimientos = _movimientos_por_material(grupos, matriz)
 
     # Diagnóstico de mínimos/máximos, con los mismos filtros de la sección.
     diagnostico = q.diagnostico_minmax_sop(snapshot_sel)
@@ -669,6 +704,7 @@ def _contexto_proyeccion_sop(request):
         "materiales": materiales_op, "material_sel": material_sel,
         "meses": [{"fecha": m, "corto": _mes_corto(m)} for m in meses],
         "resumen": resumen, "matriz": matriz, "matriz_cobertura": matriz_cobertura, "un_material": un_material,
+        "movimientos": movimientos,
         "cobertura_meses_siguientes": _COBERTURA_MESES_SIGUIENTES,
         "stock_partida": resumen[0]["stock_inicial"], "stock_cierre": resumen[-1]["stock_final"],
         "mes_cierre": meses[-1], "con_quiebre": sum(1 for f in matriz if f["quiebre"]),

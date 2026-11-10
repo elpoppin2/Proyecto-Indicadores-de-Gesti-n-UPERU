@@ -1,0 +1,161 @@
+{% extends "gestion/base.html" %}
+{% load dashboard_extras %}
+{% block titulo %}Reglas y metas — Indicadores Supply Chain{% endblock %}
+{% block contenido %}
+{# Reglas y metas editables (vistas/reglas.py). Pedido del usuario, 2026-11-10: cargar las metas sin pedírselas a Claude, con registro de quién cambió qué. Editan el superusuario y el grupo Administradores; el resto solo ve. #}
+<div class="wrap wrap-reglas">
+  {% include "gestion/_cabecera.html" with titulo="Reglas y metas" %}
+  {% include "gestion/_nav.html" %}
+
+  {% if messages %}
+    <div class="reglas-mensajes" role="status">
+      {% for m in messages %}<p class="reglas-mensaje reglas-mensaje-{{ m.tags }}">{{ m }}</p>{% endfor %}
+    </div>
+  {% endif %}
+
+  {% if not editable %}
+    <p class="aviso">Puedes ver las reglas y metas; para cambiarlas hace falta pertenecer al grupo {{ grupo_editores }}.</p>
+  {% endif %}
+
+  <form method="post" class="reglas-form" id="reglas-form">
+    {% csrf_token %}
+    <input type="hidden" name="anio" value="{{ anio }}">
+
+    <section class="bloque" id="sec-metas-categoria">
+      <div class="bloque-cabecera">
+        <h2>Metas por categoría</h2>
+        <span class="acciones-cabecera">
+          <label class="reglas-anio" for="anio-metas">Año
+            <select id="anio-metas" onchange="location.search = '?anio=' + this.value">
+              {% for a in anios %}<option value="{{ a }}" {% if a == anio %}selected{% endif %}>{{ a }}</option>{% endfor %}
+            </select>
+          </label>
+        </span>
+      </div>
+      <p class="nota">La meta de cada indicador en el Resumen por categoría de la Portada y en la pestaña Indicadores de cada página. Vacío = sin meta (la celda queda sin color).</p>
+      <div class="tabla-scroll">
+        <table class="tabla-reglas">
+          <thead>
+            <tr>
+              <th>Categoría</th>
+              {% for c in columnas %}<th class="num">{{ c.texto }}<span class="reglas-unidad">{{ c.unidad }} · {% if c.mayor %}más es mejor{% else %}menos es mejor{% endif %}</span></th>{% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for cat in categorias %}
+              <tr>
+                <td>{{ cat.nombre|nombre_visible }}</td>
+                {% for m in cat.metas %}
+                  <td class="num"><input type="text" inputmode="decimal" name="{{ m.nombre }}" id="{{ m.nombre|slugify }}" value="{{ m.valor }}" aria-label="{{ cat.texto }}: meta {{ anio }}" {% if not editable %}disabled{% endif %}></td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="bloque" id="sec-metas-portada">
+      <div class="bloque-cabecera"><h2>Metas y supuestos de la Portada</h2></div>
+      <p class="nota">Las metas de toda la compañía: el semáforo pasa a ámbar fuera de la meta y a rojo cuando se aleja más que la tolerancia. Una meta sin confirmar se muestra como "meta propuesta".</p>
+      <div class="tabla-scroll">
+        <table class="tabla-reglas">
+          <thead><tr><th>Indicador</th><th class="num">Meta</th><th class="num">Tolerancia</th><th>Sentido</th><th>Confirmada por gerencia</th></tr></thead>
+          <tbody>
+            {% for m in metas_generales %}
+              <tr>
+                <td>{{ m.texto }} <span class="texto-tenue">({{ m.unidad }})</span></td>
+                <td class="num"><input type="text" inputmode="decimal" name="meta|{{ m.clave }}|meta" id="meta-{{ m.clave }}" value="{{ m.meta }}" aria-label="{{ m.texto }}: meta" {% if not editable %}disabled{% endif %}></td>
+                <td class="num"><input type="text" inputmode="decimal" name="meta|{{ m.clave }}|tolerancia" id="tolerancia-{{ m.clave }}" value="{{ m.tolerancia }}" aria-label="{{ m.texto }}: tolerancia" {% if not editable %}disabled{% endif %}></td>
+                <td>{% if m.mayor %}Más es mejor{% else %}Menos es mejor{% endif %}</td>
+                <td>
+                  <input type="hidden" name="meta|{{ m.clave }}|presente" value="1">
+                  <label class="reglas-check"><input type="checkbox" name="meta|{{ m.clave }}|confirmada" id="confirmada-{{ m.clave }}" {% if m.confirmada %}checked{% endif %} {% if not editable %}disabled{% endif %}> Confirmada</label>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <h3 class="subtitulo">Supuestos</h3>
+      <div class="tabla-scroll">
+        <table class="tabla-reglas tabla-reglas-angosta">
+          <thead><tr><th>Supuesto</th><th class="num">Valor</th></tr></thead>
+          <tbody>
+            {% for s in supuestos %}
+              <tr>
+                <td>{{ s.texto }} <span class="texto-tenue">({{ s.unidad }})</span></td>
+                <td class="num"><input type="text" inputmode="decimal" name="supuesto|{{ s.clave }}" id="supuesto-{{ s.clave }}" value="{{ s.valor }}" aria-label="{{ s.texto }}" {% if not editable %}disabled{% endif %}></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="bloque" id="sec-reglas-energia">
+      <div class="bloque-cabecera"><h2>Costo por energía de los carbones</h2></div>
+      <p class="nota">PCS fijo de los carbones que la báscula no analiza (el Carbón Importado): con él se calcula su energía en GJ y su costo por GJ.</p>
+      <div class="tabla-scroll">
+        <table class="tabla-reglas tabla-reglas-angosta">
+          <thead><tr><th>Material</th><th class="num">PCS fijo (kcal/kg)</th></tr></thead>
+          <tbody>
+            {% for p in pcs_fijo %}
+              <tr>
+                <td><span class="celda-codigo">{{ p.material }}</span> {{ p.texto }}</td>
+                <td class="num"><input type="text" inputmode="decimal" name="pcs|{{ p.material }}" id="pcs-{{ p.material }}" value="{{ p.valor }}" aria-label="PCS fijo de {{ p.material }}" {% if not editable %}disabled{% endif %}></td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="2" class="texto-tenue">Sin PCS fijos.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    {% if editable %}
+      <div class="reglas-acciones">
+        <span class="texto-tenue">Los cambios quedan registrados con tu usuario.</span>
+        <button type="submit" class="btn-primario">Guardar cambios</button>
+      </div>
+    {% endif %}
+  </form>
+
+  <section class="bloque" id="sec-reglas-consulta">
+    <div class="bloque-cabecera"><h2>Reglas de solo consulta</h2></div>
+    <p class="nota">Se leen al arrancar el servidor y entran en cálculos guardados: para cambiarlas, pídeselo a Claude.</p>
+    <div class="reglas-consulta">
+      <div>
+        <h3 class="subtitulo">Flete de referencia (S/ por T)</h3>
+        <ul class="reglas-lista">{% for f in flete_referencia %}<li><span>{{ f.clave }}</span><span class="num">{{ f.valor|numero:2 }}</span></li>{% empty %}<li class="texto-tenue">Sin reglas.</li>{% endfor %}</ul>
+      </div>
+      <div>
+        <h3 class="subtitulo">Parte de cada barco que va al acopio (T)</h3>
+        <ul class="reglas-lista">{% for b in parte_acopio %}<li><span>{{ b.texto|default:b.material }} · {{ b.embarque }}</span><span class="num">{{ b.toneladas|numero:0 }}</span></li>{% empty %}<li class="texto-tenue">Sin reglas.</li>{% endfor %}</ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="bloque" id="sec-reglas-historial">
+    <div class="bloque-cabecera"><h2>Últimos cambios</h2></div>
+    {% if historial %}
+      <div class="tabla-scroll">
+        <table>
+          <thead><tr><th>Fecha</th><th>Usuario</th><th>Qué cambió</th><th class="num">Antes</th><th class="num">Después</th></tr></thead>
+          <tbody>
+            {% for h in historial %}
+              <tr>
+                <td>{{ h.fecha|date:"d/m/Y H:i" }}</td><td>{{ h.usuario }}</td><td>{{ h.que }}</td>
+                <td class="num">{% if h.antes is None %}—{% else %}{{ h.antes }}{% endif %}</td>
+                <td class="num">{% if h.despues is None %}—{% else %}{{ h.despues }}{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="nota">Todavía no hay cambios hechos desde esta página.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

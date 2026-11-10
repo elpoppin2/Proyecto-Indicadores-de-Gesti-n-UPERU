@@ -5,13 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Planificación — Indicadores Supply Chain</title>
 <script>
+  /* Tema guardado antes de pintar y .js-menu (como base.html): las pestañas
+     van en el menú lateral de navegacion.js; si no llega a armarse, vuelven. */
   (function () {
+    var raiz = document.documentElement;
     try {
       var guardado = localStorage.getItem("uperu_tema");
       if (guardado === "light" || guardado === "dark") {
-        document.documentElement.setAttribute("data-theme", guardado);
+        raiz.setAttribute("data-theme", guardado);
       }
     } catch (e) {}
+    raiz.classList.add("js-menu");
+    document.addEventListener("DOMContentLoaded", function () {
+      setTimeout(function () { if (!document.getElementById("menu-lateral")) raiz.classList.remove("js-menu"); }, 1500);
+    });
   })();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -29,7 +36,8 @@
 .pill-snapshot { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
 .pill-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
 #energia-contenido, #proyeccion-contenido, #consumo-contenido, #factor-contenido, #precios-contenido,
-#inflacion-contenido, #mensual-contenido, #calidad-contenido, #premios-contenido { display: flex; flex-direction: column; gap: 16px; }
+#inflacion-contenido, #mensual-contenido, #calidad-contenido, #premios-contenido,
+#detalle-contenido { display: flex; flex-direction: column; gap: 16px; }
 </style>
 </head>
 <body>
@@ -55,8 +63,8 @@
     </div>
     </div>
     <div class="sesion">
-      <button type="button" id="theme-toggle" class="btn-link">Tema oscuro</button>
       <span class="pill-snapshot"><span class="pill-dot"></span>Datos congelados al <b id="fecha-generado">—</b></span>
+      <!--__ESTADO_DATOS_HTML__-->
     </div>
   </header>
 
@@ -66,7 +74,7 @@
     <button type="button" class="zona-tab" role="tab" id="zona-tab-consumo" data-zona="consumo" aria-controls="zona-consumo" aria-selected="false" tabindex="-1"><span class="zona-nombre">Consumo</span><span class="zona-desc">Plan vs real y consumo por T</span></button>
     <button type="button" class="zona-tab" role="tab" id="zona-tab-inventario" data-zona="inventario" aria-controls="zona-inventario" aria-selected="false" tabindex="-1"><span class="zona-nombre">Inventario</span><span class="zona-desc">Cobertura y proyección S&amp;OP</span></button>
     <button type="button" class="zona-tab" role="tab" id="zona-tab-precios" data-zona="precios" aria-controls="zona-precios" aria-selected="false" tabindex="-1"><span class="zona-nombre">Precios e IPU</span><span class="zona-desc">Precios de entrada e inflación</span></button>
-    <button type="button" class="zona-tab" role="tab" id="zona-tab-calidad" data-zona="calidad" aria-controls="zona-calidad" aria-selected="false" tabindex="-1"><span class="zona-nombre">Calidad y energía</span><span class="zona-desc">Análisis, premios y costo por Gcal</span></button>
+    <button type="button" class="zona-tab" role="tab" id="zona-tab-calidad" data-zona="calidad" aria-controls="zona-calidad" aria-selected="false" tabindex="-1"><span class="zona-nombre">Calidad y energía</span><span class="zona-desc">Análisis, premios y costo por GJ</span></button>
     <button type="button" class="zona-tab" role="tab" id="zona-tab-simulacion" data-zona="simulacion" aria-controls="zona-simulacion" aria-selected="false" tabindex="-1"><span class="zona-nombre">Simulación</span><span class="zona-desc">Inventario valorizado y precios S&amp;OP</span></button>
     <span class="zona-indicador" aria-hidden="true"></span>
   </nav>
@@ -75,7 +83,7 @@
 <!--__INDICADORES_HTML__-->
   </div>
 
-  <div class="zona-panel" id="zona-cumplimiento" role="tabpanel" aria-labelledby="zona-tab-cumplimiento" data-secciones="sec-plan-mensual sec-plan-detalle sec-cumplimiento-mensual sec-entregas" data-pendiente hidden>
+  <div class="zona-panel" id="zona-cumplimiento" role="tabpanel" aria-labelledby="zona-tab-cumplimiento" data-secciones="sec-plan-mensual sec-plan-detalle sec-cumplimiento-mensual" data-pendiente hidden>
   <div class="franja-kpis" data-kpis-zona="cumplimiento" hidden></div>
   <section class="bloque" id="sec-plan-mensual">
     <h2>Evaluación mensual</h2>
@@ -123,19 +131,6 @@
       <div class="campo"><label for="centro_cumplmes">Centro</label><select id="centro_cumplmes"></select></div>
     </form>
     <div id="cumplimiento-contenido"></div>
-  </section>
-  <section class="bloque" id="sec-entregas">
-    <div class="bloque-cabecera">
-      <h2>Evolución de entregas por proveedor</h2>
-      <button type="button" class="btn-link" data-imprimir="sec-entregas">Imprimir</button>
-    </div>
-    <p class="nota">Toneladas entregadas por cada proveedor en los últimos 12 meses (tickets de báscula ZMM056). Los 7 principales tienen color propio; el resto va como Otros. En los ingresos propios, el proveedor es la planta de origen.</p>
-    <form class="filtros">
-      <div class="campo"><label for="centro_entregas">Centro</label><select id="centro_entregas"></select></div>
-      <div class="campo campo-multi"><label for="material_entregas-boton">Material</label><div class="filtro-multi"><select id="material_entregas" multiple hidden data-multi tabindex="-1" aria-hidden="true"></select></div></div>
-      <div class="campo"><label for="ver_entregas">Ver</label><select id="ver_entregas"></select></div>
-    </form>
-    <div id="entregas-contenido"></div>
   </section>
   </div>
 
@@ -217,7 +212,7 @@
   </section>
   </div>
 
-  <div class="zona-panel" id="zona-precios" role="tabpanel" aria-labelledby="zona-tab-precios" data-secciones="sec-precios sec-inflacion sec-inflacion-mensual" data-pendiente hidden>
+  <div class="zona-panel" id="zona-precios" role="tabpanel" aria-labelledby="zona-tab-precios" data-secciones="sec-precios sec-precio-real-sop sec-inflacion sec-inflacion-mensual" data-pendiente hidden>
   <div class="franja-kpis" data-kpis-zona="precios" hidden></div>
   <section class="bloque" id="sec-precios">
     <div class="bloque-cabecera">
@@ -236,7 +231,25 @@
       <div class="campo"><label for="centro_precios">Centro</label><select id="centro_precios"></select></div>
       <div class="campo campo-multi"><label for="material_precios-boton">Material</label><div class="filtro-multi"><select id="material_precios" multiple hidden data-multi tabindex="-1" aria-hidden="true"></select></div></div>
     </form>
+    <p class="aviso" id="precios-aviso-fbl3n" hidden></p>
     <div id="precios-contenido"></div>
+  </section>
+  <section class="bloque" id="sec-precio-real-sop">
+    <div class="bloque-cabecera">
+      <h2>Precio real vs S&amp;OP de cada mes</h2>
+      <button type="button" class="btn-link" data-imprimir="sec-precio-real-sop">Descargar / Imprimir</button>
+    </div>
+    <p class="nota">Lo que se pagó cada mes frente al precio que proyectó el S&amp;OP de ese mismo mes: el real de Ene-26 contra el S&amp;OP de enero 2026, y así con cada S&amp;OP.</p>
+    <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
+      <p><strong>Precio S&amp;OP del mes</strong>: el que trae para ese mes la versión de precios del S&amp;OP emitido ese mismo mes («Precios SOP - &lt;mes&gt; &lt;año&gt;.xlsx»). <strong>Precio real</strong> = (importe de MB51 + ajustes de la FBL3N) ÷ toneladas, el mismo de la Evolución de precios de entrada y del IPU. Solo meses cerrados, con compra y con la versión de precios de su S&amp;OP.</p>
+      <p><strong>Real vs S&amp;OP</strong> = precio real ÷ precio S&amp;OP − 1: positivo es que se pagó más de lo proyectado. En rojo desde +5% y en verde desde −5%. El total y la columna Período ponderan por lo comprado: el importe real contra esas mismas toneladas al precio S&amp;OP.</p>
+    </div></details>
+    <form class="filtros">
+      <div class="campo"><label for="categoria_realsop">Categoría</label><select id="categoria_realsop"></select></div>
+      <div class="campo"><label for="centro_realsop">Centro</label><select id="centro_realsop"></select></div>
+      <div class="campo campo-multi"><label for="material_realsop-boton">Material</label><div class="filtro-multi"><select id="material_realsop" multiple hidden data-multi tabindex="-1" aria-hidden="true"></select></div></div>
+    </form>
+    <div id="precio-real-sop-contenido"></div>
   </section>
   <section class="bloque" id="sec-inflacion">
     <div class="bloque-cabecera">
@@ -327,9 +340,11 @@
       <h2>Costo por energía (carbones)</h2>
       <button type="button" class="btn-link" data-imprimir="sec-energia">Descargar / Imprimir</button>
     </div>
-    <p class="nota">Cuánto cuesta cada Gcal de energía según el carbón y el proveedor: un carbón con más poder calorífico rinde más por tonelada.</p>
+    <p class="nota">Cuánto cuesta cada GJ de energía según el carbón y el proveedor: un carbón con más poder calorífico rinde más por tonelada.</p>
     <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
-      <p><strong>Energía (Gcal)</strong> = toneladas secas × PCS ÷ 1,000. <strong>Costo por Gcal</strong> = importe pagado (con premio o castigo) ÷ energía. Supone que el PCS del ticket (ZMM056) está en la misma base seca que las toneladas que se pagan.</p>
+      <p><strong>Energía (GJ)</strong> = toneladas × PCS (kcal/kg) × 4.1868 ÷ 1,000. <strong>Costo por GJ</strong> = importe ÷ energía. Supone que el PCS del ticket (ZMM056) está en la misma base seca que las toneladas que se pagan.</p>
+      <p><strong>Importe</strong> = la entrada en MB51 (precio de contrato con el premio o castigo de calidad) + los <strong>valores agregados</strong>: los ajustes de la FBL3N del material en ese mes (cambios de precio, fletes y cargos facturados después), repartidos entre sus ingresos según las toneladas. Es el mismo precio real de Precios e IPU; un mes sin la FBL3N cargada todavía va sin ellos.</p>
+      <p>PCS que no salen del ticket: el <strong>Carbón Importado</strong> (la ZMM056 no lo analiza) va con un PCS fijo<span data-pcs-fijo></span> y sus llegadas a planta valorizadas (el mismo precio real de Precios e IPU, por centro y mes); el <strong>Carbón Trujillo de Condorcocha</strong> lleva el PCS promedio del de Atocongo del mismo mes.</p>
       <p>Cada proveedor se compara con el promedio de su material; con varios materiales, cada material con el promedio de la selección.</p>
     </div></details>
     <form class="filtros">
@@ -1315,6 +1330,26 @@ function renderSeccion5(){
   }).sort((a,b) => (a.quiebre===null) - (b.quiebre===null) || (a.quiebre||"").localeCompare(b.quiebre||"") ||
                    a.centro.localeCompare(b.centro) || a.material_codigo.localeCompare(b.material_codigo));
   const matrizCobertura = matriz.flatMap(f => f.filasCobertura);
+  // Movimiento de inventario por material, como la corrida S&OP en Excel (replica
+  // views._movimientos_por_material): salidas en negativo; menos de media tonelada = "—".
+  const flujo = (g, k, signo) => g.map(f => Math.abs(f[k]) >= 0.5 ? signo * f[k] : null);
+  const movimientos = matriz.map(f => {
+    const g = grupos.get(f.material_codigo+"|"+f.centro);
+    const traslados = flujo(g, "traslado", -1);
+    const filasMov = [["Inventario inicial", g.map(r => r.stock_inicial), "inicial"],
+                      ["Abastecimiento", flujo(g, "abastecimiento", 1), "entrada"],
+                      ["Consumo", flujo(g, "consumo", -1), "salida"]];
+    if(traslados.some(v => v !== null)) filasMov.push(["Traslados a otro centro", traslados, "salida"]);
+    return {...f, filasMov};
+  });
+  const htmlMovimientos = movimientos.map(b => `<tbody>${b.filasMov.map(([concepto, valores, clase], i) => `<tr class="mov-${clase}">
+      ${i ? "" : `<th scope="rowgroup" rowspan="${b.filasMov.length + 1}" class="mov-fija mov-f1">
+        <span class="mov-codigo">${b.material_codigo} · ${nombreCentro(b.centro)}</span>
+        <span class="mov-texto">${b.texto_breve}</span>
+        <span class="mov-limites">Mín. ${numeroO(b.stock_minimo)} · Máx. ${numeroO(b.stock_maximo)}</span>
+        ${b.quiebre ? `<span class="mov-quiebre">Quiebre: ${mesCorto(b.quiebre)}</span>` : ""}</th>`}
+      <td class="mov-fija mov-f2">${concepto}</td>${valores.map(v => `<td class="num">${v === null ? "—" : numero(v)}</td>`).join("")}</tr>`).join("")}
+    <tr class="mov-final"><td class="mov-fija mov-f2">Inventario final</td>${b.celdas.map(c => `<td class="num estado-${c.estado}">${numero(c.valor)}</td>`).join("")}</tr></tbody>`).join("");
 
   // Material, descripción, centro, mínimo y máximo fijos al desplazar los meses (.matriz-proyeccion en dashboard.css).
   const fijasCabecera = (mi, ma) => `<th class="col-fija fija-1">Material</th><th class="col-fija fija-2">Descripción</th>` +
@@ -1421,6 +1456,21 @@ function renderSeccion5(){
           ${unMaterial ? `<td class="num">${numeroO(r.stock_minimo)}</td><td class="num">${numeroO(r.stock_maximo)}</td><td>${ESTADOS[r.estado]||""}</td>` : ""}</tr>`).join("")}</tbody>
       </table>
     </div>
+    <h3 class="subtitulo">Movimiento de inventario por material (T)</h3>
+    <p class="nota">Cada material con su inventario inicial, abastecimiento, consumo, traslados a otro centro (si los tiene) e inventario final de cada mes, como en la corrida S&amp;OP. Las salidas van en negativo: cada columna suma su inventario final. Primero los materiales con el quiebre más cercano.</p>
+    <div class="leyenda-curva">
+      <span class="leyenda-item"><span class="leyenda-marca estado-quiebre"></span>Quiebre (negativo)</span>
+      <span class="leyenda-item"><span class="leyenda-marca estado-bajo_minimo"></span>Bajo mínimo</span>
+      <span class="leyenda-item"><span class="leyenda-marca estado-en_rango"></span>En rango</span>
+      <span class="leyenda-item"><span class="leyenda-marca estado-sobre_maximo"></span>Sobre máximo</span>
+    </div>
+    <div class="tabla-scroll">
+      <table class="matriz-movimiento" data-sin-orden>
+        <thead><tr><th class="mov-fija mov-f1">Material</th><th class="mov-fija mov-f2">Concepto</th>
+          ${meses.map(m=>`<th class="num">${mesCorto(m)}</th>`).join("")}</tr></thead>
+        ${htmlMovimientos}
+      </table>
+    </div>
     <h3 class="subtitulo">Stock final proyectado por material (T)</h3>
     <div class="leyenda-curva">
       <span class="leyenda-item"><span class="leyenda-marca estado-quiebre"></span>Quiebre (negativo)</span>
@@ -1464,9 +1514,14 @@ if(snapshotsSop.length){
 }
 
 /* ---------- 6. Costo por energía (carbones): replica views._contexto_energia
-   y charts.dispersion_energia. DATA.energia_rows ya viene sumado por
+   (el gráfico, con lineasMensuales). DATA.energia_rows ya viene sumado por
    mes/material/centro/proveedor. ---------- */
 const ENERGIA = DATA.energia_rows || [];
+const KJ_POR_KCAL = 4.1868;
+// Meses con la FBL3N cargada: los demás van sin valores agregados (marcados con *).
+const MESES_FBL3N = new Set(DATA.meses_fbl3n || []);
+const SIN_AJUSTES = "\nSin valores agregados todavía: falta la FBL3N de ese mes";
+document.querySelectorAll("[data-pcs-fijo]").forEach(e => { e.textContent = DATA.pcs_fijo ? ` de ${numero(DATA.pcs_fijo)} kcal/kg` : ""; });
 const PERIODOS_ENERGIA = [{value:"3", label:"Últimos 3 meses"}, {value:"6", label:"Últimos 6 meses"}, {value:"todo", label:"Toda la historia"}];
 const f6periodo = document.getElementById("periodo_energia"), f6centro = document.getElementById("centro_energia");
 const f6material = document.getElementById("material_energia"), f6proveedor = document.getElementById("proveedor_energia");
@@ -1498,12 +1553,13 @@ function poblarFiltros6(mantenerCentro, mantenerMaterial, mantenerProveedor){
 }
 function resumenEnergia(filas){
   const s = k => filas.reduce((a,f)=>a+f[k], 0);
-  const t = s("toneladas"), gcal = s("gcal"), importe = s("importe"), premio = s("premio"), tCen = s("t_cen");
-  return {documentos:s("documentos"), toneladas:t, gcal, importe, premio,
-          pcs: t ? gcal*1000/t : 0, cenizas: tCen ? s("cen_t")/tCen : null,
-          precio_base: t ? (importe-premio)/t : 0, precio_efectivo: t ? importe/t : 0,
-          costo_gcal: gcal ? importe/gcal : 0, costo_gcal_base: gcal ? (importe-premio)/gcal : 0,
-          premio_gcal: gcal ? premio/gcal : 0};
+  const t = s("toneladas"), gj = s("gj"), importe = s("importe"), premio = s("premio"), ajuste = s("ajuste"), tCen = s("t_cen");
+  const contrato = importe - premio - ajuste;
+  return {documentos:s("documentos"), toneladas:t, gj, importe, premio, ajuste,
+          pcs: t ? gj*1000/KJ_POR_KCAL/t : 0, cenizas: tCen ? s("cen_t")/tCen : null,
+          precio_base: t ? contrato/t : 0, ajuste_t: t ? ajuste/t : 0, precio_efectivo: t ? importe/t : 0,
+          costo_gj: gj ? importe/gj : 0, costo_gj_base: gj ? contrato/gj : 0,
+          premio_gj: gj ? premio/gj : 0, ajuste_gj: gj ? ajuste/gj : 0};
 }
 function agruparPor(filas, clave){
   const m = new Map();
@@ -1511,15 +1567,6 @@ function agruparPor(filas, clave){
   return m;
 }
 function tituloPalabras(s){ return s.toLowerCase().replace(/(^|[^a-záéíóúñü])([a-záéíóúñü])/g, (_, a, b) => a + b.toUpperCase()); }
-const RAZON_SOCIAL = /^(SOCIEDAD MINERA( R\.?L\.?)?|INVERSIONES|EMPRESA MINERA|COMPA[NÑ]IA MINERA)\s+|\s+(S\.?A\.?C\.?|S\.?A\.?A\.?|S\.?A\.?|E\.?I\.?R\.?L\.?|S\.?R\.?L\.?)$/g;
-function nombreCorto(texto, largo=22){
-  let anterior = null;
-  while(anterior !== texto){ anterior = texto; texto = texto.trim().replace(RAZON_SOCIAL, ""); }
-  texto = tituloPalabras(texto);
-  if(texto.length <= largo) return texto;
-  const corte = texto.slice(0, largo), espacio = corte.lastIndexOf(" ");
-  return (espacio >= 0 ? corte.slice(0, espacio) : corte) + "…";
-}
 function marcasEje(minimo, maximo, cantidad=5){
   const crudo = (maximo-minimo)/cantidad || Math.abs(maximo) || 1;
   const potencia = Math.pow(10, Math.floor(Math.log10(crudo)));
@@ -1527,62 +1574,6 @@ function marcasEje(minimo, maximo, cantidad=5){
   const marcas = [];
   for(let v = Math.ceil(minimo/paso)*paso; v <= maximo + paso*1e-6; v += paso) marcas.push(v);
   return marcas;
-}
-function separarEtiquetas(etiquetas, altoLinea=13, anchoLetra=5.6){
-  const ubicadas = [];
-  for(const e of etiquetas){
-    const ancho = e.texto.length*anchoLetra, x0 = e.alineacion === "fin" ? e.x - ancho : e.x;
-    let y = e.y;
-    for(const dy of [0, altoLinea, -altoLinea, 2*altoLinea, -2*altoLinea]){
-      y = e.y + dy;
-      if(!ubicadas.some(([ux0, ux1, uy]) => x0 < ux1 && ux0 < x0 + ancho && Math.abs(y - uy) < altoLinea)) break;
-    }
-    e.yFinal = y;
-    ubicadas.push([x0, x0 + ancho, y]);
-  }
-}
-function dispersionEnergia(puntos, costoRef, {ancho=960, alto=360, padIzq=48, padDer=18, padArr=14, padAbj=24} = {}){
-  if(!puntos.length) return null;
-  const pcs = puntos.map(p=>p.pcs), precios = puntos.map(p=>p.precio);
-  const margenX = Math.max((Math.max(...pcs)-Math.min(...pcs))*0.12, 150);
-  const margenY = Math.max((Math.max(...precios)-Math.min(...precios))*0.15, Math.max(...precios)*0.04);
-  const xLo = Math.min(...pcs)-margenX, xHi = Math.max(...pcs)+margenX;
-  const yLo = Math.min(...precios)-margenY, yHi = Math.max(...precios)+margenY;
-  const izq = padIzq, der = ancho-padDer, arr = padArr, abj = alto-padAbj;
-  const xDe = v => izq + (der-izq)*(v-xLo)/(xHi-xLo);
-  const yDe = v => abj - (abj-arr)*(v-yLo)/(yHi-yLo);
-  const linea = `M${xDe(xLo).toFixed(1)} ${yDe(costoRef*xLo/1000).toFixed(1)} L${xDe(xHi).toFixed(1)} ${yDe(costoRef*xHi/1000).toFixed(1)}`;
-  const mayor = Math.max(...puntos.map(p=>p.toneladas)) || 1;
-  const burbujas = puntos.slice().sort((a,b)=>b.toneladas-a.toneladas).map(p => {
-    const x = xDe(p.pcs), y = yDe(p.precio);
-    const dif = costoRef ? p.costo_gcal/costoRef - 1 : 0;
-    const radio = 5 + 13*Math.sqrt(Math.max(p.toneladas, 0)/mayor);
-    const alineacion = x > izq + (der-izq)*0.7 ? "fin" : "";
-    return {x, y, r:radio, xPct:x/ancho*100, desplazamiento:Math.round(radio*1.2+3),
-            sentido: dif < -0.005 ? "barato" : (dif > 0.005 ? "caro" : "igual"), nombre:p.nombre, alineacion,
-            titulo:`${p.nombre}: PCS ${numero(p.pcs)} kcal/kg · S/ ${numero(p.precio,2)} por T · S/ ${numero(p.costo_gcal,2)} por Gcal (${dif>=0?"+":""}${numero(dif*100,1)}% vs promedio) · ${numero(p.toneladas)} T`,
-            etiqueta:{x: alineacion ? x-radio-3 : x+radio+3, y, texto:p.nombre, alineacion}};
-  });
-  separarEtiquetas(burbujas.map(b=>b.etiqueta));
-  return {ancho, alto, linea, burbujas, izq, abj, area:{x:izq, y:arr, ancho:der-izq, alto:abj-arr},
-          grillaY: marcasEje(yLo, yHi).map(v=>({y:yDe(v), texto:numero(v)})),
-          grillaX: marcasEje(xLo, xHi, 6).map(v=>({x:xDe(v), texto:numero(v)}))};
-}
-function svgEnergia(g){
-  return `<div class="chart-wrap chart-energia">
-      <span class="titulo-eje-y">Precio efectivo (S/ por T)</span>
-      <svg class="chart-svg" viewBox="0 0 ${g.ancho} ${g.alto}" role="img" aria-label="PCS contra precio efectivo, con la línea de costo promedio por Gcal">
-        <defs><clipPath id="area-energia"><rect x="${g.area.x}" y="${g.area.y}" width="${g.area.ancho}" height="${g.area.alto}"></rect></clipPath></defs>
-        ${g.grillaY.map(t=>`<line class="grilla" x1="${g.izq}" y1="${t.y.toFixed(1)}" x2="${g.ancho}" y2="${t.y.toFixed(1)}"></line>`).join("")}
-        ${g.grillaX.map(t=>`<line class="grilla" x1="${t.x.toFixed(1)}" y1="${g.area.y}" x2="${t.x.toFixed(1)}" y2="${g.abj}"></line>`).join("")}
-        <line class="eje" x1="${g.izq}" y1="${g.abj}" x2="${g.ancho}" y2="${g.abj}"></line>
-        <path class="linea-iso" d="${g.linea}" clip-path="url(#area-energia)"></path>
-        ${g.burbujas.map(b=>`<circle class="burbuja burbuja-${b.sentido}" cx="${b.x.toFixed(1)}" cy="${b.y.toFixed(1)}" r="${b.r.toFixed(1)}"><title>${b.titulo}</title></circle>`).join("")}
-      </svg>
-      ${g.grillaY.map(t=>`<span class="etiqueta-eje-y" style="top:${(t.y/g.alto*100).toFixed(2)}%; width:${(g.izq/g.ancho*100).toFixed(2)}%;">${t.texto}</span>`).join("")}
-      ${g.grillaX.map(t=>`<span class="etiqueta-mes" style="left:${(t.x/g.ancho*100).toFixed(2)}%;">${t.texto}</span>`).join("")}
-      ${g.burbujas.map(b=>`<span class="etiqueta-burbuja${b.alineacion?' alinear-'+b.alineacion:''}" style="left:${b.xPct.toFixed(2)}%; top:${(b.etiqueta.yFinal/g.alto*100).toFixed(2)}%; --desplazamiento:${b.desplazamiento}px;">${b.nombre}</span>`).join("")}
-    </div>`;
 }
 function celdaBarra(f){
   return `<td class="col-barra"><span class="barra-divergente">${f.barraSentido ? `<span class="barra-${f.barraSentido}" style="width:${f.barraPct.toFixed(1)}%;"></span>` : ""}
@@ -1598,85 +1589,89 @@ function renderSeccion6(){
   if(!filas.length){ cont.innerHTML = `<p class="aviso">Sin ingresos de carbón con PCS analizado para los filtros seleccionados.</p>`; return; }
   const r = resumenEnergia(filas);
   const unMaterial = cuantosSel(material) === 1 || new Set(filas.map(f=>f.material_codigo)).size === 1;
-  const conDiferencia = (f, ref) => Object.assign(f, {difPct: ref ? (f.costo_gcal/ref - 1)*100 : 0, difSoles: (f.costo_gcal - ref)*f.gcal});
+  const conDiferencia = (f, ref) => Object.assign(f, {difPct: ref ? (f.costo_gj/ref - 1)*100 : 0, difSoles: (f.costo_gj - ref)*f.gj});
   const porMaterial = [...agruparPor(filas, f=>f.material_codigo+"|"+f.centro).values()].map(g =>
-    conDiferencia({material_codigo:g[0].material_codigo, texto_breve:g[0].texto_breve, centro:g[0].centro, ...resumenEnergia(g)}, r.costo_gcal));
-  const refMaterial = new Map(porMaterial.map(f=>[f.material_codigo+"|"+f.centro, f.costo_gcal]));
+    conDiferencia({material_codigo:g[0].material_codigo, texto_breve:g[0].texto_breve, centro:g[0].centro, ...resumenEnergia(g)}, r.costo_gj));
+  const refMaterial = new Map(porMaterial.map(f=>[f.material_codigo+"|"+f.centro, f.costo_gj]));
   const porProveedor = [...agruparPor(filas, f=>f.proveedor+"|"+f.material_codigo+"|"+f.centro).values()].map(g =>
     conDiferencia({proveedor:g[0].proveedor, material_codigo:g[0].material_codigo, texto_breve:g[0].texto_breve, centro:g[0].centro,
                    ...resumenEnergia(g)}, refMaterial.get(g[0].material_codigo+"|"+g[0].centro)));
-  porProveedor.sort((a,b)=> a.texto_breve.localeCompare(b.texto_breve) || a.centro.localeCompare(b.centro) || a.costo_gcal-b.costo_gcal);
-  porMaterial.sort((a,b)=>a.costo_gcal-b.costo_gcal);
+  porProveedor.sort((a,b)=> a.texto_breve.localeCompare(b.texto_breve) || a.centro.localeCompare(b.centro) || a.costo_gj-b.costo_gj);
+  porMaterial.sort((a,b)=>a.costo_gj-b.costo_gj);
   for(const lista of [porMaterial, porProveedor]){
     const mayor = Math.max(0, ...lista.map(f=>Math.abs(f.difPct))) || 1;
     for(const f of lista){ f.barraPct = Math.abs(f.difPct)/mayor*50; f.barraSentido = f.difPct < -0.05 ? "barato" : (f.difPct > 0.05 ? "caro" : ""); }
   }
-  const puntos = unMaterial
-    ? porProveedor.map(f=>({nombre:nombreCorto(f.proveedor), pcs:f.pcs, precio:f.precio_efectivo, toneladas:f.toneladas, costo_gcal:f.costo_gcal}))
-    : porMaterial.map(f=>({nombre:`${tituloPalabras(f.texto_breve)} ${nombreCentro(f.centro)}`, pcs:f.pcs, precio:f.precio_efectivo, toneladas:f.toneladas, costo_gcal:f.costo_gcal}));
-  const g = dispersionEnergia(puntos, r.costo_gcal);
+  // Gráfico: S/ por GJ mes a mes, una línea por código de material, con el
+  // promedio del período punteado; color fijo por material (orden de todos los carbones).
+  const ordenMateriales = [...new Set(ENERGIA.map(f=>f.material_codigo))].sort();
+  const series = [...agruparPor(filas, f=>f.material_codigo).entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([cod, gr]) => {
+    const nombre = `${cod} · ${tituloPalabras(gr[0].texto_breve)}`;
+    const puntos = [...agruparPor(gr, f=>f.mes).entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([m, gm]) => {
+      const x = resumenEnergia(gm);
+      return [m, x.costo_gj, `${mesCorto(m)} · ${nombre}\nS/ ${numero(x.costo_gj,2)} por GJ · S/ ${numero(x.precio_efectivo,2)} por T\n${numero(x.toneladas)} T · PCS ${numero(x.pcs)} kcal/kg` + (MESES_FBL3N.has(m) ? "" : SIN_AJUSTES)];
+    });
+    return {nombre, clase:`cat-${Math.min(ordenMateriales.indexOf(cod), 7) + 1}`, puntos};
+  });
+  const g = lineasMensuales(series, v => numero(v,2),
+    {referencias:[{valor:r.costo_gj, clase:"referencia-neutra", texto:`Promedio del período: S/ ${numero(r.costo_gj,2)} por GJ`}]});
 
   const meses = [...new Set(filas.map(f=>f.mes))].sort();
   const filasMes = [...agruparPor(filas, f => unMaterial ? f.proveedor : f.material_codigo+"|"+f.centro).values()].map(gr => {
-    const porMes = new Map([...agruparPor(gr, f=>f.mes).entries()].map(([m, gm]) => [m, resumenEnergia(gm).costo_gcal]));
+    const porMes = new Map([...agruparPor(gr, f=>f.mes).entries()].map(([m, gm]) => [m, resumenEnergia(gm).costo_gj]));
     return {nombre: unMaterial ? gr[0].proveedor : `${gr[0].texto_breve} (${nombreCentro(gr[0].centro)})`,
-            valores: meses.map(m => porMes.has(m) ? porMes.get(m) : null), total: resumenEnergia(gr).costo_gcal};
+            valores: meses.map(m => porMes.has(m) ? porMes.get(m) : null), total: resumenEnergia(gr).costo_gj};
   }).sort((a,b)=>a.total-b.total);
-  const totalMes = new Map([...agruparPor(filas, f=>f.mes).entries()].map(([m, gm]) => [m, resumenEnergia(gm).costo_gcal]));
+  const totalMes = new Map([...agruparPor(filas, f=>f.mes).entries()].map(([m, gm]) => [m, resumenEnergia(gm).costo_gj]));
   const cenizasTxt = v => v === null ? "—" : numero(v,2);
 
   cont.innerHTML = `
     <div class="metricas">
-      <div class="metrica"><span class="valor">S/ ${numero(r.costo_gcal,2)}</span><span class="etiqueta">Costo por Gcal pagado (a precio base S/ ${numero(r.costo_gcal_base,2)} ${r.premio_gcal >= 0 ? "+" : "−"} ${numero(Math.abs(r.premio_gcal),2)} por calidad)</span></div>
-      <div class="metrica"><span class="valor">${numero(r.gcal)}</span><span class="etiqueta">Gcal recibidas · ${numero(r.toneladas)} T secas · ${numero(r.documentos)} ingresos</span></div>
+      <div class="metrica"><span class="valor">S/ ${numero(r.costo_gj,2)}</span><span class="etiqueta">Costo por GJ: contrato S/ ${numero(r.costo_gj_base,2)} ${r.ajuste_gj >= 0 ? "+" : "−"} ${numero(Math.abs(r.ajuste_gj),2)} valores agregados ${r.premio_gj >= 0 ? "+" : "−"} ${numero(Math.abs(r.premio_gj),2)} calidad</span></div>
+      <div class="metrica"><span class="valor">${numero(r.gj)}</span><span class="etiqueta">GJ recibidos · ${numero(r.toneladas)} T · ${numero(r.documentos)} ingresos</span></div>
       <div class="metrica"><span class="valor">${numero(r.pcs)}</span><span class="etiqueta">PCS promedio (kcal/kg)${r.cenizas !== null ? " · cenizas "+numero(r.cenizas,2)+"%" : ""}</span></div>
-      <div class="metrica"><span class="valor">S/ ${numero(r.precio_efectivo,2)}</span><span class="etiqueta">Precio efectivo por T (base S/ ${numero(r.precio_base,2)})</span></div>
+      <div class="metrica"><span class="valor">S/ ${numero(r.precio_efectivo,2)}</span><span class="etiqueta">Precio efectivo por T (contrato S/ ${numero(r.precio_base,2)}, valores agregados S/ ${numero(r.ajuste_t,2)})</span></div>
     </div>
-    ${g ? `<h3 class="subtitulo">PCS vs precio ${unMaterial ? "por proveedor" : "por material"}</h3>
-    <div class="chart-scroll">${svgEnergia(g)}</div>
-    <div class="leyenda-curva">
-      <span class="leyenda-item"><span class="leyenda-marca burbuja-barato"></span>Energía más barata que el promedio (debajo de la línea)</span>
-      <span class="leyenda-item"><span class="leyenda-marca burbuja-caro"></span>Energía más cara que el promedio (encima de la línea)</span>
-      <span class="leyenda-item"><span class="leyenda-marca leyenda-meta"></span>Mismo costo por Gcal que el promedio (S/ ${numero(r.costo_gcal,2)})</span>
-      <span class="leyenda-item texto-tenue">Eje x: PCS (kcal/kg) · tamaño de la burbuja: toneladas</span>
-    </div>` : ""}
+    ${g ? `<h3 class="subtitulo">Costo por GJ mes a mes, por material (S/ por GJ pagado)</h3>
+    ${svgLineas(g, "Costo por GJ de cada material, mes a mes, con el promedio del período")}` : ""}
     ${unMaterial ? "" : `<h3 class="subtitulo">Por material</h3>
     <div class="tabla-scroll">
       <table>
-        <thead><tr><th>Material</th><th>Descripción</th><th>Centro</th><th class="num">Toneladas secas</th><th class="num">PCS (kcal/kg)</th>
-          <th class="num">Cenizas (%)</th><th class="num">Precio efectivo (S/ por T)</th><th class="num">Gcal</th><th class="num" data-orden="asc">S/ por Gcal</th>
+        <thead><tr><th>Material</th><th>Descripción</th><th>Centro</th><th class="num">Toneladas</th><th class="num">PCS (kcal/kg)</th>
+          <th class="num">Cenizas (%)</th><th class="num">Precio efectivo (S/ por T)</th><th class="num">GJ</th><th class="num" data-orden="asc">S/ por GJ</th>
           <th class="col-barra">vs promedio</th><th class="num">Diferencia (S/)</th></tr></thead>
         <tbody>${porMaterial.map(f=>`<tr><td class="celda-codigo">${f.material_codigo}</td><td>${f.texto_breve}</td><td>${nombreCentro(f.centro)}</td>
           <td class="num">${numero(f.toneladas)}</td><td class="num">${numero(f.pcs)}</td><td class="num">${cenizasTxt(f.cenizas)}</td>
-          <td class="num">${numero(f.precio_efectivo,2)}</td><td class="num">${numero(f.gcal)}</td><td class="num"><strong>${numero(f.costo_gcal,2)}</strong></td>
+          <td class="num">${numero(f.precio_efectivo,2)}</td><td class="num">${numero(f.gj)}</td><td class="num"><strong>${numero(f.costo_gj,2)}</strong></td>
           ${celdaBarra(f)}<td class="num">${numero(f.difSoles)}</td></tr>`).join("")}</tbody>
       </table>
     </div>`}
     <h3 class="subtitulo">Por proveedor</h3>
     <div class="tabla-scroll">
       <table>
-        <thead><tr><th>Proveedor</th>${unMaterial ? "" : "<th>Material</th>"}<th class="num">Toneladas secas</th><th class="num">PCS (kcal/kg)</th>
-          <th class="num">Cenizas (%)</th><th class="num">Precio base (S/ por T)</th><th class="num">Precio efectivo (S/ por T)</th>
-          <th class="num">S/ por Gcal a precio base</th><th class="num">S/ por Gcal pagado</th><th class="col-barra">vs promedio del material</th>
+        <thead><tr><th>Proveedor</th>${unMaterial ? "" : "<th>Material</th>"}<th class="num">Toneladas</th><th class="num">PCS (kcal/kg)</th>
+          <th class="num">Cenizas (%)</th><th class="num">Precio de contrato (S/ por T)</th><th class="num">Valores agregados (S/ por T)</th><th class="num">Precio efectivo (S/ por T)</th>
+          <th class="num">S/ por GJ a precio de contrato</th><th class="num">S/ por GJ pagado</th><th class="col-barra">vs promedio del material</th>
           <th class="num">Diferencia (S/)</th></tr></thead>
         <tbody>${porProveedor.map(f=>`<tr><td>${f.proveedor}</td>${unMaterial ? "" : `<td>${f.texto_breve} <span class="celda-codigo texto-tenue">${nombreCentro(f.centro)}</span></td>`}
           <td class="num">${numero(f.toneladas)}</td><td class="num">${numero(f.pcs)}</td><td class="num">${cenizasTxt(f.cenizas)}</td>
-          <td class="num">${numero(f.precio_base,2)}</td><td class="num">${numero(f.precio_efectivo,2)}</td><td class="num">${numero(f.costo_gcal_base,2)}</td>
-          <td class="num"><strong>${numero(f.costo_gcal,2)}</strong></td>${celdaBarra(f)}<td class="num">${numero(f.difSoles)}</td></tr>`).join("")}</tbody>
+          <td class="num">${numero(f.precio_base,2)}</td><td class="num">${numero(f.ajuste_t,2)}</td><td class="num">${numero(f.precio_efectivo,2)}</td><td class="num">${numero(f.costo_gj_base,2)}</td>
+          <td class="num"><strong>${numero(f.costo_gj,2)}</strong></td>${celdaBarra(f)}<td class="num">${numero(f.difSoles)}</td></tr>`).join("")}</tbody>
       </table>
     </div>
-    <p class="nota">Diferencia (S/) = (costo por Gcal del proveedor − promedio) × sus Gcal: lo que se pagó de más (+) o de menos (−)
+    <p class="nota">Diferencia (S/) = (costo por GJ del proveedor − promedio) × sus GJ: lo que se pagó de más (+) o de menos (−)
       por esa energía frente a comprarla al costo promedio.</p>
-    <h3 class="subtitulo">Evolución mensual (S/ por Gcal pagado)</h3>
+    <h3 class="subtitulo">Evolución mensual (S/ por GJ pagado)</h3>
     <div class="tabla-scroll">
       <table>
-        <thead><tr><th>${unMaterial ? "Proveedor" : "Material"}</th>${meses.map(m=>`<th class="num">${mesAbrev(m)}</th>`).join("")}<th class="num">Período</th></tr></thead>
+        <thead><tr><th>${unMaterial ? "Proveedor" : "Material"}</th>${meses.map(m=>`<th class="num">${mesAbrev(m)}${MESES_FBL3N.has(m) ? "" : " *"}</th>`).join("")}<th class="num">Período</th></tr></thead>
         <tbody>${filasMes.map(f=>`<tr><td>${f.nombre}</td>${f.valores.map(v=>`<td class="num">${v === null ? "—" : numero(v,2)}</td>`).join("")}
           <td class="num"><strong>${numero(f.total,2)}</strong></td></tr>`).join("")}
           ${filasMes.length > 1 ? `<tr class="fila-total"><td>Promedio</td>${meses.map(m=>`<td class="num">${totalMes.has(m) ? numero(totalMes.get(m),2) : "—"}</td>`).join("")}
-          <td class="num">${numero(r.costo_gcal,2)}</td></tr>` : ""}</tbody>
+          <td class="num">${numero(r.costo_gj,2)}</td></tr>` : ""}</tbody>
       </table>
-    </div>`;
+    </div>
+    ${meses.some(m => !MESES_FBL3N.has(m)) ? `<p class="nota">* Mes sin la FBL3N cargada: su costo va sin valores agregados todavía.</p>` : ""}`;
 }
 if(ENERGIA.length){
   f6periodo.addEventListener("change", () => { poblarFiltros6(f6centro.value, f6material.value, f6proveedor.value); renderSeccion6(); });
@@ -2245,7 +2240,7 @@ function kpisZona(zona){
       if(f6centro.value) filas = filas.filter(f => f.centro === f6centro.value);
       filas = filas.filter(f => enSel(f6material.value, f.material_codigo));
       if(f6proveedor.value) filas = filas.filter(f => f.proveedor === f6proveedor.value);
-      if(filas.length) k.push(kpi(`S/ ${numero(resumenEnergia(filas).costo_gcal, 1)}`, "Costo de los carbones por Gcal"));
+      if(filas.length) k.push(kpi(`S/ ${numero(resumenEnergia(filas).costo_gj, 2)}`, "Costo de los carbones por GJ"));
     }
   }
   return k;
@@ -2448,9 +2443,22 @@ function resumenPrecios(df){
             precio_promedio: imp/t, toneladas:t, importe:imp, meses_con_compra:g.length, serie:g.map(r=>[r.mes, r.precio])};
   });
 }
+// Tramos de meses consecutivos ("Oct-26 a Nov-26"), como vistas/plan_precios._tramos_de_meses.
+function tramosMeses(meses){
+  const tramos = [];
+  for(const m of meses){
+    if(tramos.length && sumarMesesIso(tramos[tramos.length-1][1], 1) === m) tramos[tramos.length-1][1] = m;
+    else tramos.push([m, m]);
+  }
+  return tramos.map(([a, b]) => a === b ? mesCorto(a) : `${mesCorto(a)} a ${mesCorto(b)}`).join(", ");
+}
 function renderSeccion9(){
   const cont = document.getElementById("precios-contenido");
   const df = opcionesCatCentroMat(preciosDelPeriodo(f9periodo.value), {categoria:f9cat.value, centro:f9centro.value, material:f9material.value}).filas;
+  const sinFbl3n = [...new Set(df.map(r => r.mes))].filter(m => !MESES_FBL3N.has(m)).sort();
+  const aviso = document.getElementById("precios-aviso-fbl3n");
+  aviso.hidden = !sinFbl3n.length;
+  aviso.textContent = sinFbl3n.length ? `Sin FBL3N cargada en ${tramosMeses(sinFbl3n)}: en ${sinFbl3n.length === 1 ? "ese mes" : "esos meses"} el precio real es igual al de MB51 (marcado con * en el detalle).` : "";
   const tarjetas = resumenPrecios(df).sort((a,b) => (a.variacion_anual === null) - (b.variacion_anual === null) || -(a.variacion_anual || 0) + (b.variacion_anual || 0));
   if(!tarjetas.length){ cont.innerHTML = `<p class="aviso">Sin compras en MB51 para los filtros seleccionados.</p>`; return; }
   const pctTxt = v => v === null ? "—" : (v > 0 ? "+" : "") + numero(v*100, 1) + "%";
@@ -2473,11 +2481,11 @@ function renderSeccion9(){
       <div class="tabla-scroll"><table>
         <thead><tr><th>Mes</th><th class="num">${u === "T" ? "Toneladas" : "Cantidad (" + u + ")"}</th><th class="num">Importe (S/)</th><th class="num">Precio (S/ por ${u})</th>
           <th class="num">Var. vs compra anterior</th><th class="num">Entradas</th><th class="num">Proveedores</th></tr></thead>
-        <tbody>${detalle.map(d => `<tr><td>${mesLabel(d.mes)}</td><td class="num">${numero(d.toneladas)}</td><td class="num">${numero(d.importe)}</td>
+        <tbody>${detalle.map(d => `<tr><td>${mesLabel(d.mes)}${MESES_FBL3N.has(d.mes) ? "" : " *"}</td><td class="num">${numero(d.toneladas)}</td><td class="num">${numero(d.importe)}</td>
           <td class="num">${numero(d.precio,2)}</td>
           <td class="num ${d.variacion_pct > 0.05 ? "dato-negativo" : (d.variacion_pct !== null && d.variacion_pct < -0.05 ? "dato-positivo" : "")}">${d.variacion_pct === null ? "—" : (d.variacion_pct > 0 ? "+" : "")+numero(d.variacion_pct,1)+"%"}</td>
           <td class="num">${d.entradas}</td><td class="num">${d.proveedores}</td></tr>`).join("")}</tbody>
-      </table></div>`;
+      </table></div>${htmlTco()}`;
     return;
   }
   cont.innerHTML = `
@@ -2486,12 +2494,35 @@ function renderSeccion9(){
       return `<button type="button" class="tarjeta-precio" data-material-precios="${t.material_codigo}" data-centro-precios="${t.centro}">
         <span class="tarjeta-precio-cabecera"><span class="tarjeta-precio-nombre">${t.texto_breve}</span>
           <span class="tarjeta-precio-codigo">${t.material_codigo} · ${nombreCentro(t.centro)}${t.centro === CENTRO_IMPORTACION ? " (importación)" : ""}</span></span>
-        <span class="tarjeta-precio-valor">S/ ${numero(t.precio_ultimo,2)} <small>por T · ${mesCorto(t.mes_ultimo)}</small></span>
+        <span class="tarjeta-precio-valor">S/ ${numero(t.precio_ultimo,2)} <small>por ${umbDe(t.material_codigo)} · ${mesCorto(t.mes_ultimo)}</small></span>
         ${m ? `<svg class="minigrafico" viewBox="0 0 ${m.ancho} ${m.alto}" preserveAspectRatio="none" aria-hidden="true"><path d="${m.linea}"></path><circle cx="${m.fin_x}" cy="${m.fin_y}" r="2.6"></circle></svg>` : ""}
         <span class="tarjeta-precio-variacion">
           <span class="${v === null ? "" : claseVar(v)}">${v === null ? "Sin compra de hace 12 meses para comparar" : (v > 0 ? "▲ +" : (v < 0 ? "▼ " : "")) + numero(v*100,1) + "% en 12 meses"}</span>
           <span>${t.meses_con_compra} mes${t.meses_con_compra === 1 ? "" : "es"} con compra</span></span>
-      </button>`; }).join("")}</div>`;
+      </button>`; }).join("")}</div>${htmlTco()}`;
+}
+// Detalle de precios TCO: lo dibuja el localhost al exportar para cada Período ×
+// Categoría × Centro, con Material en Todos y con cada material solo
+// (exportar_planificacion_html._vistas_tco). Con varios materiales, las filas
+// de esos materiales de la vista con Todos, sin la fila del total.
+const TCO = DATA.tco || {claves: {}, vistas: []};
+function htmlTco(){
+  const codigos = f9material.value ? f9material.value.split(",") : [];
+  const base = `${f9periodo.value}|${f9cat.value || "Todas"}|${f9centro.value || "Todos"}|`;
+  const indice = TCO.claves[base + (codigos.length === 1 ? codigos[0] : "")];
+  if(indice === undefined) return "";
+  if(codigos.length <= 1) return TCO.vistas[indice];
+  const t = document.createElement("template");
+  t.innerHTML = TCO.vistas[indice];
+  const elegidos = new Set(codigos);
+  t.content.querySelectorAll("tbody tr").forEach(tr => { if(!elegidos.has(tr.cells[0].textContent.trim())) tr.remove(); });
+  t.content.querySelectorAll("tfoot").forEach(f => f.remove());
+  const filas = t.content.querySelector(".matriz-tco:not(.matriz-volumen) tbody").rows.length;
+  const resumen = t.content.querySelector("summary");
+  if(resumen) resumen.textContent = `Ver detalle de precios TCO (${filas} material${filas === 1 ? "" : "es"})`;
+  t.content.querySelector(".matriz-tco").insertAdjacentHTML("afterend",
+    `<p class="nota">Con varios materiales elegidos, el IPU de la tabla está en el localhost.</p>`);
+  return t.innerHTML;
 }
 if(PRECIOS.length){
   // Como en la web: se mantienen todos los filtros que sigan siendo válidos.
@@ -2499,6 +2530,104 @@ if(PRECIOS.length){
     s.addEventListener("change", () => { poblarFiltros9(f9cat.value, f9centro.value, f9material.value); renderSeccion9(); });
 } else {
   document.getElementById("sec-precios").hidden = true;
+}
+
+/* ---------- 9b. Precio real vs S&OP de cada mes: replica
+   plan_precios._contexto_precio_real_vs_sop. DATA.precio_real_sop trae, por
+   material/centro/mes cerrado con compra, el precio que proyectó el S&OP de
+   ese mes y el real (MB51 + FBL3N) con su importe. ---------- */
+const RSOP = DATA.precio_real_sop || {filas: [], nombres: {}};
+const UMBRAL_REAL_SOP = 0.05;
+const RSOP_FILAS = RSOP.filas.map(([m, c, mes, sop, real, importe]) => {
+  const n = RSOP.nombres[m] || [m, "MATERIAS PRIMAS"];
+  return {material_codigo:m, centro:c, mes, sop, real, importe, toneladas:importe/real, importe_sop:importe/real*sop,
+          texto_breve:n[0], categoria:n[1]};
+});
+const f9bcat = document.getElementById("categoria_realsop"), f9bcentro = document.getElementById("centro_realsop");
+const f9bmaterial = document.getElementById("material_realsop");
+function poblarFiltros9b(cat, centro, material){
+  const catSel = llenarSelect(f9bcat, opcionesCatCentroMat(RSOP_FILAS, {}).categorias, cat ?? "");
+  const centroSel = llenarSelect(f9bcentro, opcionesCatCentroMat(RSOP_FILAS, {categoria:catSel}).centros, centro ?? "");
+  llenarSelect(f9bmaterial, opcionesCatCentroMat(RSOP_FILAS, {categoria:catSel, centro:centroSel}).materiales, material ?? "");
+}
+function diferenciaRealSop(real, sop){
+  if(!sop) return null;
+  const d = real/sop - 1;
+  return {pct: d*100, clase: d >= UMBRAL_REAL_SOP ? "dato-negativo" : (d <= -UMBRAL_REAL_SOP ? "dato-positivo" : "")};
+}
+function resumenRealSop(g){
+  const importe = g.reduce((s,r)=>s+r.importe,0), importeSop = g.reduce((s,r)=>s+r.importe_sop,0), t = g.reduce((s,r)=>s+r.toneladas,0);
+  return {importe, importe_sop:importeSop, real: t ? importe/t : null, sop: t ? importeSop/t : null, diferencia: diferenciaRealSop(importe, importeSop)};
+}
+const textoDif = d => d ? (d.pct > 0 ? "+" : "") + numero(d.pct, 1) + "%" : "—";
+const celdaDif = d => `<td class="num ${d ? d.clase : ""}">${textoDif(d)}</td>`;
+function renderSeccion9b(){
+  const cont = document.getElementById("precio-real-sop-contenido");
+  const df = opcionesCatCentroMat(RSOP_FILAS, {categoria:f9bcat.value, centro:f9bcentro.value, material:f9bmaterial.value}).filas;
+  const meses = [...new Set(df.map(r => r.mes))].sort();
+  const bloques = agrupar(df, r => r.material_codigo+"|"+r.centro).map(([, g]) => {
+    const porMes = new Map(g.map(r => [r.mes, r]));
+    const celdas = meses.map(m => porMes.get(m) || null);
+    return {material_codigo:g[0].material_codigo, texto_breve:g[0].texto_breve, centro:g[0].centro, unidad:umbDe(g[0].material_codigo),
+            meses:g.length, periodo:resumenRealSop(g), filas:g.slice().sort((a,b)=>a.mes.localeCompare(b.mes)),
+            sop:celdas.map(r => r && r.sop), real:celdas.map(r => r && r.real),
+            diferencias:celdas.map(r => r && diferenciaRealSop(r.real, r.sop))};
+  }).sort((a,b) => b.periodo.importe - a.periodo.importe);
+  if(!bloques.length){ cont.innerHTML = `<p class="aviso">Sin meses con compra y con precio de su S&amp;OP para los filtros seleccionados.</p>`; return; }
+  const total = resumenRealSop(df), unMaterial = bloques.length === 1;
+  const totalMeses = meses.map(m => resumenRealSop(df.filter(r => r.mes === m)));
+  const sinFbl3n = meses.filter(m => !MESES_FBL3N.has(m));
+  let grafico = "";
+  if(unMaterial){
+    const b = bloques[0], u = b.unidad;
+    const detalle = r => { const d = (r.real/r.sop - 1)*100;
+      return `${mesCorto(r.mes)} · S&OP ${mesCorto(r.mes)}: S/ ${numero(r.sop,2)} por ${u}\nReal: S/ ${numero(r.real,2)} por ${u} (${d >= 0 ? "+" : "-"}${numero(Math.abs(d),1)}% vs S&OP)\n` +
+             `${numero(r.toneladas)} ${u} compradas · S/ ${numero(r.importe)}`; };
+    const g = lineasMensuales([
+      {nombre:`Precio S&OP del mes (S/ por ${u})`, clase:"serie-plan", puntos:b.filas.map(r => [r.mes, r.sop, detalle(r)])},
+      {nombre:`Precio real (S/ por ${u})`, clase:"serie-0", puntos:b.filas.map(r => [r.mes, r.real, detalle(r)])}], v => numero(v));
+    if(g) grafico = svgLineas(g, "Precio real y precio S&OP de cada mes");
+  }
+  const filaMeses = (valores, f) => valores.map(v => `<td class="num">${f(v)}</td>`).join("");
+  const precio = v => v === null ? "—" : numero(v, 2);
+  cont.innerHTML = `
+    ${unMaterial ? "" : `<p class="nota">Elige un material para ver su gráfico. Primero los materiales con más compras en el período.</p>`}
+    <div class="metricas">
+      <div class="metrica"><span class="valor ${total.diferencia ? total.diferencia.clase : ""}">${textoDif(total.diferencia)}</span><span class="etiqueta">Precio real vs S&amp;OP, ponderado (${mesLabel(meses[0])} a ${mesLabel(meses[meses.length-1])})</span></div>
+      <div class="metrica"><span class="valor">${solesLargo(total.importe)}</span><span class="etiqueta">Importe real · a precio S&amp;OP ${solesLargo(total.importe_sop)}</span></div>
+      <div class="metrica"><span class="valor">${df.filter(r => r.real > r.sop).length} de ${df.length}</span><span class="etiqueta">Meses de cada material con el precio real sobre el S&amp;OP</span></div>
+    </div>
+    ${grafico}
+    ${sinFbl3n.length ? `<p class="aviso">Sin FBL3N cargada en ${sinFbl3n.length === 1 ? "el mes marcado" : "los meses marcados"} con *: ahí el precio real es el de MB51, sin sus ajustes.</p>` : ""}
+    <div class="tabla-scroll">
+      <table class="matriz-movimiento" data-sin-orden>
+        <thead><tr><th class="mov-fija mov-f1">Material</th><th class="mov-fija mov-f2">Concepto</th>
+          ${meses.map(m => `<th class="num">${mesCorto(m)}${MESES_FBL3N.has(m) ? "" : " *"}</th>`).join("")}<th class="num">Período</th></tr></thead>
+        ${unMaterial ? "" : `<tbody class="mov-total">
+          <tr><th scope="rowgroup" rowspan="3" class="mov-fija mov-f1"><span class="mov-texto">Total de la selección</span>
+            <span class="mov-limites">${bloques.length} materiales · en S/</span></th>
+            <td class="mov-fija mov-f2">A precio S&amp;OP</td>${filaMeses(totalMeses, t => numero(t.importe_sop))}<td class="num">${numero(total.importe_sop)}</td></tr>
+          <tr><td class="mov-fija mov-f2">Real</td>${filaMeses(totalMeses, t => numero(t.importe))}<td class="num">${numero(total.importe)}</td></tr>
+          <tr class="mov-final"><td class="mov-fija mov-f2">Real vs S&amp;OP</td>${totalMeses.map(t => celdaDif(t.diferencia)).join("")}${celdaDif(total.diferencia)}</tr>
+        </tbody>`}
+        ${bloques.map(b => `<tbody>
+          <tr><th scope="rowgroup" rowspan="3" class="mov-fija mov-f1">
+            <span class="mov-codigo">${b.material_codigo} · ${nombreCentro(b.centro)}</span>
+            <span class="mov-texto">${b.texto_breve}</span>
+            <span class="mov-limites">S/ por ${b.unidad} · ${b.meses} mes${b.meses === 1 ? "" : "es"}</span></th>
+            <td class="mov-fija mov-f2">S&amp;OP del mes</td>${filaMeses(b.sop, precio)}<td class="num">${precio(b.periodo.sop)}</td></tr>
+          <tr><td class="mov-fija mov-f2">Real</td>${filaMeses(b.real, precio)}<td class="num">${precio(b.periodo.real)}</td></tr>
+          <tr class="mov-final"><td class="mov-fija mov-f2">Real vs S&amp;OP</td>${b.diferencias.map(celdaDif).join("")}${celdaDif(b.periodo.diferencia)}</tr>
+        </tbody>`).join("")}
+      </table>
+    </div>`;
+}
+if(RSOP_FILAS.length){
+  // Como en la web: se mantienen los filtros que sigan siendo válidos.
+  for(const s of [f9bcat, f9bcentro, f9bmaterial])
+    s.addEventListener("change", () => { poblarFiltros9b(f9bcat.value, f9bcentro.value, f9bmaterial.value); renderSeccion9b(); });
+} else {
+  document.getElementById("sec-precio-real-sop").hidden = true;
 }
 
 /* ---------- 10 y 11. Inflación interanual y mensual + IPU (replican
@@ -3113,168 +3242,6 @@ if(PREMIOS.length){
   document.getElementById("sec-premios").hidden = true;
 }
 
-/* ---------- Columnas apiladas (replica charts.columnas, sin la línea) y su
-   dibujo (replica planificacion/_grafico_columnas.html). ---------- */
-function columnasGrafico(etiquetas, pilas, formato, {textos=null, ancho=960, alto=250, padIzq=44, padDer=16, padArr=20, padAbj=24} = {}){
-  const n = etiquetas.length;
-  if(!n) return null;
-  const suma = (p, signo) => p.filter(s => signo > 0 ? s.valor > 0 : s.valor < 0).reduce((a, s) => a + s.valor, 0);
-  let techo = Math.max(...pilas.map(p => suma(p, 1)), 0), piso = Math.min(...pilas.map(p => suma(p, -1)), 0);
-  const margen = (techo - piso)*0.12 || 1;
-  techo = techo > 0 ? techo + margen : 0; piso = piso < 0 ? piso - margen : 0;
-  const base = alto - padAbj, paso = (ancho - padIzq - padDer)/n, anchoCol = Math.max(Math.min(paso*0.62, 34), 3);
-  const yDe = v => padArr + (base - padArr)*(techo - v)/(techo - piso), xDe = i => padIzq + paso*(i + 0.5);
-  const columnas = pilas.map((pila, i) => {
-    const x = xDe(i), segmentos = [];
-    let sube = 0, baja = 0;
-    for(const s of pila){
-      if(!s.valor) continue;
-      let y0, y1;
-      if(s.valor > 0){ y0 = yDe(sube + s.valor); y1 = yDe(sube); sube += s.valor; }
-      else { y0 = yDe(baja); y1 = yDe(baja + s.valor); baja += s.valor; }
-      segmentos.push({x:(x - anchoCol/2).toFixed(1), y:y0.toFixed(1), ancho:anchoCol.toFixed(1), alto:Math.max(y1 - y0, 0.8).toFixed(1), clase:s.clase});
-    }
-    const negativa = sube === 0 && baja < 0;
-    return {segmentos, detalle: pila.length ? (pila[0].detalle || "") : "", zona_x:(x - paso/2).toFixed(1), zona_ancho:paso.toFixed(1),
-            texto:(textos ? textos[i] : "") || "", texto_abajo:negativa, x_pct:(x/ancho*100).toFixed(2),
-            y_pct:((negativa ? yDe(baja) : yDe(sube))/alto*100).toFixed(2)};
-  });
-  const pasoEje = Math.max(1, Math.ceil(52/paso));
-  return {ancho, alto, x0:padIzq, x1:ancho - padDer, y_cero:yDe(0).toFixed(1), columnas, arriba:padArr.toFixed(1), alto_util:(base - padArr).toFixed(1),
-          grilla: marcasEje(piso, techo, 4).filter(v => v >= piso && v <= techo).map(v => ({y:yDe(v).toFixed(1), y_pct:(yDe(v)/alto*100).toFixed(2), texto:formato(v)})),
-          eje: etiquetas.map((e, i) => ({e, i})).filter(o => (n - 1 - o.i) % pasoEje === 0).map(o => ({x_pct:(xDe(o.i)/ancho*100).toFixed(2), texto:o.e}))};
-}
-function svgColumnas(g, titulo){
-  const e = escaparAttr;
-  return `<div class="chart-scroll"><div class="chart-wrap chart-columnas">
-    <svg class="chart-svg" viewBox="0 0 ${g.ancho} ${g.alto}" role="img" aria-label="${e(titulo)}">
-      ${g.grilla.map(m => `<line class="grilla-lineas" x1="${g.x0}" y1="${m.y}" x2="${g.x1}" y2="${m.y}"></line>`).join("")}
-      ${g.columnas.map(c => c.segmentos.map(s => `<rect class="${s.clase}" x="${s.x}" y="${s.y}" width="${s.ancho}" height="${s.alto}"></rect>`).join("")).join("")}
-      <line class="linea-cero" x1="${g.x0}" y1="${g.y_cero}" x2="${g.x1}" y2="${g.y_cero}"></line>
-      ${g.columnas.map(c => `<rect class="zona-detalle con-detalle" x="${c.zona_x}" y="${g.arriba}" width="${c.zona_ancho}" height="${g.alto_util}" data-detalle="${e(c.detalle)}"></rect>`).join("")}
-    </svg>
-    ${g.grilla.map(m => `<span class="etiqueta-grilla" style="top:${m.y_pct}%;">${m.texto}</span>`).join("")}
-    ${g.columnas.filter(c => c.texto).map(c => `<span class="etiqueta-valor${c.texto_abajo ? " etiqueta-abajo" : ""}" style="left:${c.x_pct}%; top:${c.y_pct}%;">${c.texto}</span>`).join("")}
-    ${g.eje.map(x => `<span class="etiqueta-mes" style="left:${x.x_pct}%;">${x.texto}</span>`).join("")}
-  </div></div>`;
-}
-
-/* ---------- Evolución de entregas por proveedor: replica views._contexto_entregas ---------- */
-const ENTREGAS = DATA.entregas_rows || [];
-const ENTREGAS_PROVEEDORES_COLOR = 7;
-const VER_ENTREGAS = [["toneladas", "Toneladas"], ["carros", "Carros"], ["participacion", "Participación (%)"]];
-const fEcentro = document.getElementById("centro_entregas"), fEmaterial = document.getElementById("material_entregas");
-const fEver = document.getElementById("ver_entregas");
-const comparar = (a, b) => a < b ? -1 : (a > b ? 1 : 0);
-
-// Igual que views._clave_proveedor: "CALIZA ANDINA E.I.R.L." == "CALIZA ANDINA EIRL".
-function claveProveedor(nombre){
-  const original = nombre;
-  let anterior = null;
-  while(anterior !== nombre){ anterior = nombre; nombre = nombre.trim().replace(RAZON_SOCIAL, ""); }
-  return nombre.toUpperCase().replace(/[^A-Z0-9Ñ]/g, "") || original.toUpperCase();
-}
-function textoEntrega(ver, t, c, totalT){
-  if(ver === "toneladas") return t ? numero(t) : "—";
-  if(ver === "carros") return c ? numero(c) : "—";
-  return t && totalT ? numero(t/totalT*100, 1) + "%" : "—";
-}
-function poblarFiltrosEntregas(mantenerCentro, mantenerMaterial, mantenerVer){
-  const centros = [...new Set(ENTREGAS.map(r => r.centro))].sort();
-  const centroSel = llenarSelect(fEcentro, [{value:"", label:"Todos"}, ...centros.map(c => ({value:c, label:nombreCentro(c)}))], mantenerCentro ?? "");
-  llenarSelect(fEmaterial, opcionesMaterialDe(ENTREGAS.filter(r => !centroSel || r.centro === centroSel)), mantenerMaterial ?? "");
-  llenarSelect(fEver, VER_ENTREGAS.map(([v, t]) => ({value:v, label:t})), mantenerVer ?? "toneladas");
-}
-function renderEntregas(){
-  const cont = document.getElementById("entregas-contenido");
-  const centro = fEcentro.value, material = fEmaterial.value, ver = fEver.value || "toneladas";
-  const df = ENTREGAS.filter(r => (!centro || r.centro === centro) && enSel(material, r.material_codigo))
-                     .map(r => ({...r, clave: claveProveedor(r.proveedor)}));
-  if(!df.length){ cont.innerHTML = `<p class="aviso">Sin entregas para los filtros seleccionados.</p>`; return; }
-
-  // Proveedores: nombre con más toneladas, orden por toneladas del período.
-  const tot = new Map(), porNombre = new Map();
-  for(const r of df){
-    const a = tot.get(r.clave) || {tipo:"", t:0};
-    a.t += r.toneladas; if(r.tipo > a.tipo) a.tipo = r.tipo; tot.set(r.clave, a);
-    const k = r.clave + "|" + r.proveedor; porNombre.set(k, (porNombre.get(k) || 0) + r.toneladas);
-  }
-  for(const [clave, a] of tot){
-    a.proveedor = [...porNombre.entries()].filter(([k]) => k.slice(0, clave.length + 1) === clave + "|")
-      .map(([k, t]) => [k.slice(clave.length + 1), t]).sort((x, y) => y[1] - x[1] || comparar(x[0], y[0]))[0][0];
-  }
-  const orden = [...tot.keys()].sort((a, b) => tot.get(b).t - tot.get(a).t || comparar(tot.get(a).proveedor, tot.get(b).proveedor));
-  const color = new Map(orden.map((k, i) => [k, i < ENTREGAS_PROVEEDORES_COLOR ? `col-prov-${i}` : "col-prov-otros"]));
-  const conColor = orden.slice(0, ENTREGAS_PROVEEDORES_COLOR), otros = orden.slice(ENTREGAS_PROVEEDORES_COLOR);
-  const etiqueta = k => nombreCorto(tot.get(k).proveedor, 30) + (tot.get(k).tipo === "Propio" ? " (propio)" : "");
-
-  const meses = [...new Set(df.map(r => r.mes))].sort();
-  const porMes = new Map(), totalMes = new Map();
-  for(const r of df){
-    const k = r.mes + "|" + r.clave, a = porMes.get(k) || [0, 0]; a[0] += r.toneladas; a[1] += r.carros; porMes.set(k, a);
-    const b = totalMes.get(r.mes) || [0, 0]; b[0] += r.toneladas; b[1] += r.carros; totalMes.set(r.mes, b);
-  }
-  const valor = (t, c, totalT) => ver === "toneladas" ? t : (ver === "carros" ? c : (totalT ? t/totalT*100 : 0));
-  const pilas = [], textos = [];
-  for(const m of meses){
-    const [tm, cm] = totalMes.get(m);
-    const deMes = orden.filter(k => porMes.has(m + "|" + k)).map(k => [k, ...porMes.get(m + "|" + k)]);
-    const lineas = [`${mesCorto(m)} · ${numero(tm)} T · ${numero(cm)} carros`];
-    for(const [k, t, c] of deMes.slice().sort((x, y) => y[1] - x[1]).slice(0, 6))
-      lineas.push(`${etiqueta(k)}: ${numero(t)} T (${numero(tm ? t/tm*100 : 0, 1)}%) · ${numero(c)} carros`);
-    if(deMes.length > 6) lineas.push(`y ${deMes.length - 6} proveedores más`);
-    const de = k => porMes.get(m + "|" + k) || [0, 0];
-    const segmentos = conColor.map(k => ({valor: valor(...de(k), tm), clase: color.get(k)}));
-    if(otros.length){
-      const to = otros.reduce((s, k) => s + de(k)[0], 0), co = otros.reduce((s, k) => s + de(k)[1], 0);
-      segmentos.push({valor: valor(to, co, tm), clase: "col-prov-otros"});
-    }
-    segmentos[0].detalle = lineas.join("\n");
-    pilas.push(segmentos);
-    textos.push(ver === "toneladas" ? toneladasCorto(tm) : (ver === "carros" ? numero(cm) : ""));
-  }
-  const formato = ver === "toneladas" ? toneladasCorto : (ver === "carros" ? (v => numero(v)) : (v => numero(v) + "%"));
-  const g = columnasGrafico(meses.map(mesCorto), pilas, formato, {textos, ancho:960, alto:260});
-
-  const grupos = new Map();
-  for(const r of df){ const k = r.clave + "|" + r.material_codigo; if(!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(r); }
-  const totalT = df.reduce((s, r) => s + r.toneladas, 0), totalC = df.reduce((s, r) => s + r.carros, 0);
-  const filas = [...grupos.values()].map(g => {
-    const clave = g[0].clave, delMes = new Map();
-    for(const r of g){ const a = delMes.get(r.mes) || [0, 0]; a[0] += r.toneladas; a[1] += r.carros; delMes.set(r.mes, a); }
-    const t = g.reduce((s, r) => s + r.toneladas, 0), c = g.reduce((s, r) => s + r.carros, 0);
-    return {proveedor: tot.get(clave).proveedor, tipo: tot.get(clave).tipo, clase: color.get(clave),
-            material_codigo: g[0].material_codigo, texto_breve: g[0].texto_breve,
-            centro: [...new Set(g.map(r => r.centro))].sort().map(x => nombreCentro(x)).join(", "),
-            celdas: meses.map(m => textoEntrega(ver, ...(delMes.get(m) || [0, 0]), totalMes.get(m)[0])),
-            total: textoEntrega(ver, t, c, totalT), t};
-  }).sort((a, b) => b.t - a.t || comparar(a.proveedor, b.proveedor) || comparar(a.material_codigo, b.material_codigo));
-  const unidad = VER_ENTREGAS.find(([v]) => v === ver)[1];
-  const leyenda = conColor.map(k => [color.get(k), etiqueta(k)]).concat(otros.length ? [["col-prov-otros", `Otros (${otros.length})`]] : []);
-
-  cont.innerHTML = `
-    <h3 class="titulo-bloque">${unidad} por proveedor y mes${meses[meses.length-1] === hoyMes ? ` <span class="texto-tenue">(el último mes está en curso)</span>` : ""}</h3>
-    ${svgColumnas(g, "Entregas por proveedor y mes")}
-    <div class="leyenda-curva">${leyenda.map(([clase, texto]) => `<span class="leyenda-item"><span class="leyenda-marca marca-${clase}"></span>${texto}</span>`).join("")}</div>
-    <div class="tabla-scroll">
-      <table>
-        <thead><tr><th>Proveedor</th><th>Tipo</th><th>Material</th><th>Centro</th>${meses.map(m => `<th class="num">${mesCorto(m)}</th>`).join("")}<th class="num">Total</th></tr></thead>
-        <tbody>
-          ${filas.map(f => `<tr>
-            <td><span class="celda-proveedor"><span class="leyenda-marca marca-${f.clase}"></span>${f.proveedor}</span></td>
-            <td>${f.tipo}</td><td>${f.material_codigo} — ${f.texto_breve}</td><td>${nombreCentro(f.centro)}</td>
-            ${f.celdas.map(v => `<td class="num">${v}</td>`).join("")}<td class="num"><strong>${f.total}</strong></td></tr>`).join("")}
-          <tr class="fila-total"><td>Total</td><td></td><td></td><td></td>
-            ${meses.map(m => `<td class="num">${textoEntrega(ver, totalMes.get(m)[0], totalMes.get(m)[1], totalMes.get(m)[0])}</td>`).join("")}
-            <td class="num">${textoEntrega(ver, totalT, totalC, totalT)}</td></tr>
-        </tbody>
-      </table>
-    </div>`;
-}
-fEcentro.addEventListener("change", () => { poblarFiltrosEntregas(fEcentro.value, null, fEver.value); renderEntregas(); });
-fEmaterial.addEventListener("change", renderEntregas);
-fEver.addEventListener("change", renderEntregas);
-
 /* ---------- Zonas: cada una se dibuja la primera vez que se abre (o antes,
    en segundo plano, ver zonas.js), no todas al abrir el archivo. ---------- */
 // Vistas ya dibujadas por el localhost al exportar, una por opción (ids
@@ -3320,8 +3287,6 @@ const INICIO_ZONA = {
     f1mes.value = MES_DEFECTO; poblarFiltros1(null, null); renderSeccion1();
     f2mes.value = MES_DEFECTO; poblarFiltros2(null, null); renderSeccion2();
     poblarFiltros4(); renderSeccion4();
-    if(ENTREGAS.length){ poblarFiltrosEntregas(null, null, null); renderEntregas(); }
-    else document.getElementById("sec-entregas").hidden = true;
   },
   consumo: () => {
     if(MESES_CONSUMO.length){ poblarFiltros7(null, null, null); renderSeccion7(); }
@@ -3336,6 +3301,7 @@ const INICIO_ZONA = {
       poblarFiltros9(null, null, null); renderSeccion9();
       for(const suf of Object.keys(EVALUACIONES)){ poblarFiltrosInflacion(suf, null, null, null); renderInflacion(suf); }
     }
+    if(RSOP_FILAS.length){ poblarFiltros9b(null, null, null); renderSeccion9b(); }
   },
   calidad: () => {
     if(CALIDAD.length){ poblarFiltros12(null, null, null, null); renderSeccion12(); }
@@ -3391,25 +3357,7 @@ for(const zona of zonasEnEspera.splice(0)){
 /*__ZONAS_JS__*/
 </script>
 
-<script>
-  (function () {
-    var boton = document.getElementById("theme-toggle");
-    if (!boton) return;
-    function temaActual() {
-      var explicito = document.documentElement.getAttribute("data-theme");
-      if (explicito === "light" || explicito === "dark") return explicito;
-      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-    }
-    function actualizarEtiqueta() { boton.textContent = temaActual() === "dark" ? "Tema claro" : "Tema oscuro"; }
-    actualizarEtiqueta();
-    boton.addEventListener("click", function () {
-      var nuevo = temaActual() === "dark" ? "light" : "dark";
-      document.documentElement.setAttribute("data-theme", nuevo);
-      try { localStorage.setItem("uperu_tema", nuevo); } catch (e) {}
-      actualizarEtiqueta();
-    });
-  })();
-</script>
+<!-- El tema claro/oscuro (el ojo) y el menú lateral vienen en navegacion.js, dentro del bloque de zonas.js. -->
 <script>
   /* Columnas ordenables: idéntico al de base.html. */
   (function () {
@@ -3430,7 +3378,8 @@ for(const zona of zonasEnEspera.splice(0)){
     }
     document.addEventListener('click', function (evento) {
       var th = evento.target.closest('table thead th');
-      if (!th || th.closest('table[data-paginado]')) return;
+      // Las de bloques por material (data-sin-orden) no se reordenan: sus filas van juntas.
+      if (!th || th.closest('table[data-paginado], table[data-sin-orden]')) return;
       var tabla = th.closest('table');
       var tbody = tabla.querySelector('tbody');
       if (!tbody) return;
@@ -3496,30 +3445,41 @@ for(const zona of zonasEnEspera.splice(0)){
   });
 </script>
 <script>
-  /* Recuadro de detalle de los gráficos: idéntico al de base.html. */
+  /* Recuadro de detalle de los gráficos: idéntico al de base.html (sigue al
+     mouse con transform, una vez por cuadro). */
   (function () {
     var caja = document.createElement('div');
     caja.className = 'detalle-grafico';
     caja.hidden = true;
     document.body.appendChild(caja);
-    function ubicar(evento) {
-      var margen = 14, ancho = caja.offsetWidth, alto = caja.offsetHeight;
-      var x = evento.clientX + margen, y = evento.clientY + margen;
-      if (x + ancho > window.innerWidth - 8) x = evento.clientX - ancho - margen;
-      if (y + alto > window.innerHeight - 8) y = evento.clientY - alto - margen;
-      caja.style.left = Math.max(8, x) + 'px';
-      caja.style.top = Math.max(8, y) + 'px';
+    var ancho = 0, alto = 0, mx = 0, my = 0, cuadro = 0;
+    function ubicar() {
+      cuadro = 0;
+      var margen = 14, x = mx + margen, y = my + margen;
+      if (x + ancho > window.innerWidth - 8) x = mx - ancho - margen;
+      if (y + alto > window.innerHeight - 8) y = my - alto - margen;
+      caja.style.transform = 'translate(' + Math.max(8, x) + 'px, ' + Math.max(8, y) + 'px)';
+    }
+    function seguir(evento) {
+      mx = evento.clientX;
+      my = evento.clientY;
+      if (!cuadro) cuadro = requestAnimationFrame(ubicar);
     }
     document.addEventListener('mouseover', function (evento) {
       var objetivo = evento.target.closest ? evento.target.closest('[data-detalle]') : null;
       if (!objetivo) return;
-      caja.textContent = objetivo.getAttribute('data-detalle');
-      caja.hidden = false;
-      ubicar(evento);
+      var texto = objetivo.getAttribute('data-detalle');
+      if (caja.hidden || caja.textContent !== texto) {
+        caja.textContent = texto;
+        caja.hidden = false;
+        ancho = caja.offsetWidth;
+        alto = caja.offsetHeight;
+      }
+      seguir(evento);
     });
     document.addEventListener('mousemove', function (evento) {
-      if (!caja.hidden) ubicar(evento);
-    });
+      if (!caja.hidden) seguir(evento);
+    }, { passive: true });
     document.addEventListener('mouseout', function (evento) {
       var objetivo = evento.target.closest ? evento.target.closest('[data-detalle]') : null;
       if (!objetivo) return;

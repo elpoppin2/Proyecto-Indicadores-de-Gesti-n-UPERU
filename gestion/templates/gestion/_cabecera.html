@@ -1,5 +1,5 @@
-{% load static %}
-{# Encabezado común de las páginas: logo de UNACEM a la izquierda del título (pedido del usuario) y la sesión a la derecha. Recibe `titulo` y, opcional, `exportar_base` (url del Excel; se le suman los filtros actuales). #}
+{% load static dashboard_extras %}
+{# Encabezado común de las páginas: logo de UNACEM a la izquierda del título (pedido del usuario) y la sesión a la derecha. Recibe `titulo` y, opcional, `exportar_base` (url del Excel; se le suman los filtros actuales). navegacion.js pone junto al título la pestaña abierta (abre el menú lateral); el tema claro/oscuro es el ojo de los botones flotantes. A la derecha, el estado de los datos (_estado_datos.html). #}
 <header class="pagina">
   <div class="marca">
     <img class="logo-empresa" src="{% static 'gestion/img/unacem-logo.svg' %}" alt="UNACEM" width="256" height="58">
@@ -10,8 +10,9 @@
     </div>
   </div>
   <div class="sesion">
+    {% estado_datos %}
     {% if exportar_base %}<a class="btn-link" id="link-exportar" href="{{ exportar_base }}?{{ request.GET.urlencode }}">Exportar a Excel</a>{% endif %}
-    <button type="button" id="theme-toggle" class="btn-link">Tema oscuro</button>
+    {% if request.META.HTTP_X_UPERU_COPIA != "1" %}<a class="btn-link" href="{% url 'reglas_y_metas' %}">Reglas y metas</a>{% endif %}
     <span class="sesion-usuario">{{ request.user.username }}</span>
     <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" class="btn-link">Cerrar sesión</button></form>
   </div>

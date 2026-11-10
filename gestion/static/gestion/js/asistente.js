@@ -41,7 +41,7 @@
     return celdas(fila).every(function (c) { return /^:?-{2,}:?$/.test(c); });
   }
   function esNumero(texto) {
-    return /^[+\-−]?\s?(S\/\s?)?[\d.,]+\s?(%|T|K|M|Gcal)?$/.test(texto.replace(/\*\*/g, ''));
+    return /^[+\-−]?\s?(S\/\s?)?[\d.,]+\s?(%|T|K|M|GJ)?$/.test(texto.replace(/\*\*/g, ''));
   }
   function tabla(filas) {
     var cabecera = null;

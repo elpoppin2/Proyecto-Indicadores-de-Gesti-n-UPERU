@@ -1,9 +1,9 @@
 {% load dashboard_extras %}
-{# Barra de navegación entre páginas (views._construir_nav): Portada, Overview, Planificación y cada categoría. #}
+{# Barra de navegación entre páginas (views._construir_nav): Portada, Overview, Planificación y cada categoría. Desde el 2026-11-09 no se pinta: el menú lateral (navegacion.js) la lee y la muestra, con el icono de data-pagina. El texto del enlace va solo (exportar_sitio_html lo lee con una expresión regular). #}
 {% if categorias_nav %}
   <nav class="nav-categorias" aria-label="Páginas">
     {% for c in categorias_nav %}
-      <a href="{{ c.url }}" class="nav-link {% if c.activo %}activo{% endif %}"{% if c.activo %} aria-current="page"{% endif %}>{% if c.nombre_fijo %}{{ c.nombre }}{% else %}{{ c.nombre|nombre_visible }}{% endif %}</a>
+      <a href="{{ c.url }}" class="nav-link {% if c.activo %}activo{% endif %}"{% if c.activo %} aria-current="page"{% endif %} data-pagina="{{ c.slug }}">{% if c.nombre_fijo %}{{ c.nombre }}{% else %}{{ c.nombre|nombre_visible }}{% endif %}</a>
     {% endfor %}
   </nav>
 {% endif %}

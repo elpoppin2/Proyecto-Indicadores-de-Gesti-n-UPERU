@@ -1,0 +1,23 @@
+{# Estado de los datos (templatetag estado_datos): hasta qué fecha llega cada fuente, cuándo se cargó y qué falta. <details> abre y cierra sin JavaScript (también en las copias HTML). #}
+{% if e %}
+<details class="estado-datos{% if e.avisos %} con-avisos{% endif %}">
+  <summary class="estado-datos-resumen">
+    <span class="estado-datos-punto" aria-hidden="true"></span>
+    <span>Datos al {{ e.datos_al|date:"d/m/Y" }}{% if e.avisos %}<span class="estado-datos-avisos"> · {{ e.avisos }} aviso{{ e.avisos|pluralize }}</span>{% endif %}</span>
+  </summary>
+  <div class="estado-datos-panel">
+    <p class="estado-datos-titulo">Estado de los datos</p>
+    <p class="estado-datos-nota">Hasta qué fecha llega cada fuente de SAP y cuándo se cargó por última vez{% if e.ultima_carga %} (última carga: {{ e.ultima_carga|date:"d/m/Y H:i" }}){% endif %}.</p>
+    <ul class="estado-datos-lista">
+      {% for f in e.fuentes %}
+      <li class="estado-fuente fuente-{{ f.estado }}">
+        <span class="estado-fuente-marca" aria-hidden="true"></span>
+        <span class="estado-fuente-nombre">{{ f.nombre }}<span class="estado-fuente-uso">{{ f.uso }}</span></span>
+        <span class="estado-fuente-hasta">{{ f.hasta_texto }}<span class="estado-fuente-uso">{% if f.cargada %}cargada el {{ f.cargada|date:"d/m H:i" }}{% else %}sin cargas{% endif %}</span></span>
+        {% if f.nota %}<span class="estado-fuente-nota"><span class="solo-lector">Aviso: </span>{{ f.nota }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</details>
+{% endif %}

@@ -18,6 +18,7 @@ urlpatterns = [
     path("planificacion/precios-sop/plantilla/exportar/", views.plantilla_precios_sop, name="plantilla_precios_sop"),
     path("planificacion/asistente/", views.asistente_planificacion, name="asistente_planificacion"),
     path("logistica-materias-primas/", views.logistica_materias_primas, name="logistica_materias_primas"),
+    path("reglas-y-metas/", views.reglas_y_metas, name="reglas_y_metas"),
     path("<slug:slug>/exportar/", views.exportar_excel, name="exportar_excel_categoria"),
     path("<slug:slug>/rotacion-materiales/", views.rotacion_materiales_pagina, name="rotacion_materiales_pagina"),
     path("<slug:slug>/detalle/<slug:clave>/", views.desglose_filas, name="desglose_filas"),

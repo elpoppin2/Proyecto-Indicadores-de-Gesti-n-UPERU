@@ -1,12 +1,11 @@
-"""Planificación > Cumplimiento: plan vs real del mes, cumplimiento mensual, detalle por material, cobertura y entregas por proveedor."""
+"""Planificación > Cumplimiento: plan vs real del mes, cumplimiento mensual, detalle por material y cobertura."""
 
 import datetime
-import re
 
 from dashboard import queries as q
 
 from .. import charts
-from .comun import _RAZON_SOCIAL, _mes_corto, _nombre_corto, _opciones_categoria_centro, _opciones_material, _por_materiales, _por_str, _selector_categoria_centro, _selector_material
+from .comun import _opciones_categoria_centro, _opciones_material, _por_materiales, _por_str, _selector_categoria_centro, _selector_material
 
 
 def _meses_plan(sop=None):
@@ -245,138 +244,3 @@ def _contexto_cobertura(request):
         "filas": cobertura.to_dict("records"),
         "en_riesgo": int((cobertura["cobertura_dias"] < 30).sum()),
     }
-
-
-# Evolución de entregas por proveedor: proveedores con color propio (los de
-# más toneladas; el resto va junto como "Otros"), meses que se muestran y
-# qué se grafica.
-_ENTREGAS_PROVEEDORES_COLOR = 7
-_ENTREGAS_MESES = 12
-_VER_ENTREGAS = [("toneladas", "Toneladas"), ("carros", "Carros"), ("participacion", "Participación (%)")]
-
-
-def _contexto_entregas(request):
-    """Evolución de entregas por proveedor (pestaña Cumplimiento): toneladas,
-    carros o participación de cada proveedor mes a mes (ZMM056 Tipo 1/5, ver
-    queries.entregas_por_proveedor_sop), con filtros Centro/Material/Ver
-    propios. Gráfico de columnas apiladas por proveedor y tabla
-    proveedor × material. Pedido por el usuario."""
-    base = q.entregas_por_proveedor_sop()
-    if base.empty:
-        return None
-    meses = sorted(base["mes"].unique())[-_ENTREGAS_MESES:]
-    base = base[base["mes"].isin(meses)]
-    centros = sorted(base["centro"].unique())
-    centro_sel = request.GET.get("centro_entregas", "Todos")
-    if centro_sel not in centros:
-        centro_sel = "Todos"
-    por_centro = base if centro_sel == "Todos" else base[base["centro"] == centro_sel]
-    materiales_op = _opciones_material(por_centro)
-    material_sel = _selector_material(request, "entregas", materiales_op)
-    df = _por_materiales(por_centro, material_sel)
-    ver = request.GET.get("ver_entregas", "toneladas")
-    if ver not in dict(_VER_ENTREGAS):
-        ver = "toneladas"
-    contexto = {
-        "centros": [{"codigo": "Todos", "texto": "Todos"}] + [
-            {"codigo": c, "texto": q.nombre_centro(c)} for c in centros],
-        "centro_sel": centro_sel, "materiales": materiales_op, "material_sel": material_sel,
-        "opciones_ver": _VER_ENTREGAS, "ver": ver, "grafico": None, "filas": [],
-    }
-    if df.empty:
-        return contexto
-
-    # Un mismo proveedor puede venir con dos razones sociales (p.ej. "CALIZA
-    # ANDINA EIRL" y "CALIZA ANDINA E.I.R.L."): se agrupa por el nombre sin
-    # razón social ni puntuación, y se muestra el nombre con más toneladas.
-    # Orden por toneladas del período (desempate por nombre): los primeros
-    # tienen color propio, en el mismo orden en gráfico y tabla.
-    df = df.assign(clave=df["proveedor"].map(_clave_proveedor))
-    por_nombre = df.groupby(["clave", "proveedor"])["toneladas"].sum().reset_index()
-    nombre_principal = (por_nombre.sort_values(["toneladas", "proveedor"], ascending=[False, True])
-                        .drop_duplicates("clave").set_index("clave")["proveedor"])
-    totales = df.groupby("clave").agg(tipo=("tipo", "max"), toneladas=("toneladas", "sum"))
-    totales["proveedor"] = nombre_principal
-    orden = sorted(totales.index, key=lambda k: (-totales.at[k, "toneladas"], totales.at[k, "proveedor"]))
-    color = {k: (f"col-prov-{i}" if i < _ENTREGAS_PROVEEDORES_COLOR else "col-prov-otros") for i, k in enumerate(orden)}
-    con_color = orden[:_ENTREGAS_PROVEEDORES_COLOR]
-    otros = orden[_ENTREGAS_PROVEEDORES_COLOR:]
-
-    def etiqueta(clave):
-        return _nombre_corto(totales.at[clave, "proveedor"], 30) + (" (propio)" if totales.at[clave, "tipo"] == "Propio" else "")
-
-    meses_df = sorted(df["mes"].unique())
-    por_mes = df.groupby(["mes", "clave"])[["toneladas", "carros"]].sum()
-    total_mes = df.groupby("mes")[["toneladas", "carros"]].sum()
-
-    def valor(t, c, total_t):
-        return t if ver == "toneladas" else c if ver == "carros" else (t / total_t * 100 if total_t else 0.0)
-
-    pilas, textos = [], []
-    for m in meses_df:
-        tm, cm = float(total_mes.at[m, "toneladas"]), int(total_mes.at[m, "carros"])
-        de_mes = {k: (float(r.toneladas), int(r.carros)) for k, r in por_mes.loc[m].iterrows()}
-        lineas = [f"{_mes_corto(m)} · {tm:z,.0f} T · {cm:,} carros"]
-        for k in sorted(de_mes, key=lambda k: -de_mes[k][0])[:6]:
-            t, c = de_mes[k]
-            lineas.append(f"{etiqueta(k)}: {t:z,.0f} T ({t / tm * 100 if tm else 0:z,.1f}%) · {c:,} carros")
-        if len(de_mes) > 6:
-            lineas.append(f"y {len(de_mes) - 6} proveedores más")
-        segmentos = [{"valor": valor(*de_mes.get(k, (0.0, 0)), tm), "clase": color[k]} for k in con_color]
-        if otros:
-            t_o = sum(de_mes.get(k, (0.0, 0))[0] for k in otros)
-            c_o = sum(de_mes.get(k, (0.0, 0))[1] for k in otros)
-            segmentos.append({"valor": valor(t_o, c_o, tm), "clase": "col-prov-otros"})
-        segmentos[0]["detalle"] = "\n".join(lineas)
-        pilas.append(segmentos)
-        textos.append(charts._toneladas_corto(tm) if ver == "toneladas" else f"{cm:,}" if ver == "carros" else "")
-    formato = (charts._toneladas_corto if ver == "toneladas" else (lambda v: f"{v:z,.0f}") if ver == "carros"
-               else (lambda v: f"{v:z,.0f}%"))
-    grafico = charts.columnas([_mes_corto(m) for m in meses_df], pilas, formato, textos=textos, ancho=960, alto=260)
-
-    # Tabla: una fila por proveedor y material, de más a menos toneladas.
-    filas = []
-    total_t = float(df["toneladas"].sum())
-    for (clave, material), g in df.groupby(["clave", "material_codigo"]):
-        # Un mes puede traer varias filas (dos razones sociales o dos centros).
-        del_mes = {m: (float(r.toneladas), int(r.carros)) for m, r in g.groupby("mes")[["toneladas", "carros"]].sum().iterrows()}
-        t, c = float(g["toneladas"].sum()), int(g["carros"].sum())
-        celdas = []
-        for m in meses_df:
-            tm_, cm_ = del_mes.get(m, (0.0, 0))
-            celdas.append(_texto_entrega(ver, tm_, cm_, float(total_mes.at[m, "toneladas"])))
-        filas.append({
-            "proveedor": totales.at[clave, "proveedor"], "tipo": totales.at[clave, "tipo"], "clase": color[clave],
-            "material_codigo": material, "texto_breve": g["texto_breve"].iloc[0],
-            "centro": ", ".join(q.nombre_centro(x) for x in sorted(g["centro"].unique())),
-            "celdas": celdas, "total": _texto_entrega(ver, t, c, total_t), "_t": t,
-        })
-    filas.sort(key=lambda f: (-f["_t"], f["proveedor"], f["material_codigo"]))
-    contexto.update({
-        "grafico": grafico, "filas": filas, "meses": [_mes_corto(m) for m in meses_df],
-        "totales_mes": [_texto_entrega(ver, float(total_mes.at[m, "toneladas"]), int(total_mes.at[m, "carros"]),
-                                       float(total_mes.at[m, "toneladas"])) for m in meses_df],
-        "total": _texto_entrega(ver, total_t, int(df["carros"].sum()), total_t),
-        "leyenda": [(color[k], etiqueta(k)) for k in con_color] + ([("col-prov-otros", f"Otros ({len(otros)})")] if otros else []),
-        "en_curso": meses_df[-1] == datetime.date.today().replace(day=1),
-        "unidad": dict(_VER_ENTREGAS)[ver],
-    })
-    return contexto
-
-
-def _clave_proveedor(nombre):
-    """Nombre de proveedor comparable: sin razón social, mayúsculas, solo
-    letras y números ("CALIZA ANDINA E.I.R.L." == "CALIZA ANDINA EIRL")."""
-    original, anterior = nombre, None
-    while anterior != nombre:
-        anterior, nombre = nombre, _RAZON_SOCIAL.sub("", nombre.strip())
-    return re.sub(r"[^A-Z0-9Ñ]", "", nombre.upper()) or original.upper()
-
-
-def _texto_entrega(ver, toneladas, carros, total_toneladas):
-    """Celda de la tabla de Evolución de entregas según lo que se ve."""
-    if ver == "toneladas":
-        return f"{toneladas:z,.0f}" if toneladas else "—"
-    if ver == "carros":
-        return f"{carros:,}" if carros else "—"
-    return f"{toneladas / total_toneladas * 100:z,.1f}%" if toneladas and total_toneladas else "—"

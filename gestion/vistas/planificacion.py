@@ -19,9 +19,10 @@ from .comun import _construir_nav, _por_str, clave_vista, compactar_html
 from .plan_calidad import _contexto_calidad, _contexto_energia, _contexto_premios
 from .plan_cuadrantes import _paneles_cuadrantes, periodo_valido, periodos_cuadrantes
 from .plan_consumo import _contexto_consumo, _contexto_consumo_especifico, _contexto_proyeccion_sop
-from .plan_cumplimiento import _contexto_cobertura, _contexto_cumplimiento_mensual, _contexto_entregas, _contexto_plan_detalle, _contexto_plan_mensual
+from .plan_cumplimiento import _contexto_cobertura, _contexto_cumplimiento_mensual, _contexto_plan_detalle, _contexto_plan_mensual
 from .plan_indicadores import _kpis_zona, _paneles_indicadores
-from .plan_precios import _EVALUACIONES_PRECIOS, _contexto_evaluacion_precios, _contexto_inflacion, _contexto_precios_entrada
+from .plan_precios import (_EVALUACIONES_PRECIOS, _contexto_evaluacion_precios, _contexto_inflacion,
+                           _contexto_precio_real_vs_sop, _contexto_precios_entrada)
 from .plan_simulacion import _contexto_precios_version, _contexto_precision, _contexto_valorizado
 from .plan_transporte import _contexto_transporte
 from .portada import _contexto_informe_area, _contexto_resumen_area
@@ -121,7 +122,6 @@ _SECCIONES_PLANIFICACION = {
     "sec-plan-detalle": ("gestion/planificacion/_plan_detalle.html", "planificacion_detalle", _contexto_plan_detalle, ("detalle",)),
     "sec-cumplimiento-mensual": ("gestion/planificacion/_cumplimiento_mensual.html", "planificacion_cumplimiento",
                                  _contexto_cumplimiento_mensual, ("cumplmes", "plan")),
-    "sec-entregas": ("gestion/planificacion/_entregas_proveedor.html", "en", _contexto_entregas, ("entregas",)),
     "sec-consumo": ("gestion/planificacion/_consumo.html", "planificacion_consumo", lambda r: _contexto_consumo(r), ("consumo",)),
     "sec-consumo-especifico": ("gestion/planificacion/_consumo_especifico.html", "fa",
                                lambda r: _contexto_consumo_especifico(r), ("factor",)),
@@ -129,6 +129,9 @@ _SECCIONES_PLANIFICACION = {
     "sec-proyeccion": ("gestion/planificacion/_proyeccion.html", "planificacion_proyeccion",
                        lambda r: _contexto_proyeccion_sop(r), ("proyeccion",)),
     "sec-precios": ("gestion/planificacion/_precios.html", "planificacion_precios", lambda r: _contexto_precios_entrada(r), ("precios",)),
+    # Precio real de cada mes vs el de su propio S&OP (pedido del usuario, 2026-11-10).
+    "sec-precio-real-sop": ("gestion/planificacion/_precio_real_sop.html", "planificacion_real_sop",
+                            lambda r: _contexto_precio_real_vs_sop(r), ("realsop",)),
     "sec-inflacion": ("gestion/_evaluacion_precios.html", "inf", lambda r: _contexto_inflacion(r, "inflacion"), ("inflacion",)),
     "sec-inflacion-mensual": ("gestion/_evaluacion_precios.html", "inf", lambda r: _contexto_inflacion(r, "mensual"), ("mensual",)),
     "sec-calidad": ("gestion/planificacion/_calidad.html", "planificacion_calidad", lambda r: _contexto_calidad(r), ("calidad",)),

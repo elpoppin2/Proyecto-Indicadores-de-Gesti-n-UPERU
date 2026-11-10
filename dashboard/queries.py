@@ -10,6 +10,7 @@ aquí, ~4,400 líneas; reordenado el 2026-10-21 a pedido del usuario):
 - inventario, compras, detalle (filas del detalle fila por fila)
 - sop_base, sop_abastecimiento, sop_inventario, consumo_sop, calidad: Planificación S&OP
 - importados (embarques, producción propia), precios (precio real, IPU)
+- estado: hasta qué fecha llega cada fuente y qué falta (cabecera)
 
 Este archivo re-exporta todos sus nombres: el resto del código sigue usando
 `from dashboard import queries as q` y `q.<nombre>`.
@@ -82,7 +83,7 @@ from .consultas.sop_abastecimiento import (
     CENTRO_ATOCONGO, CENTRO_CONDORCOCHA, MATERIALES_REAL_MB51, MATERIALES_TRASLADO_ATOCONGO_CONDORCOCHA,
     MES_CUMPLIMIENTO_IMPORTADOS, MINUTOS_MAXIMO_EN_PLANTA, MINUTOS_TARA_REGISTRADA,
     _con_categoria_efectiva_planificacion, _real_mb51, _sin_mb51, _traslados_recibidos_mb51,
-    cumplimiento_mensual_abastecimiento, descripcion_centros_planificacion, entregas_por_proveedor_sop,
+    cumplimiento_mensual_abastecimiento, descripcion_centros_planificacion,
     evaluacion_diaria_abastecimiento, ingresos_diarios_abastecimiento, ingresos_fisicos_por_material,
     ingresos_fisicos_por_proveedor, meses_con_sop_propio, meses_planificacion_disponibles,
     plan_abastecimiento_por_material, plan_vs_real_abastecimiento_por_material,
@@ -120,9 +121,10 @@ from .consultas.precios import (
     precios_entrada_sop_real, referencias_desde_otro_centro, resumen_precios_entrada,
 )
 from .consultas.calidad import (
-    PARAMETROS_CALIDAD, _CAMPOS_CALIDAD, calidad_ingresos_sop, ingresos_con_energia, parametros_con_datos,
+    PARAMETROS_CALIDAD, _CAMPOS_CALIDAD, calidad_ingresos_sop, gj, ingresos_energia_sop, parametros_con_datos,
     premios_calidad_sop, promedio_calidad, resumen_calidad, resumen_energia, resumen_premios,
 )
+from .consultas.estado import estado_datos
 from .consultas.consumo_sop import (
     _MESES_CADENA_PRODUCCION, _PRODUCTOS_FINALES, _como_material_comprado, _producto_final,
     consumo_por_tonelada_sop, consumo_real_mensual_sop, destino_produccion_sop, plan_consumo_del_mes,
@@ -190,7 +192,7 @@ __all__ = [
     'MATERIALES_REAL_MB51', 'MATERIALES_TRASLADO_ATOCONGO_CONDORCOCHA', 'MES_CUMPLIMIENTO_IMPORTADOS',
     'MINUTOS_MAXIMO_EN_PLANTA', 'MINUTOS_TARA_REGISTRADA', '_con_categoria_efectiva_planificacion',
     '_real_mb51', '_sin_mb51', '_traslados_recibidos_mb51', 'cumplimiento_mensual_abastecimiento',
-    'descripcion_centros_planificacion', 'entregas_por_proveedor_sop', 'evaluacion_diaria_abastecimiento',
+    'descripcion_centros_planificacion', 'evaluacion_diaria_abastecimiento',
     'ingresos_diarios_abastecimiento', 'ingresos_fisicos_por_material', 'ingresos_fisicos_por_proveedor',
     'meses_con_sop_propio', 'meses_planificacion_disponibles', 'plan_abastecimiento_por_material',
     'plan_vs_real_abastecimiento_por_material', 'resumen_abastecimiento_por_categoria',
@@ -219,7 +221,8 @@ __all__ = [
     'con_precio_real', 'concepto_ajuste', 'inflacion_canasta', 'inflacion_precios', 'ipu_por_mes',
     'meses_con_fbl3n', 'precios_entrada_materiales', 'precios_entrada_materiales_real', 'precios_entrada_sop',
     'precios_entrada_sop_real', 'referencias_desde_otro_centro', 'resumen_precios_entrada',
-    'PARAMETROS_CALIDAD', '_CAMPOS_CALIDAD', 'calidad_ingresos_sop', 'ingresos_con_energia',
+    'estado_datos',
+    'PARAMETROS_CALIDAD', '_CAMPOS_CALIDAD', 'calidad_ingresos_sop', 'gj', 'ingresos_energia_sop',
     'parametros_con_datos', 'premios_calidad_sop', 'promedio_calidad', 'resumen_calidad', 'resumen_energia',
     'resumen_premios', '_MESES_CADENA_PRODUCCION', '_PRODUCTOS_FINALES', '_como_material_comprado',
     '_producto_final', 'consumo_por_tonelada_sop', 'consumo_real_mensual_sop', 'destino_produccion_sop',

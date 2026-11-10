@@ -9,10 +9,16 @@
       <button type="button" class="btn-link" data-imprimir="sec-energia">Imprimir</button>
     </span>
   </div>
-  <p class="nota">Cuánto cuesta cada Gcal de energía según el carbón y el proveedor: un carbón con más poder calorífico rinde más por tonelada.</p>
+  <p class="nota">Cuánto cuesta cada GJ de energía según el carbón y el proveedor: un carbón con más poder calorífico rinde más por tonelada.</p>
   <details class="metodo"><summary>Cómo se calcula</summary><div class="metodo-cuerpo">
-    <p><strong>Energía (Gcal)</strong> = toneladas secas × PCS ÷ 1,000. <strong>Costo por Gcal</strong> = importe pagado (con premio o
-    castigo) ÷ energía. Supone que el PCS del ticket (ZMM056) está en la misma base seca que las toneladas que se pagan.</p>
+    <p><strong>Energía (GJ)</strong> = toneladas × PCS (kcal/kg) × 4.1868 ÷ 1,000. <strong>Costo por GJ</strong> = importe ÷ energía. Supone
+    que el PCS del ticket (ZMM056) está en la misma base seca que las toneladas que se pagan.</p>
+    <p><strong>Importe</strong> = la entrada en MB51 (precio de contrato con el premio o castigo de calidad) + los <strong>valores agregados</strong>:
+    los ajustes de la FBL3N del material en ese mes (cambios de precio, fletes y cargos facturados después), repartidos entre sus ingresos según
+    las toneladas. Es el mismo precio real de Precios e IPU; un mes sin la FBL3N cargada todavía va sin ellos.</p>
+    <p>PCS que no salen del ticket: el <strong>Carbón Importado</strong> (la ZMM056 no lo analiza) va con un PCS fijo{% if en.pcs_fijo %} de
+    {{ en.pcs_fijo|numero:0 }} kcal/kg{% endif %} y sus llegadas a planta valorizadas (el mismo precio real de Precios e IPU, por centro y mes); el
+    <strong>Carbón Trujillo de Condorcocha</strong> lleva el PCS promedio del de Atocongo del mismo mes.</p>
     <p>Cada proveedor se compara con el promedio de su material; con varios materiales, cada material con el promedio de la selección.</p>
   </div></details>
   <form class="filtros" method="get" data-target="sec-energia">
@@ -49,38 +55,38 @@
     <p class="aviso">Sin ingresos de carbón con PCS analizado para los filtros seleccionados.</p>
   {% else %}
     <div class="metricas">
-      <div class="metrica"><span class="valor">S/ {{ r.costo_gcal|numero:2 }}</span><span class="etiqueta">Costo por Gcal pagado (a precio base S/ {{ r.costo_gcal_base|numero:2 }} {% if r.premio_gcal >= 0 %}+{% else %}−{% endif %} {{ r.premio_gcal|numero:2|cut:"-" }} por calidad)</span></div>
-      <div class="metrica"><span class="valor">{{ r.gcal|numero:0 }}</span><span class="etiqueta">Gcal recibidas · {{ r.toneladas|numero:0 }} T secas · {{ r.documentos|numero:0 }} ingresos</span></div>
+      <div class="metrica"><span class="valor">S/ {{ r.costo_gj|numero:2 }}</span><span class="etiqueta">Costo por GJ: contrato S/ {{ r.costo_gj_base|numero:2 }} {% if r.ajuste_gj >= 0 %}+{% else %}−{% endif %} {{ r.ajuste_gj|numero:2|cut:"-" }} valores agregados {% if r.premio_gj >= 0 %}+{% else %}−{% endif %} {{ r.premio_gj|numero:2|cut:"-" }} calidad</span></div>
+      <div class="metrica"><span class="valor">{{ r.gj|numero:0 }}</span><span class="etiqueta">GJ recibidos · {{ r.toneladas|numero:0 }} T · {{ r.documentos|numero:0 }} ingresos</span></div>
       <div class="metrica"><span class="valor">{{ r.pcs|numero:0 }}</span><span class="etiqueta">PCS promedio (kcal/kg){% if r.cenizas is not None %} · cenizas {{ r.cenizas|numero:2 }}%{% endif %}</span></div>
-      <div class="metrica"><span class="valor">S/ {{ r.precio_efectivo|numero:2 }}</span><span class="etiqueta">Precio efectivo por T (base S/ {{ r.precio_base|numero:2 }})</span></div>
+      <div class="metrica"><span class="valor">S/ {{ r.precio_efectivo|numero:2 }}</span><span class="etiqueta">Precio efectivo por T (contrato S/ {{ r.precio_base|numero:2 }}, valores agregados S/ {{ r.ajuste_t|numero:2 }})</span></div>
     </div>
 
     {% with g=en.grafico %}
     {% if g %}
-      <h3 class="subtitulo">PCS vs precio {% if en.un_material %}por proveedor{% else %}por material{% endif %}</h3>
-      <div class="chart-wrap chart-energia">
-        <span class="titulo-eje-y">Precio efectivo (S/ por T)</span>
-        <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="PCS contra precio efectivo, con la línea de costo promedio por Gcal">
-          <defs><clipPath id="area-energia"><rect x="{{ g.area.x }}" y="{{ g.area.y }}" width="{{ g.area.ancho }}" height="{{ g.area.alto }}"></rect></clipPath></defs>
-          {% for t in g.grilla_y %}<line class="grilla" x1="{{ g.izq }}" y1="{{ t.y }}" x2="{{ g.ancho }}" y2="{{ t.y }}"></line>{% endfor %}
-          {% for t in g.grilla_x %}<line class="grilla" x1="{{ t.x }}" y1="{{ g.area.y }}" x2="{{ t.x }}" y2="{{ g.base }}"></line>{% endfor %}
-          <line class="eje" x1="{{ g.izq }}" y1="{{ g.base }}" x2="{{ g.ancho }}" y2="{{ g.base }}"></line>
-          <path class="linea-iso" d="{{ g.linea }}" clip-path="url(#area-energia)"></path>
-          {% for b in g.burbujas %}
-            <circle class="burbuja burbuja-{{ b.sentido }}" cx="{{ b.x }}" cy="{{ b.y }}" r="{{ b.r }}"><title>{{ b.titulo }}</title></circle>
+      <h3 class="subtitulo">Costo por GJ mes a mes, por material (S/ por GJ pagado)</h3>
+      <div class="chart-scroll">
+      <div class="chart-wrap chart-lineas">
+        <svg class="chart-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}" role="img" aria-label="Costo por GJ de cada material, mes a mes, con el promedio del período">
+          {% for m in g.grilla %}<line class="grilla-lineas" x1="{{ g.x0 }}" y1="{{ m.y }}" x2="{{ g.x1 }}" y2="{{ m.y }}"></line>{% endfor %}
+          {% for r in g.referencias %}<line class="referencia-lineas {{ r.clase }}" x1="{{ g.x0 }}" y1="{{ r.y }}" x2="{{ g.x1 }}" y2="{{ r.y }}"></line>{% endfor %}
+          {% for s in g.series %}
+            {% for t in s.tramos %}<path class="linea-serie {{ s.clase }}" d="{{ t }}"></path>{% endfor %}
+            {% for p in s.puntos %}
+              <circle class="punto-serie {{ s.clase }}" cx="{{ p.x }}" cy="{{ p.y }}" r="3"></circle>
+              <circle class="zona-detalle con-detalle" cx="{{ p.x }}" cy="{{ p.y }}" r="9" data-detalle="{{ p.detalle }}"></circle>
+            {% endfor %}
           {% endfor %}
         </svg>
-        {% for t in g.grilla_y %}<span class="etiqueta-eje-y" style="top:{{ t.y_pct }}%; width:{{ g.izq_pct }}%;">{{ t.texto }}</span>{% endfor %}
-        {% for t in g.grilla_x %}<span class="etiqueta-mes" style="left:{{ t.x_pct }}%;">{{ t.texto }}</span>{% endfor %}
-        {% for b in g.burbujas %}
-          <span class="etiqueta-burbuja{% if b.alineacion %} alinear-{{ b.alineacion }}{% endif %}" style="left:{{ b.x_pct }}%; top:{{ b.y_pct }}%; --desplazamiento:{{ b.desplazamiento }}px;">{{ b.nombre }}</span>
-        {% endfor %}
+        {% for m in g.grilla %}<span class="etiqueta-grilla" style="top:{{ m.y_pct }}%;">{{ m.texto }}</span>{% endfor %}
+        {% for s in g.series %}{% for p in s.puntos %}{% if p.etiqueta %}
+          <span class="etiqueta-valor{% if p.derecha %} etiqueta-derecha{% endif %} con-detalle" style="left:{{ p.x_pct }}%; top:{{ p.y_pct }}%;" data-detalle="{{ p.detalle }}">{{ p.etiqueta }}</span>
+        {% endif %}{% endfor %}{% endfor %}
+        {% for e in g.eje %}<span class="etiqueta-mes" style="left:{{ e.x_pct }}%;">{{ e.texto }}</span>{% endfor %}
+      </div>
       </div>
       <div class="leyenda-curva">
-        <span class="leyenda-item"><span class="leyenda-marca burbuja-barato"></span>Energía más barata que el promedio (debajo de la línea)</span>
-        <span class="leyenda-item"><span class="leyenda-marca burbuja-caro"></span>Energía más cara que el promedio (encima de la línea)</span>
-        <span class="leyenda-item"><span class="leyenda-marca leyenda-meta"></span>Mismo costo por Gcal que el promedio (S/ {{ r.costo_gcal|numero:2 }})</span>
-        <span class="leyenda-item texto-tenue">Eje x: PCS (kcal/kg) · tamaño de la burbuja: toneladas</span>
+        {% for s in g.series %}<span class="leyenda-item"><span class="leyenda-marca leyenda-linea {{ s.clase }}"></span>{{ s.nombre }}</span>{% endfor %}
+        {% for r in g.referencias %}<span class="leyenda-item"><span class="leyenda-marca leyenda-referencia {{ r.clase }}"></span>{{ r.texto }}</span>{% endfor %}
       </div>
     {% endif %}
     {% endwith %}
@@ -91,9 +97,9 @@
         <table>
           <thead>
             <tr>
-              <th>Material</th><th>Descripción</th><th>Centro</th><th class="num">Toneladas secas</th>
+              <th>Material</th><th>Descripción</th><th>Centro</th><th class="num">Toneladas</th>
               <th class="num">PCS (kcal/kg)</th><th class="num">Cenizas (%)</th><th class="num">Precio efectivo (S/ por T)</th>
-              <th class="num">Gcal</th><th class="num" data-orden="asc">S/ por Gcal</th>
+              <th class="num">GJ</th><th class="num" data-orden="asc">S/ por GJ</th>
               <th class="col-barra">vs promedio</th><th class="num">Diferencia (S/)</th>
             </tr>
           </thead>
@@ -105,8 +111,8 @@
                 <td class="num">{{ f.pcs|numero:0 }}</td>
                 <td class="num">{% if f.cenizas is not None %}{{ f.cenizas|numero:2 }}{% else %}—{% endif %}</td>
                 <td class="num">{{ f.precio_efectivo|numero:2 }}</td>
-                <td class="num">{{ f.gcal|numero:0 }}</td>
-                <td class="num"><strong>{{ f.costo_gcal|numero:2 }}</strong></td>
+                <td class="num">{{ f.gj|numero:0 }}</td>
+                <td class="num"><strong>{{ f.costo_gj|numero:2 }}</strong></td>
                 <td class="col-barra">
                   <span class="barra-divergente">
                     {% if f.barra_sentido %}<span class="barra-{{ f.barra_sentido }}" style="width:{{ f.barra_pct }}%;"></span>{% endif %}
@@ -127,9 +133,9 @@
         <thead>
           <tr>
             <th>Proveedor</th>{% if not en.un_material %}<th>Material</th>{% endif %}
-            <th class="num">Toneladas secas</th><th class="num">PCS (kcal/kg)</th><th class="num">Cenizas (%)</th>
-            <th class="num">Precio base (S/ por T)</th><th class="num">Precio efectivo (S/ por T)</th>
-            <th class="num">S/ por Gcal a precio base</th><th class="num">S/ por Gcal pagado</th>
+            <th class="num">Toneladas</th><th class="num">PCS (kcal/kg)</th><th class="num">Cenizas (%)</th>
+            <th class="num">Precio de contrato (S/ por T)</th><th class="num">Valores agregados (S/ por T)</th><th class="num">Precio efectivo (S/ por T)</th>
+            <th class="num">S/ por GJ a precio de contrato</th><th class="num">S/ por GJ pagado</th>
             <th class="col-barra">vs promedio del material</th><th class="num">Diferencia (S/)</th>
           </tr>
         </thead>
@@ -142,9 +148,10 @@
               <td class="num">{{ f.pcs|numero:0 }}</td>
               <td class="num">{% if f.cenizas is not None %}{{ f.cenizas|numero:2 }}{% else %}—{% endif %}</td>
               <td class="num">{{ f.precio_base|numero:2 }}</td>
+              <td class="num">{{ f.ajuste_t|numero:2 }}</td>
               <td class="num">{{ f.precio_efectivo|numero:2 }}</td>
-              <td class="num">{{ f.costo_gcal_base|numero:2 }}</td>
-              <td class="num"><strong>{{ f.costo_gcal|numero:2 }}</strong></td>
+              <td class="num">{{ f.costo_gj_base|numero:2 }}</td>
+              <td class="num"><strong>{{ f.costo_gj|numero:2 }}</strong></td>
               <td class="col-barra">
                 <span class="barra-divergente">
                   {% if f.barra_sentido %}<span class="barra-{{ f.barra_sentido }}" style="width:{{ f.barra_pct }}%;"></span>{% endif %}
@@ -157,11 +164,11 @@
         </tbody>
       </table>
     </div>
-    <p class="nota">Diferencia = (costo por Gcal del proveedor − promedio) × sus Gcal: lo pagado de más (+) o de menos (−) frente al costo promedio.</p>
+    <p class="nota">Diferencia = (costo por GJ del proveedor − promedio) × sus GJ: lo pagado de más (+) o de menos (−) frente al costo promedio.</p>
 
     {% with m=en.mensual %}
     {% if m and m.meses %}
-      <h3 class="subtitulo">Evolución mensual (S/ por Gcal pagado)</h3>
+      <h3 class="subtitulo">Evolución mensual (S/ por GJ pagado)</h3>
       <div class="tabla-scroll">
         <table>
           <thead>
@@ -189,6 +196,7 @@
           </tbody>
         </table>
       </div>
+      {% if m.sin_fbl3n %}<p class="nota">* Mes sin la FBL3N cargada: su costo va sin valores agregados todavía.</p>{% endif %}
     {% endif %}
     {% endwith %}
   {% endif %}

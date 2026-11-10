@@ -466,28 +466,30 @@ def premios_castigos(material=None, centro=None, proveedor=None, desde=None):
 
 
 def costo_energia(material=None, centro=None, proveedor=None, desde=None):
-    base = q.premios_calidad_sop()
+    base = q.ingresos_energia_sop()
     if base.empty:
         raise ErrorHerramienta("Sin ingresos de terceros cargados.")
-    base = q.ingresos_con_energia(base)
     desde = _mes(desde, "desde")
     if desde:
         base = base[base["fecha"] >= desde]
     df, nota = _filtrar(base, material, centro, proveedor=proveedor)
     if df.empty:
         raise ErrorHerramienta("Sin ingresos de carbón con PCS para esos filtros.")
-    referencia = {k: q.resumen_energia(g)["costo_gcal"] for k, g in base.groupby(["material_codigo", "centro"])}
+    referencia = {k: q.resumen_energia(g)["costo_gj"] for k, g in base.groupby(["material_codigo", "centro"])}
     por_proveedor = []
     for (p, m, c), g in df.groupby(["proveedor", "material_codigo", "centro"]):
         r = q.resumen_energia(g)
         ref = referencia.get((m, c)) or 0
         por_proveedor.append({"proveedor": p, "material": g["texto_breve"].iloc[0], "centro": c, **r,
-                              "promedio_material_s_por_gcal": ref,
-                              "vs_promedio_material_pct": (r["costo_gcal"] / ref - 1) * 100 if ref else None})
-    por_proveedor.sort(key=lambda f: f["costo_gcal"])
+                              "promedio_material_s_por_gj": ref,
+                              "vs_promedio_material_pct": (r["costo_gj"] / ref - 1) * 100 if ref else None})
+    por_proveedor.sort(key=lambda f: f["costo_gj"])
     salida = {
-        "criterio": ("Gcal = T secas × PCS ÷ 1,000; costo por Gcal = importe (con premio/castigo) ÷ Gcal. "
-                     "Supuesto: el PCS del ticket está en base seca (no confirmado)."),
+        "criterio": ("GJ = T × PCS (kcal/kg) × 4.1868 ÷ 1,000; costo por GJ = importe ÷ GJ, con importe = entrada MB51 "
+                     "(contrato + premio/castigo) + valores agregados (ajustes FBL3N del mes repartidos por toneladas, "
+                     "como el precio real). Supuesto: el PCS del ticket está en base seca (no confirmado). "
+                     "Carbón Importado: PCS fijo y sus llegadas a planta al precio real; Carbón Trujillo de "
+                     "Condorcocha: PCS promedio del de Atocongo del mismo mes."),
         "resumen": q.resumen_energia(df),
         "por_material": [{"material": g["texto_breve"].iloc[0], "codigo": m, "centro": c, **q.resumen_energia(g)}
                          for (m, c), g in df.groupby(["material_codigo", "centro"])],
@@ -606,7 +608,7 @@ HERRAMIENTAS = {
             "material": _P_MATERIAL, "centro": _P_CENTRO, "proveedor": _P_PROVEEDOR, "desde": _P_DESDE}},
     }),
     "costo_energia": (costo_energia, "Costo por energía (carbones)", {
-        "description": "Costo por Gcal de los carbones (precio pagado ÷ energía según PCS), por material y proveedor, vs el promedio de su material.",
+        "description": "Costo por GJ de los carbones (precio pagado ÷ energía según PCS), por material y proveedor, vs el promedio de su material.",
         "input_schema": {"type": "object", "properties": {
             "material": _P_MATERIAL, "centro": _P_CENTRO, "proveedor": _P_PROVEEDOR, "desde": _P_DESDE}},
     }),
@@ -657,7 +659,7 @@ CÓMO RESPONDER
 - Responde siempre en español, claro y directo: primero la conclusión, después las cifras que la sostienen. Por defecto, breve (unas 150-250 palabras); más largo solo si piden detalle.
 - TODA cifra debe salir de las herramientas. Nunca inventes ni estimes datos que no consultaste. Si una herramienta no trae lo necesario, dilo.
 - Usa tablas en markdown cuando compares 3 o más elementos; si no, viñetas o párrafos cortos. Sin títulos grandes.
-- Unidades: toneladas "T", soles "S/", precios "S/ por T", energía "Gcal", porcentajes con un decimal. Separador de miles con coma.
+- Unidades: toneladas "T", soles "S/", precios "S/ por T", energía "GJ" (costo en "S/ por GJ"), porcentajes con un decimal. Separador de miles con coma.
 - Indica de qué sección del dashboard sale el dato (Evaluación mensual, Cumplimiento mensual, Cobertura de stock, Evolución de inventario, Precios de entrada, Inflación de precios / IPU, Evaluación mensual de precios, Calidad, Premios y castigos, Costo por energía) para que el usuario pueda verificarlo.
 - Si la pregunta es ambigua (qué material, qué centro, qué período), elige la interpretación más razonable, dila en una línea y responde; no hagas preguntas innecesarias.
 - Advierte las limitaciones de los datos cuando afecten la respuesta (ver abajo).
@@ -676,7 +678,7 @@ FUENTES Y REGLAS DE NEGOCIO
 - Bolsa: (precio del mes − precio base) × toneladas del mes evaluado (cantidad del año más reciente de la comparación). Positiva = costo adicional; negativa = ahorro.
 - Comparaciones atípicas (precio ×2 o ÷2 vs la base) son datos anómalos de MB51 (p.ej. Ene-24 de Sílices a S/ 16.60 y Puzolana de Terceros a S/ 17.50 por T): se muestran pero no suman en bolsa ni IPU.
 - Premios y castigos: ZMM056 "Premio o Castigo" en soles por ticket, ya incluido en el importe MB51. Toneladas SECAS. Precio base (contrato) = (importe − premio) ÷ T; precio efectivo = importe ÷ T.
-- Costo por energía (carbones): Gcal = T secas × PCS ÷ 1,000; S/ por Gcal = importe ÷ Gcal. Supuesto no confirmado: PCS en base seca.
+- Costo por energía (carbones): GJ = T × PCS (kcal/kg) × 4.1868 ÷ 1,000; S/ por GJ = importe (con valores agregados) ÷ GJ. Supuesto no confirmado: PCS en base seca.
 - Calidad: promedios ponderados por toneladas; mínimo/máximo/desviación por muestra. Sin especificaciones cargadas todavía (no juzgues "bueno/malo" contra una norma, solo compara). El HGI de Condorcocha figura siempre 55 (posible valor fijo).
 
 LIMITACIONES CONOCIDAS

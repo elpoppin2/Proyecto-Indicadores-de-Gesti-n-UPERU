@@ -80,7 +80,7 @@ def _kpis_zona(zona, c):
             kpis.append(kpi(charts.soles_corto(pm["resumen"]["neto"]), f"Premios − castigos por calidad ({periodo})"))
             kpis.append(kpi(pct(pm["resumen"]["pct_sobre_base"], True), "Sobre el precio base de contrato"))
         if en and en.get("resumen"):
-            kpis.append(kpi(f"S/ {en['resumen']['costo_gcal']:z,.1f}", "Costo de los carbones por Gcal"))
+            kpis.append(kpi(f"S/ {en['resumen']['costo_gj']:z,.2f}", "Costo de los carbones por GJ"))
     elif zona == "transporte":
         tr = c.get("logistica_transporte")
         if tr and not tr.get("vacio"):

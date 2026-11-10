@@ -16,14 +16,14 @@ _TIPOS_PRECIO = {"real": "Real (MB51 + ajustes FBL3N)", "mb51": "Solo MB51 (prec
 _MAX_AJUSTES_LISTA = 300
 
 
-def _contexto_precios_entrada(request):
-    """Evolución de precios de entrada (S/ por T) de los materiales del S&OP,
-    desde MB51 (ver queries.precios_entrada_sop). Filtros propios en cascada
-    (Categoría/Centro/Material) y Período. Con varios materiales: una tarjeta
-    por material con su minigráfico; con uno: gráfico grande con las
-    toneladas compradas y su detalle mensual. Pedido por el usuario.
-    "Precio": real (MB51 + ajustes de valor de la FBL3N, ver
-    queries.con_precio_real; por defecto) o solo MB51."""
+def _filtrar_precios_entrada(request):
+    """Filtros de Precios de entrada: Precio (real o solo MB51), Período y
+    Categoría/Centro/Material en cascada. Devuelve (historia, base, df,
+    filtros): toda la historia con precio real (la matriz TCO compara contra
+    el año anterior al período), lo del período con el precio elegido, lo
+    filtrado y las opciones y lo elegido de cada filtro; None sin datos. La
+    copia HTML (exportar_planificacion_html) la usa para dibujar la matriz
+    TCO de cada combinación de filtros."""
     base = q.precios_entrada_sop_real()
     if base.empty:
         return None
@@ -54,6 +54,25 @@ def _contexto_precios_entrada(request):
     materiales_op = _opciones_material(por_centro)
     material_sel = _selector_material(request, "precios", materiales_op)
     df = _por_materiales(por_centro, material_sel)
+    filtros = {"tipo_sel": tipo_sel, "periodo_sel": periodo_sel, "categorias": categorias_op,
+               "categoria_sel": categoria_sel, "centros": centros_op, "centro_sel": centro_sel,
+               "materiales": materiales_op, "material_sel": material_sel}
+    return historia, base, df, filtros
+
+
+def _contexto_precios_entrada(request):
+    """Evolución de precios de entrada (S/ por T) de los materiales del S&OP,
+    desde MB51 (ver queries.precios_entrada_sop). Filtros propios en cascada
+    (Categoría/Centro/Material) y Período. Con varios materiales: una tarjeta
+    por material con su minigráfico; con uno: gráfico grande con las
+    toneladas compradas y su detalle mensual. Pedido por el usuario.
+    "Precio": real (MB51 + ajustes de valor de la FBL3N, ver
+    queries.con_precio_real; por defecto) o solo MB51."""
+    filtrado = _filtrar_precios_entrada(request)
+    if filtrado is None:
+        return None
+    historia, base, df, filtros = filtrado
+    tipo_sel, periodo_sel = filtros["tipo_sel"], filtros["periodo_sel"]
 
     tarjetas = q.resumen_precios_entrada(df)
     umb = dict(zip(base["material_codigo"], base["unidad_medida_base"]))
@@ -137,9 +156,8 @@ def _contexto_precios_entrada(request):
         "ajustes_total": len(lista) if len(tarjetas) == 1 else 0,
         "max_ajustes": _MAX_AJUSTES_LISTA,
         "periodos": [{"valor": k, "texto": v[0]} for k, v in _PERIODOS_PRECIOS.items()], "periodo_sel": periodo_sel,
-        "categorias": categorias_op, "categoria_sel": categoria_sel,
-        "centros": centros_op, "centro_sel": centro_sel, "centro_importacion": q.CENTRO_IMPORTACION,
-        "materiales": materiales_op, "material_sel": material_sel,
+        **{k: filtros[k] for k in ("categorias", "categoria_sel", "centros", "centro_sel", "materiales", "material_sel")},
+        "centro_importacion": q.CENTRO_IMPORTACION,
         "tarjetas": tarjetas, "un_material": len(tarjetas) == 1,
         "grafico": grafico, "detalle": detalle,
         "desde": min(df["mes"]) if not df.empty else None, "hasta": max(df["mes"]) if not df.empty else None,
@@ -298,6 +316,105 @@ def _tramos_de_meses(meses):
         else:
             tramos.append([m, m])
     return ", ".join(_mes_corto(a) if a == b else f"{_mes_corto(a)} a {_mes_corto(b)}" for a, b in tramos)
+
+
+# Diferencia del precio real contra el S&OP desde la que se colorea (rojo: se
+# pagó más de lo proyectado; verde: menos).
+_UMBRAL_REAL_VS_SOP = 0.05
+
+
+def _contexto_precio_real_vs_sop(request):
+    """Precio real de compra de cada mes contra el que proyectó el S&OP
+    emitido ese mismo mes (pedido del usuario, 2026-11-10: "lo que fue Enero
+    2026 Real vs S&OP Enero 2026 y así consecutivamente cada S&OP"): los meses
+    cerrados con compra y con versión de precios de su propio S&OP
+    (q.precision_precios_sop, horizonte 0). Precio real = MB51 + FBL3N, como el
+    IPU. Por material, un bloque con el precio S&OP, el real y su diferencia
+    mes a mes, como el movimiento de inventario por material; arriba, el total
+    de la selección en soles y, con un material, su gráfico. Filtros propios
+    Categoría/Centro/Material en cascada."""
+    base = q.precision_precios_sop()
+    base = base[base["horizonte"] == 0]
+    if base.empty:
+        return None
+    toneladas = base["importe"] / base["real"]
+    base = base.assign(toneladas=toneladas, importe_sop=toneladas * base["proyectado"])
+
+    categorias_op, _ = _opciones_categoria_centro(base)
+    categoria_sel = request.GET.get("categoria_realsop", "Todas")
+    if categoria_sel not in categorias_op:
+        categoria_sel = "Todas"
+    por_categoria = base if categoria_sel == "Todas" else base[base["categoria"] == categoria_sel]
+    _, centros_op = _opciones_categoria_centro(por_categoria)
+    centro_sel = request.GET.get("centro_realsop", "Todos")
+    if centro_sel not in centros_op:
+        centro_sel = "Todos"
+    por_centro = por_categoria if centro_sel == "Todos" else por_categoria[por_categoria["centro"] == centro_sel]
+    materiales_op = _opciones_material(por_centro)
+    material_sel = _selector_material(request, "realsop", materiales_op)
+    df = _por_materiales(por_centro, material_sel)
+
+    meses = sorted(df["mes"].unique())
+    meses_fbl3n = q.meses_con_fbl3n()
+    umb = dict(zip(*[q.precios_entrada_sop_real()[c] for c in ("material_codigo", "unidad_medida_base")]))
+
+    def diferencia(real, sop):
+        if not sop:
+            return None
+        d = real / sop - 1
+        clase = "dato-negativo" if d >= _UMBRAL_REAL_VS_SOP else "dato-positivo" if d <= -_UMBRAL_REAL_VS_SOP else ""
+        return {"pct": d * 100, "clase": clase}
+
+    def resumen(g):
+        importe, importe_sop, t = g["importe"].sum(), g["importe_sop"].sum(), g["toneladas"].sum()
+        return {"importe": importe, "importe_sop": importe_sop, "toneladas": t,
+                "real": importe / t if t else None, "sop": importe_sop / t if t else None,
+                "diferencia": diferencia(importe, importe_sop)}
+
+    bloques = []
+    for (material, centro), g in df.groupby(["material_codigo", "centro"]):
+        por_mes = {r.mes: r for r in g.itertuples()}
+        celdas = [por_mes.get(m) for m in meses]
+        bloques.append({
+            "material_codigo": material, "texto_breve": g["texto_breve"].iloc[0], "centro": centro,
+            "unidad": umb.get(material) or "T", "meses": len(g), "periodo": resumen(g),
+            "sop": [None if r is None else r.proyectado for r in celdas],
+            "real": [None if r is None else r.real for r in celdas],
+            "diferencias": [None if r is None else diferencia(r.real, r.proyectado) for r in celdas],
+        })
+    # Primero lo que más se compró (lo que más pesa en el costo).
+    bloques.sort(key=lambda b: -b["periodo"]["importe"])
+
+    total = resumen(df)
+    por_mes = {m: resumen(g) for m, g in df.groupby("mes")}
+    grafico = None
+    if len(bloques) == 1:
+        b, g = bloques[0], df.sort_values("mes")
+        u = b["unidad"]
+
+        def detalle(r):
+            d = diferencia(r.real, r.proyectado)["pct"]
+            return (f"{_mes_corto(r.mes)} · S&OP {_mes_corto(r.version)}: S/ {r.proyectado:z,.2f} por {u}\n"
+                    f"Real: S/ {r.real:z,.2f} por {u} ({d:+.1f}% vs S&OP)\n"
+                    f"{r.toneladas:z,.0f} {u} compradas · S/ {r.importe:z,.0f}")
+        grafico = charts.lineas_mensuales(
+            [{"nombre": f"Precio S&OP del mes (S/ por {u})", "clase": "serie-plan",
+              "puntos": [(r.mes, float(r.proyectado), detalle(r)) for r in g.itertuples()]},
+             {"nombre": f"Precio real (S/ por {u})", "clase": "serie-0",
+              "puntos": [(r.mes, float(r.real), detalle(r)) for r in g.itertuples()]}],
+            _mes_corto, lambda v: f"{v:z,.0f}")
+    return {
+        "categorias": categorias_op, "categoria_sel": categoria_sel,
+        "centros": centros_op, "centro_sel": centro_sel,
+        "materiales": materiales_op, "material_sel": material_sel,
+        "meses": [{"fecha": m, "corto": _mes_corto(m), "sin_fbl3n": m not in meses_fbl3n} for m in meses],
+        "sin_fbl3n": [m for m in meses if m not in meses_fbl3n],
+        "bloques": bloques, "un_material": len(bloques) == 1, "grafico": grafico,
+        "total": total, "n": len(df), "mayores": sum(1 for r in df.itertuples() if r.real > r.proyectado),
+        "total_meses": [por_mes[m] for m in meses],
+        "umbral": round(_UMBRAL_REAL_VS_SOP * 100),
+        "desde": meses[0] if meses else None, "hasta": meses[-1] if meses else None,
+    }
 
 
 def _nota_base(r):

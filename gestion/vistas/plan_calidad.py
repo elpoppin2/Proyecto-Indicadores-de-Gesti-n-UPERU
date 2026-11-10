@@ -9,7 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 
 from .. import charts
-from .comun import _centros_por_nombre, _fecha_corta, _mes_corto, _nombre_corto, _opciones_categoria_centro, _opciones_material, _por_materiales, _selector_material
+from .comun import _centros_por_nombre, _fecha_corta, _mes_corto, _opciones_categoria_centro, _opciones_material, _por_materiales, _selector_material
 
 
 # Documentos de ingreso que se listan en la página (los más recientes); el
@@ -162,23 +162,28 @@ def exportar_premios(request):
 
 def _filtrar_energia(request):
     """Filtros de Costo por energía: los de Premios (sufijo "energia") sobre
-    los ingresos de carbón con PCS analizado."""
-    base = q.premios_calidad_sop()
+    los ingresos de carbón con PCS (queries.ingresos_energia_sop)."""
+    base = q.ingresos_energia_sop()
     if base.empty:
         return base, None
-    return _filtrar_premios(request, "energia", q.ingresos_con_energia(base))
+    df, filtros = _filtrar_premios(request, "energia", base)
+    if filtros is not None:
+        # Orden fijo de los colores del gráfico: todos los carbones, no los de la selección.
+        filtros["orden_materiales"] = sorted(base["material_codigo"].unique())
+    return df, filtros
 
 
 def _contexto_energia(request):
-    """Costo por energía de los carbones (ver queries.ingresos_con_energia):
-    S/ por Gcal efectivo de cada material y proveedor, comparado con el
-    promedio de su material, un gráfico PCS vs precio y la evolución mensual.
+    """Costo por energía de los carbones (ver queries.ingresos_energia_sop):
+    S/ por GJ efectivo de cada material y proveedor, comparado con el
+    promedio de su material, y su evolución mes a mes (gráfico por material y
+    tabla).
     Pedido por el usuario."""
     df, filtros = _filtrar_energia(request)
     if filtros is None:
         return None
     contexto = {**filtros, "resumen": None, "por_material": [], "por_proveedor": [], "grafico": None,
-                "mensual": None}
+                "mensual": None, "pcs_fijo": next(iter(q.regla_local("pcs_fijo_energia", {}).values()), None)}
     if df.empty:
         return contexto
     resumen = q.resumen_energia(df)
@@ -188,8 +193,8 @@ def _contexto_energia(request):
 
     def con_diferencia(fila, referencia):
         fila["referencia"] = referencia
-        fila["dif_pct"] = (fila["costo_gcal"] / referencia - 1) * 100 if referencia else 0.0
-        fila["dif_soles"] = (fila["costo_gcal"] - referencia) * fila["gcal"]
+        fila["dif_pct"] = (fila["costo_gj"] / referencia - 1) * 100 if referencia else 0.0
+        fila["dif_soles"] = (fila["costo_gj"] - referencia) * fila["gj"]
         return fila
 
     # Con varios materiales, cada uno contra el promedio de toda la selección;
@@ -197,17 +202,17 @@ def _contexto_energia(request):
     # material o centro no es un reemplazo directo).
     por_material = [
         con_diferencia({"material_codigo": m, "texto_breve": g["texto_breve"].iloc[0], "centro": c,
-                        **q.resumen_energia(g)}, resumen["costo_gcal"])
+                        **q.resumen_energia(g)}, resumen["costo_gj"])
         for (m, c), g in df.groupby(["material_codigo", "centro"])
     ]
-    referencia_material = {(f["material_codigo"], f["centro"]): f["costo_gcal"] for f in por_material}
+    referencia_material = {(f["material_codigo"], f["centro"]): f["costo_gj"] for f in por_material}
     por_proveedor = [
         con_diferencia({"proveedor": p, "material_codigo": m, "texto_breve": g["texto_breve"].iloc[0], "centro": c,
                         **q.resumen_energia(g)}, referencia_material[(m, c)])
         for (p, m, c), g in df.groupby(["proveedor", "material_codigo", "centro"])
     ]
-    por_proveedor.sort(key=lambda f: (f["texto_breve"], f["centro"], f["costo_gcal"]))
-    por_material.sort(key=lambda f: f["costo_gcal"])
+    por_proveedor.sort(key=lambda f: (f["texto_breve"], f["centro"], f["costo_gj"]))
+    por_material.sort(key=lambda f: f["costo_gj"])
     for filas in (por_material, por_proveedor):
         mayor = max((abs(f["dif_pct"]) for f in filas), default=0) or 1
         for f in filas:
@@ -216,32 +221,46 @@ def _contexto_energia(request):
     contexto["por_material"] = por_material if not un_material else []
     contexto["por_proveedor"] = por_proveedor
 
-    # Gráfico: proveedores del material elegido, o un punto por material.
-    if un_material:
-        puntos = [{"nombre": _nombre_corto(f["proveedor"]), "pcs": f["pcs"], "precio": f["precio_efectivo"],
-                   "toneladas": f["toneladas"], "costo_gcal": f["costo_gcal"]} for f in por_proveedor]
-    else:
-        puntos = [{"nombre": f"{f['texto_breve'].title()} {q.nombre_centro(f['centro'])}", "pcs": f["pcs"],
-                   "precio": f["precio_efectivo"], "toneladas": f["toneladas"], "costo_gcal": f["costo_gcal"]}
-                  for f in por_material]
-    contexto["grafico"] = charts.dispersion_energia(puntos, resumen["costo_gcal"])
-
-    # Evolución mensual del S/ por Gcal (filas: proveedores o materiales).
+    # Gráfico: S/ por GJ mes a mes, una línea por código de material (todos
+    # sus centros), con el promedio del período punteado. Pedido del usuario
+    # (2026-11-10; antes era PCS vs precio por proveedor). Cada material tiene
+    # su color fijo (orden de todos los carbones): un filtro no lo repinta.
     df = df.assign(mes=df["fecha"].map(lambda f: f.replace(day=1)))
+    # Meses sin la FBL3N cargada: su costo va sin valores agregados (marcados con *).
+    meses_fbl3n = q.meses_con_fbl3n()
+    sin_ajustes = "\nSin valores agregados todavía: falta la FBL3N de ese mes"
+    color = {m: f"cat-{min(i, 7) + 1}" for i, m in enumerate(filtros["orden_materiales"])}
+    series = []
+    for material, g in df.groupby("material_codigo"):
+        nombre = f"{material} · {g['texto_breve'].iloc[0].title()}"
+        puntos = []
+        for mes, gm in g.groupby("mes"):
+            r = q.resumen_energia(gm)
+            puntos.append((mes, r["costo_gj"],
+                           f"{_mes_corto(mes)} · {nombre}\nS/ {r['costo_gj']:z,.2f} por GJ · S/ {r['precio_efectivo']:z,.2f} por T\n"
+                           f"{r['toneladas']:z,.0f} T · PCS {r['pcs']:z,.0f} kcal/kg" + ("" if mes in meses_fbl3n else sin_ajustes)))
+        series.append({"nombre": nombre, "clase": color.get(material, "cat-8"), "puntos": puntos})
+    contexto["grafico"] = charts.lineas_mensuales(
+        series, _mes_corto, lambda v: f"{v:z,.2f}",
+        referencias=[{"valor": resumen["costo_gj"], "clase": "referencia-neutra",
+                      "texto": f"Promedio del período: S/ {resumen['costo_gj']:z,.2f} por GJ"}])
+
+    # Evolución mensual del S/ por GJ (filas: proveedores o materiales).
     meses = sorted(df["mes"].unique())
     claves = ["proveedor"] if un_material else ["material_codigo", "centro"]
     filas_mes = []
     for clave, g in df.groupby(claves):
         clave = clave if isinstance(clave, tuple) else (clave,)
-        por_mes = {m: q.resumen_energia(gm)["costo_gcal"] for m, gm in g.groupby("mes")}
+        por_mes = {m: q.resumen_energia(gm)["costo_gj"] for m, gm in g.groupby("mes")}
         nombre = clave[0] if un_material else f"{g['texto_breve'].iloc[0]} ({q.nombre_centro(clave[1])})"
         filas_mes.append({"nombre": nombre, "valores": [por_mes.get(m) for m in meses],
-                          "total": q.resumen_energia(g)["costo_gcal"]})
+                          "total": q.resumen_energia(g)["costo_gj"]})
     filas_mes.sort(key=lambda f: f["total"])
-    total_mes = {m: q.resumen_energia(gm)["costo_gcal"] for m, gm in df.groupby("mes")}
+    total_mes = {m: q.resumen_energia(gm)["costo_gj"] for m, gm in df.groupby("mes")}
     contexto["mensual"] = {
-        "meses": [q.formato_mes_anio_abrev(m) for m in meses], "meses_fecha": meses, "filas": filas_mes,
-        "total": [total_mes.get(m) for m in meses], "total_periodo": resumen["costo_gcal"],
+        "meses": [q.formato_mes_anio_abrev(m) + ("" if m in meses_fbl3n else " *") for m in meses],
+        "sin_fbl3n": any(m not in meses_fbl3n for m in meses), "meses_fecha": meses, "filas": filas_mes,
+        "total": [total_mes.get(m) for m in meses], "total_periodo": resumen["costo_gj"],
     }
     return contexto
 
@@ -255,11 +274,13 @@ def exportar_energia(request):
     buffer = io.BytesIO()
     nombres = {
         "material_codigo": "Material", "texto_breve": "Descripción", "centro": "Centro", "proveedor": "Proveedor",
-        "documentos": "Documentos", "toneladas": "Toneladas secas", "gcal": "Energía (Gcal)",
-        "importe": "Importe (S/)", "premio": "Premio/castigo (S/)", "pcs": "PCS (kcal/kg)", "cenizas": "Cenizas (%)",
-        "precio_base": "Precio base (S/ por T)", "precio_efectivo": "Precio efectivo (S/ por T)",
-        "costo_gcal": "Costo efectivo (S/ por Gcal)", "costo_gcal_base": "Costo a precio base (S/ por Gcal)",
-        "premio_gcal": "Premio/castigo (S/ por Gcal)",
+        "documentos": "Documentos", "toneladas": "Toneladas", "gj": "Energía (GJ)",
+        "importe": "Importe con valores agregados (S/)", "importe_mb51": "Importe MB51 (S/)", "premio": "Premio/castigo (S/)",
+        "ajuste": "Valores agregados (S/)", "pcs": "PCS (kcal/kg)", "cenizas": "Cenizas (%)",
+        "precio_base": "Precio de contrato (S/ por T)", "ajuste_t": "Valores agregados (S/ por T)",
+        "precio_efectivo": "Precio efectivo (S/ por T)",
+        "costo_gj": "Costo efectivo (S/ por GJ)", "costo_gj_base": "Costo a precio de contrato (S/ por GJ)",
+        "premio_gj": "Premio/castigo (S/ por GJ)", "ajuste_gj": "Valores agregados (S/ por GJ)",
     }
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         if filtros is None or df.empty:
@@ -277,8 +298,8 @@ def exportar_energia(request):
                 for k, g in mensual.groupby(["Mes", "proveedor", "material_codigo", "texto_breve", "centro"])
             ]).rename(columns=nombres).to_excel(writer, sheet_name="Mensual", index=False)
             df[["fecha", "material_codigo", "texto_breve", "centro", "proveedor", "ticket", "documento", "toneladas",
-                "pcs", "cenizas", "gcal", "precio_base", "premio", "precio_efectivo", "importe",
-                "costo_gcal_base", "costo_gcal"]].rename(columns={
+                "pcs", "cenizas", "gj", "importe_mb51", "premio", "ajuste", "importe",
+                "costo_gj_base", "costo_gj"]].rename(columns={
                     **nombres, "fecha": "Fecha", "ticket": "Ticket", "documento": "Documento material",
                 }).to_excel(writer, sheet_name="Por documento", index=False)
         for hoja in writer.book.worksheets:

@@ -9,11 +9,12 @@ from dashboard import queries as q
 _ZONAS_PLANIFICACION = [
     ("indicadores", "Indicadores", "Resumen de todas las zonas", []),
     ("cumplimiento", "Cumplimiento", "Plan de abastecimiento vs ingresos",
-     ["sec-plan-mensual", "sec-plan-detalle", "sec-cumplimiento-mensual", "sec-entregas"]),
+     ["sec-plan-mensual", "sec-plan-detalle", "sec-cumplimiento-mensual"]),
     ("consumo", "Consumo", "Plan vs real y consumo por T", ["sec-consumo", "sec-consumo-especifico"]),
     ("inventario", "Inventario", "Cobertura y proyección S&OP", ["sec-cobertura", "sec-proyeccion"]),
-    ("precios", "Precios e IPU", "Precios de entrada e inflación", ["sec-precios", "sec-inflacion", "sec-inflacion-mensual"]),
-    ("calidad", "Calidad y energía", "Análisis, premios y costo por Gcal", ["sec-calidad", "sec-premios", "sec-energia"]),
+    ("precios", "Precios e IPU", "Precios de entrada, real vs S&OP e inflación",
+     ["sec-precios", "sec-precio-real-sop", "sec-inflacion", "sec-inflacion-mensual"]),
+    ("calidad", "Calidad y energía", "Análisis, premios y costo por GJ", ["sec-calidad", "sec-premios", "sec-energia"]),
     # Pedido del usuario (2026-10-29): escenarios futuros de stock y precios. Desde
     # el 2026-11-03: inventario valorizado con la versión de precios de cada S&OP.
     ("simulacion", "Simulación", "Inventario valorizado y precios S&OP",
@@ -55,7 +56,7 @@ PLAN_PROVISIONAL_LOGISTICA = ()
 _ZONAS_LOGISTICA = [
     ("indicadores", "Indicadores", "Resumen de cumplimiento", []),
     ("cumplimiento", "Cumplimiento", "Plan de abastecimiento vs ingresos",
-     ["sec-plan-mensual", "sec-plan-detalle", "sec-cumplimiento-mensual", "sec-entregas"]),
+     ["sec-plan-mensual", "sec-plan-detalle", "sec-cumplimiento-mensual"]),
     ("transporte", "Transporte", "Tiempos, carga, transportistas y flota", ["sec-transporte"]),
     ("fletes", "Fletes", "Costo de transporte", []),
 ]
