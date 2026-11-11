@@ -321,3 +321,67 @@ class ReglasYMetasTest(SimpleTestCase):
         with self.assertRaises(ValueError):
             self.guardar({"cat|EMPAQUES|pmp_dias": "45", "pcs|M1": "siete mil"})
         self.assertEqual(self.reglas.read_text(encoding="utf-8"), antes)
+
+
+class EscenariosSopTest(SimpleTestCase):
+    """Simulación de compras y traslados (gestion/escenarios_sop.py): partición
+    del abastecimiento, valores que van al archivo y escritura del Excel."""
+
+    def setUp(self):
+        from gestion import escenarios_sop
+        self.e = escenarios_sop
+        self.mes = D(2027, 1, 1)
+        self.base = pd.DataFrame([
+            # Material comprado en Atocongo que además envía a Condorcocha (regla del S&OP).
+            {"material_codigo": "06-00000003", "centro": "U001", "mes": self.mes, "abastecimiento": 100.0,
+             "traslado": 40.0, "traslado_recibido": 0.0, "texto_breve": "M1"},
+            {"material_codigo": "06-00000003", "centro": "U002", "mes": self.mes, "abastecimiento": 40.0,
+             "traslado": 0.0, "traslado_recibido": 40.0, "texto_breve": "M1"},
+            {"material_codigo": "07-00000001", "centro": "U001", "mes": self.mes, "abastecimiento": 25.0,
+             "traslado": 0.0, "traslado_recibido": 0.0, "texto_breve": "M2"},
+        ])
+
+    def test_compras_y_traslado_recibido_por_celda_y_pares(self):
+        celdas = self.e.movimientos_por_celda(self.base)
+        self.assertEqual(celdas[("06-00000003", "U002", self.mes)], {"compras": 0.0, "recibido": 40.0, "traslado": 0.0})
+        self.assertEqual(celdas[("06-00000003", "U001", self.mes)]["traslado"], 40.0)
+        de_quien, a_quien = self.e.pares_traslado(self.base)
+        self.assertEqual(de_quien, {("06-00000003", "U002"): "U001"})
+        self.assertEqual(a_quien, {("06-00000003", "U001"): "U002"})
+
+    def test_el_archivo_recibe_compras_mas_traslado(self):
+        escenario = {"cambios": {
+            "compras": {"07-00000001|U001|2027-01": {"base": 25.0, "valor": 30.0}},
+            "traslados": {"06-00000003|U001|U002|2027-01": {"base": 40.0, "valor": 45.0}}}}
+        objetivo = self.e._valores_objetivo(escenario, self.e.movimientos_por_celda(self.base))
+        self.assertEqual(objetivo, {("07-00000001", "U001", self.mes): 30.0, ("06-00000003", "U002", self.mes): 45.0})
+        self.assertEqual(self.e._conflictos(escenario, self.e.movimientos_por_celda(self.base)), [])
+        escenario["cambios"]["compras"]["07-00000001|U001|2027-01"]["base"] = 20.0
+        self.assertEqual(self.e._conflictos(escenario, self.e.movimientos_por_celda(self.base)), ["07-00000001|U001|2027-01"])
+
+    def test_cambios_no_validos(self):
+        with self.assertRaises(self.e.ErrorEscenario):
+            self.e._limpiar_cambios({"compras": {"07-00000001|U001|2027-01": {"base": 1, "valor": "mucho"}}})
+        with self.assertRaises(self.e.ErrorEscenario):
+            self.e._limpiar_cambios({"compras": {"sin formato": {"base": 1, "valor": 2}}})
+
+    def test_escritura_del_excel_con_fila_nueva_y_fila_fusionada(self):
+        import os
+        import tempfile
+        import openpyxl
+        ruta = os.path.join(tempfile.mkdtemp(), "Abastecimiento SOP - Enero 2027.xlsx")
+        libro = openpyxl.Workbook()
+        hoja = libro.active
+        hoja.append(["Cod. SAP", "Centro Destino", "Material", "Destino", datetime.datetime(2027, 1, 1)])
+        hoja.append(["07-00000001 ", "U001", "M2", "ATOCONGO", 25])
+        # Carbón Terceros y su Chancado van a la misma fila de la proyección.
+        hoja.append(["06-00000005", "U002", "M3", "CONDORCOCHA", 10])
+        hoja.append(["14-00001112", "U002", "M4", "CONDORCOCHA", 4])
+        libro.save(ruta)
+        self.e._escribir_abastecimiento(ruta, {
+            ("07-00000001", "U001", self.mes): 30.0, ("06-00000005", "U002", self.mes): 20.0,
+            ("07-00000009", "U002", self.mes): 7.5}, {("07-00000009", "U002"): "M5"})
+        filas = list(openpyxl.load_workbook(ruta).active.iter_rows(min_row=2, values_only=True))
+        self.assertEqual(filas[0][4], 30)
+        self.assertEqual((filas[1][4], filas[2][4]), (16, 4))  # 20 en total: 16 + los 4 del chancado
+        self.assertEqual(filas[3], ("07-00000009", "U002", "M5", "CONDORCOCHA", 7.5))

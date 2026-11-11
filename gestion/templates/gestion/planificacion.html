@@ -31,6 +31,8 @@
     {% endfor %}
 
     <script src="{% static 'gestion/js/zonas.js' %}?v={% version_estatico 'gestion/js/zonas.js' %}"></script>
+    {# Simulación de compras y traslados en el Movimiento de inventario (pestaña Inventario). #}
+    <script src="{% static 'gestion/js/simulacion_inventario.js' %}?v={% version_estatico 'gestion/js/simulacion_inventario.js' %}"></script>
   {% endif %}
 
 

@@ -1,5 +1,6 @@
 import base64
 import datetime
+import json
 import os
 import re
 import time
@@ -11,7 +12,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.test import Client
 
-from gestion import views
+from gestion import escenarios_sop, views
 
 _GESTION = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ESTATICOS = os.path.join(_GESTION, "static")
@@ -224,6 +225,11 @@ class Command(BaseCommand):
 
         html = re.sub(r'<link rel="stylesheet" href="/static/([^"?]+)[^"]*">',
                       lambda m: f"<style>{leer(m.group(1))}</style>", html)
+        # Simulación de compras y traslados (Inventario de Planificación): los escenarios
+        # guardados en el localhost se ven en la copia; los nuevos quedan en el navegador.
+        if "simulacion_inventario.js" in html:
+            escenarios = json.dumps(escenarios_sop.listar(), ensure_ascii=False).replace("</", "<\\/")
+            html = html.replace("</head>", f"<script>window.uperuEscenariosSop = {escenarios};</script>\n</head>", 1)
         diferidos = []
 
         def script(m):

@@ -6,7 +6,7 @@ import datetime
 import pandas as pd
 from dashboard import queries as q
 
-from .. import charts
+from .. import charts, escenarios_sop
 from .comun import _mes_corto, _opciones_categoria_centro, _opciones_material, _por_materiales, _por_str, _selector_material
 
 
@@ -414,7 +414,7 @@ def _fila_cobertura(material, texto, centro, inicial, finales, flujo, minimos, m
             "cobertura_inicial": _cobertura_meses(inicial, flujo[:_COBERTURA_MESES_SIGUIENTES]), "celdas": celdas}
 
 
-def _movimientos_por_material(grupos, matriz):
+def _movimientos_por_material(grupos, matriz, pares):
     """Movimiento de inventario por material, como las hojas de la corrida
     S&OP en Excel (pedido del usuario, 2026-11-10: "a fin de dar un vistazo
     rápido de cuándo es el mes donde existe quiebre de stock"): por cada
@@ -428,34 +428,49 @@ def _movimientos_por_material(grupos, matriz):
     traslado que trae el S&OP y, en Condorcocha, todo el abastecimiento de lo
     que solo llega desde Atocongo (q.MATERIALES_TRASLADO_ATOCONGO_CONDORCOCHA:
     Clinker y Carbón Importado). Sin compras, la fila Abastecimiento no va.
-    Un movimiento menor a media tonelada se muestra como "—" (None)."""
+    Un movimiento menor a media tonelada se muestra como "—" (None).
+
+    Cada celda lleva además su valor sin redondear ("dato", en positivo) y
+    cada bloque, de qué centro recibe y a cuál envía (`pares`, de
+    escenarios_sop.pares_traslado sobre todo el S&OP): con eso
+    js/simulacion_inventario.js recalcula la tabla al cambiar compras y
+    traslados (pedido del usuario, 2026-11-11)."""
     por_clave = {clave: g.sort_values("mes") for clave, g in grupos}
+    de_quien, a_quien = pares
 
     def flujo(valores, signo):
         return [signo * float(v) if abs(v) >= 0.5 else None for v in valores]
 
+    def dato(valor):
+        return f"{float(valor):.4f}".rstrip("0").rstrip(".")
+
+    def nulo(valor):
+        return "" if valor is None or valor != valor else dato(valor)
+
     bloques = []
     for f in matriz:
-        g = por_clave[(f["material_codigo"], f["centro"])]
-        solo_traslado = (f["centro"] == q.CENTRO_CONDORCOCHA
-                         and f["material_codigo"] in q.MATERIALES_TRASLADO_ATOCONGO_CONDORCOCHA)
-        recibido = g["abastecimiento"] if solo_traslado else g["traslado_recibido"]
-        compras, recibidos, traslados = (flujo(g["abastecimiento"] - recibido, 1), flujo(recibido, 1),
-                                         flujo(g["traslado"], -1))
-        filas = [("Inventario inicial", [float(v) for v in g["stock_inicial"]], "inicial")]
-        hay_recibidos = any(v is not None for v in recibidos)
-        if not hay_recibidos or any(v is not None for v in compras):
-            filas.append(("Abastecimiento", compras, "entrada"))
+        clave = (f["material_codigo"], f["centro"])
+        g = por_clave[clave]
+        recibido = g["abastecimiento"] if escenarios_sop.solo_traslado(*clave) else g["traslado_recibido"]
+        compras = g["abastecimiento"] - recibido
+        filas = [("Inventario inicial", [float(v) for v in g["stock_inicial"]], "inicial", "inicial", g["stock_inicial"])]
+        hay_recibidos = any(v is not None for v in flujo(recibido, 1))
+        if not hay_recibidos or any(v is not None for v in flujo(compras, 1)):
+            filas.append(("Abastecimiento", flujo(compras, 1), "entrada", "compras", compras))
         if hay_recibidos:
-            filas.append(("Traslado recibido", recibidos, "entrada"))
-        filas.append(("Consumo", flujo(g["consumo"], -1), "salida"))
-        if any(v is not None for v in traslados):
-            filas.append(("Traslados a otro centro", traslados, "salida"))
+            filas.append(("Traslado recibido", flujo(recibido, 1), "entrada", "recibido", recibido))
+        filas.append(("Consumo", flujo(g["consumo"], -1), "salida", "consumo", g["consumo"]))
+        if any(v is not None for v in flujo(g["traslado"], -1)):
+            filas.append(("Traslados a otro centro", flujo(g["traslado"], -1), "salida", "traslado", g["traslado"]))
         bloques.append({
             "material_codigo": f["material_codigo"], "texto_breve": f["texto_breve"], "centro": f["centro"],
             "stock_minimo": f["stock_minimo"], "stock_maximo": f["stock_maximo"], "quiebre_corto": f["quiebre_corto"],
-            "filas": [{"concepto": c, "valores": v, "clase": k} for c, v, k in filas],
-            "finales": f["celdas"],
+            "envia": de_quien.get(clave, ""), "recibe": a_quien.get(clave, ""),
+            "filas": [{"concepto": c, "clase": k, "clave": ck,
+                       "celdas": [{"valor": v, "dato": dato(abs(d) if ck != "inicial" else d)} for v, d in zip(vals, datos)]}
+                      for c, vals, k, ck, datos in filas],
+            "finales": [{**celda, "dato": dato(celda["valor"]), "minimo": nulo(mi), "maximo": nulo(ma)}
+                        for celda, mi, ma in zip(f["celdas"], g["stock_minimo"], g["stock_maximo"])],
         })
     return bloques
 
@@ -688,7 +703,7 @@ def _contexto_proyeccion_sop(request):
         })
     matriz.sort(key=lambda f: (f["quiebre"] is None, f["quiebre"] or datetime.date.max, f["centro"], f["material_codigo"]))
     matriz_cobertura = [fc for f in matriz for fc in f["filas_cobertura"]]
-    movimientos = _movimientos_por_material(grupos, matriz)
+    movimientos = _movimientos_por_material(grupos, matriz, escenarios_sop.pares_traslado(base))
 
     # Diagnóstico de mínimos/máximos, con los mismos filtros de la sección.
     diagnostico = q.diagnostico_minmax_sop(snapshot_sel)

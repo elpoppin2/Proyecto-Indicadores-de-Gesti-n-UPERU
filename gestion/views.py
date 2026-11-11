@@ -17,6 +17,7 @@ from dashboard import queries as q
 from .vistas.categoria import categoria_detalle, exportar_excel, rotacion_materiales_pagina
 from .vistas.comun import _categorias_disponibles, _slug
 from .vistas.detalle import desglose_filas
+from .vistas.escenarios import escenarios_aplicar, escenarios_eliminar, escenarios_guardar, escenarios_lista
 from .vistas.overview import overview
 from .vistas.plan_calidad import _contexto_energia, exportar_energia, exportar_premios
 from .vistas.plan_consumo import _contexto_consumo, _contexto_consumo_especifico
@@ -32,6 +33,7 @@ __all__ = [
     "asistente_planificacion", "exportar_premios", "exportar_energia", "descargar_precios_sop",
     "plantilla_precios_sop", "categoria_detalle", "exportar_excel",
     "rotacion_materiales_pagina", "desglose_filas", "reglas_y_metas",
+    "escenarios_lista", "escenarios_guardar", "escenarios_eliminar", "escenarios_aplicar",
     # Usados por los comandos (calentar_cache, exportar_*_html, revisar_paginas, verificar_calculos)
     "q", "_categorias_disponibles", "_slug", "_zonas_categoria", "_ZONAS_PLANIFICACION", "_ZONAS_LOGISTICA",
     "_area_ejecutiva", "_html_indicadores", "_html_indicadores_cuadrantes", "_contexto_consumo", "_contexto_consumo_especifico",

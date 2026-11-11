@@ -232,18 +232,19 @@
       <span class="leyenda-item"><span class="leyenda-marca estado-en_rango"></span>En rango</span>
       <span class="leyenda-item"><span class="leyenda-marca estado-sobre_maximo"></span>Sobre máximo</span>
     </div>
+    {# data-*: valores sin redondear para la simulación de compras y traslados (js/simulacion_inventario.js, pedido del usuario 2026-11-11). #}
     <div class="tabla-scroll tabla-movimiento">
-      <table class="matriz-movimiento" data-sin-orden>
+      <table class="matriz-movimiento" data-sin-orden data-simulable data-sop="{{ p.snapshot|fechaiso }}" data-sop-texto="{{ p.snapshot|mesanio }}" data-escenarios-url="{% url 'escenarios_lista' %}">
         <thead>
           <tr>
             <th class="mov-fija mov-f1">Material</th><th class="mov-fija mov-f2">Concepto</th>
-            {% for m in p.meses %}<th class="num">{{ m.corto }}</th>{% endfor %}
+            {% for m in p.meses %}<th class="num" data-mes="{{ m.fecha|date:'Y-m' }}">{{ m.corto }}</th>{% endfor %}
           </tr>
         </thead>
         {% for b in p.movimientos %}
-          <tbody>
+          <tbody data-mat="{{ b.material_codigo }}" data-centro="{{ b.centro }}" data-envia="{{ b.envia }}" data-recibe="{{ b.recibe }}">
             {% for fila in b.filas %}
-              <tr class="mov-{{ fila.clase }}">
+              <tr class="mov-{{ fila.clase }}" data-concepto="{{ fila.clave }}">
                 {% if forloop.first %}
                   <th scope="rowgroup" rowspan="{{ b.filas|length|add:1 }}" class="mov-fija mov-f1">
                     <span class="mov-codigo">{{ b.material_codigo }} · {{ b.centro|centro }}</span>
@@ -253,12 +254,12 @@
                   </th>
                 {% endif %}
                 <td class="mov-fija mov-f2">{{ fila.concepto }}</td>
-                {% for v in fila.valores %}<td class="num">{{ v|numero:0|default:"—" }}</td>{% endfor %}
+                {% for c in fila.celdas %}<td class="num" data-v="{{ c.dato }}">{{ c.valor|numero:0|default:"—" }}</td>{% endfor %}
               </tr>
             {% endfor %}
-            <tr class="mov-final">
+            <tr class="mov-final" data-concepto="final">
               <td class="mov-fija mov-f2">Inventario final</td>
-              {% for c in b.finales %}<td class="num estado-{{ c.estado }}">{{ c.valor|numero:0 }}</td>{% endfor %}
+              {% for c in b.finales %}<td class="num estado-{{ c.estado }}" data-v="{{ c.dato }}" data-min="{{ c.minimo }}" data-max="{{ c.maximo }}">{{ c.valor|numero:0 }}</td>{% endfor %}
             </tr>
           </tbody>
         {% endfor %}

@@ -401,6 +401,10 @@ leerDatos().then(iniciarPlanificacion, error => {
 
 // Todo lo que sigue usa los datos (hasta el final de este <script>).
 function iniciarPlanificacion(DATA){
+// Simulación de compras y traslados (simulacion_inventario.js): en la copia se ven los
+// escenarios guardados en el localhost al exportar y los nuevos quedan en este navegador.
+window.uperuSimulacionCopia = true;
+window.uperuEscenariosSop = DATA.escenarios || [];
 const MESES_NOMBRE = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 const MESES_ABREV = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
 function mesLabel(m){ const [y,mo] = m.split("-").map(Number); return MESES_NOMBRE[mo-1].charAt(0).toUpperCase()+MESES_NOMBRE[mo-1].slice(1)+" - "+y; }
@@ -1336,26 +1340,31 @@ function renderSeccion5(){
   // con las compras; salidas en negativo; menos de media tonelada = "—".
   const SOLO_TRASLADO = new Set(DATA.solo_traslado || []);
   const flujo = (valores, signo) => valores.map(v => Math.abs(v) >= 0.5 ? signo * v : null);
+  // Valores sin redondear y par de traslado de cada bloque: la simulación de compras y
+  // traslados (simulacion_inventario.js) recalcula la tabla con ellos.
+  const dato = v => (nulo(v) ? "" : String(Math.round(v * 10000) / 10000));
+  const pares = (DATA.pares_traslado || {})[snapshot] || {};
   const movimientos = matriz.map(f => {
     const g = grupos.get(f.material_codigo+"|"+f.centro);
     const recibido = g.map(r => SOLO_TRASLADO.has(f.material_codigo+"|"+f.centro) ? r.abastecimiento : (r.traslado_recibido || 0));
-    const compras = flujo(g.map((r, i) => r.abastecimiento - recibido[i]), 1), recibidos = flujo(recibido, 1);
+    const comprasT = g.map((r, i) => r.abastecimiento - recibido[i]);
+    const compras = flujo(comprasT, 1), recibidos = flujo(recibido, 1);
     const traslados = flujo(g.map(r => r.traslado), -1), hayRecibidos = recibidos.some(v => v !== null);
-    const filasMov = [["Inventario inicial", g.map(r => r.stock_inicial), "inicial"]];
-    if(!hayRecibidos || compras.some(v => v !== null)) filasMov.push(["Abastecimiento", compras, "entrada"]);
-    if(hayRecibidos) filasMov.push(["Traslado recibido", recibidos, "entrada"]);
-    filasMov.push(["Consumo", flujo(g.map(r => r.consumo), -1), "salida"]);
-    if(traslados.some(v => v !== null)) filasMov.push(["Traslados a otro centro", traslados, "salida"]);
-    return {...f, filasMov};
+    const filasMov = [["Inventario inicial", g.map(r => r.stock_inicial), "inicial", "inicial", g.map(r => r.stock_inicial)]];
+    if(!hayRecibidos || compras.some(v => v !== null)) filasMov.push(["Abastecimiento", compras, "entrada", "compras", comprasT]);
+    if(hayRecibidos) filasMov.push(["Traslado recibido", recibidos, "entrada", "recibido", recibido]);
+    filasMov.push(["Consumo", flujo(g.map(r => r.consumo), -1), "salida", "consumo", g.map(r => r.consumo)]);
+    if(traslados.some(v => v !== null)) filasMov.push(["Traslados a otro centro", traslados, "salida", "traslado", g.map(r => r.traslado)]);
+    return {...f, filasMov, par: pares[f.material_codigo+"|"+f.centro] || {}, limites: g.map(r => [r.stock_minimo, r.stock_maximo])};
   });
-  const htmlMovimientos = movimientos.map(b => `<tbody>${b.filasMov.map(([concepto, valores, clase], i) => `<tr class="mov-${clase}">
+  const htmlMovimientos = movimientos.map(b => `<tbody data-mat="${b.material_codigo}" data-centro="${b.centro}" data-envia="${b.par.envia || ""}" data-recibe="${b.par.recibe || ""}">${b.filasMov.map(([concepto, valores, clase, clave, crudos], i) => `<tr class="mov-${clase}" data-concepto="${clave}">
       ${i ? "" : `<th scope="rowgroup" rowspan="${b.filasMov.length + 1}" class="mov-fija mov-f1">
         <span class="mov-codigo">${b.material_codigo} · ${nombreCentro(b.centro)}</span>
         <span class="mov-texto">${b.texto_breve}</span>
         <span class="mov-limites">Mín. ${numeroO(b.stock_minimo)} · Máx. ${numeroO(b.stock_maximo)}</span>
         ${b.quiebre ? `<span class="mov-quiebre">Quiebre: ${mesCorto(b.quiebre)}</span>` : ""}</th>`}
-      <td class="mov-fija mov-f2">${concepto}</td>${valores.map(v => `<td class="num">${v === null ? "—" : numero(v)}</td>`).join("")}</tr>`).join("")}
-    <tr class="mov-final"><td class="mov-fija mov-f2">Inventario final</td>${b.celdas.map(c => `<td class="num estado-${c.estado}">${numero(c.valor)}</td>`).join("")}</tr></tbody>`).join("");
+      <td class="mov-fija mov-f2">${concepto}</td>${valores.map((v, j) => `<td class="num" data-v="${dato(clave === "inicial" ? crudos[j] : Math.abs(crudos[j]))}">${v === null ? "—" : numero(v)}</td>`).join("")}</tr>`).join("")}
+    <tr class="mov-final" data-concepto="final"><td class="mov-fija mov-f2">Inventario final</td>${b.celdas.map((c, j) => `<td class="num estado-${c.estado}" data-v="${dato(c.valor)}" data-min="${dato(b.limites[j][0])}" data-max="${dato(b.limites[j][1])}">${numero(c.valor)}</td>`).join("")}</tr></tbody>`).join("");
 
   // Material, descripción, centro, mínimo y máximo fijos al desplazar los meses (.matriz-proyeccion en dashboard.css).
   const fijasCabecera = (mi, ma) => `<th class="col-fija fija-1">Material</th><th class="col-fija fija-2">Descripción</th>` +
@@ -1471,9 +1480,9 @@ function renderSeccion5(){
       <span class="leyenda-item"><span class="leyenda-marca estado-sobre_maximo"></span>Sobre máximo</span>
     </div>
     <div class="tabla-scroll tabla-movimiento">
-      <table class="matriz-movimiento" data-sin-orden>
+      <table class="matriz-movimiento" data-sin-orden data-simulable data-sop="${snapshot}" data-sop-texto="${mesLabel(snapshot.slice(0, 7))}">
         <thead><tr><th class="mov-fija mov-f1">Material</th><th class="mov-fija mov-f2">Concepto</th>
-          ${meses.map(m=>`<th class="num">${mesCorto(m)}</th>`).join("")}</tr></thead>
+          ${meses.map(m=>`<th class="num" data-mes="${m.slice(0, 7)}">${mesCorto(m)}</th>`).join("")}</tr></thead>
         ${htmlMovimientos}
       </table>
     </div>

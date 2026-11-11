@@ -47,6 +47,7 @@
   --down: #ff0000;
   --alerta-bg: #fdecec;
   --warn: #9a6400;
+  --sim: #2f6fd6; --sim-texto: #1d55b0;  /* celdas cambiadas en la simulación de inventario */
   --radio: 8px;
   --shadow: 0 1px 2px rgba(20, 24, 28, .04);
   --shadow-flotante: 0 1px 3px rgba(20, 24, 28, .08), 0 12px 32px -12px rgba(20, 24, 28, .28);
@@ -60,7 +61,7 @@
     --table-line: #4b5158; --table-header: #c4c9ce; --th-bg: #30343a; --th-ink: #eceef0;
     --accent: #ff0000; --accent-ink: #17191b; --accent-texto: #ff4d4d; --down-texto: #ff4d4d;
     --up: #6cc08c; --down: #ff0000;
-    --alerta-bg: #3a1f1f; --warn: #e3ad4f;
+    --alerta-bg: #3a1f1f; --warn: #e3ad4f; --sim: #6b9cf0; --sim-texto: #9dbcf5;
     --shadow: 0 1px 2px rgba(0, 0, 0, .25);
     --shadow-flotante: 0 1px 3px rgba(0, 0, 0, .4), 0 14px 36px -12px rgba(0, 0, 0, .7);
     --cat-1: #3987e5; --cat-2: #d95926; --cat-3: #199e70; --cat-4: #c98500; --cat-5: #d55181; --cat-6: #008300; --cat-7: #9085e9; --cat-8: #e66767;
@@ -73,7 +74,7 @@
   --table-line: #4b5158; --table-header: #c4c9ce; --th-bg: #30343a; --th-ink: #eceef0;
   --accent: #ff0000; --accent-ink: #17191b; --accent-texto: #ff4d4d; --down-texto: #ff4d4d;
   --up: #6cc08c; --down: #ff0000;
-  --alerta-bg: #3a1f1f; --warn: #e3ad4f;
+  --alerta-bg: #3a1f1f; --warn: #e3ad4f; --sim: #6b9cf0; --sim-texto: #9dbcf5;
   --shadow: 0 1px 2px rgba(0, 0, 0, .25);
   --shadow-flotante: 0 1px 3px rgba(0, 0, 0, .4), 0 14px 36px -12px rgba(0, 0, 0, .7);
   --cat-1: #3987e5; --cat-2: #d95926; --cat-3: #199e70; --cat-4: #c98500; --cat-5: #d55181; --cat-6: #008300; --cat-7: #9085e9; --cat-8: #e66767;
@@ -1821,6 +1822,54 @@ details.detalle-calculo[open] > summary.boton-detalle { margin-bottom: 12px; }
   .matriz-movimiento tbody .mov-f1 { box-shadow: 2px 0 0 var(--table-line), -2px 0 0 var(--surface); }
   .matriz-movimiento thead th.mov-f1 { box-shadow: inset 0 -1px 0 var(--table-line), 2px 0 0 var(--table-line), -2px 0 0 var(--th-bg); }
 }
+/* Simulación de compras y traslados (js/simulacion_inventario.js, pedido del
+   usuario 2026-11-11): barra sobre la tabla, celdas editables con línea
+   punteada, lo cambiado en azul (no compite con los colores de estado) y el
+   inventario que cambia por eso con una barra azul abajo. */
+.sim-barra { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; margin: 2px 0 10px; }
+.sim-controles { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; }
+.sim-controles[hidden] { display: none; }
+.sim-campo { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.sim-campo select, .sim-campo input {
+  font: inherit; font-size: 13.5px; font-weight: 400; height: 34px; padding: 0 10px; border-radius: 6px;
+  border: 1px solid var(--table-line); background: var(--surface); color: var(--ink); min-width: 200px; box-sizing: border-box;
+}
+.sim-campo-nombre input { min-width: 240px; }
+.sim-alternar, .sim-boton {
+  height: 34px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--table-line); background: var(--surface);
+  color: var(--ink); font: 500 13.5px var(--f-texto); cursor: pointer; transition: border-color .15s, background-color .15s, transform .1s;
+}
+.sim-alternar:hover, .sim-boton:hover:not(:disabled) { border-color: var(--sim); }
+.sim-alternar:active, .sim-boton:active:not(:disabled) { transform: translateY(1px); }
+.sim-alternar[aria-pressed="true"] { background: var(--sim-texto); border-color: var(--sim-texto); color: var(--bg); }
+.sim-boton-aplicar { color: var(--accent-texto); border-color: color-mix(in srgb, var(--accent) 45%, var(--table-line)); }
+.sim-boton:disabled { opacity: .5; cursor: not-allowed; }
+.sim-boton.ocupado { opacity: .7; pointer-events: none; }
+.sim-boton[hidden] { display: none; }
+.sim-alternar:focus-visible, .sim-boton:focus-visible, .sim-campo select:focus-visible, .sim-campo input:focus-visible {
+  outline: 2px solid var(--sim); outline-offset: 1px;
+}
+.sim-estado { flex-basis: 100%; margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); max-width: 120ch; }
+.sim-estado:empty { display: none; }
+.sim-estado.sim-error { color: var(--down-texto); font-weight: 500; }
+.matriz-movimiento td.sim-editable { cursor: text; box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--sim) 55%, transparent); }
+.matriz-movimiento td.sim-editable:hover { background: color-mix(in srgb, var(--sim) 7%, transparent); }
+.matriz-movimiento td.sim-editable:focus { outline: 2px solid var(--sim); outline-offset: -2px; }
+.matriz-movimiento td.sim-cambiado, .matriz-movimiento .mov-salida td.sim-cambiado {
+  background: color-mix(in srgb, var(--sim) 15%, transparent); color: var(--sim-texto); font-weight: 600;
+}
+.matriz-movimiento td.sim-afectado { box-shadow: inset 0 -3px 0 var(--sim); }
+.matriz-movimiento .mov-quiebre.sim-resuelto { color: var(--sim-texto); }
+.matriz-movimiento td .sim-input {
+  width: 100%; min-width: 84px; box-sizing: border-box; padding: 2px 4px; border: 0; border-radius: 3px;
+  font: inherit; text-align: right; color: var(--ink); background: var(--surface); outline: 2px solid var(--sim);
+}
+.matriz-movimiento td .sim-input[aria-invalid="true"] { outline-color: var(--down); }
+@media (max-width: 640px) {
+  .sim-campo, .sim-campo select, .sim-campo input { min-width: 0; width: 100%; font-size: 16px; }
+  .sim-controles { width: 100%; }
+}
+@media print { .sim-barra { display: none; } }
 /* Mes sin compra: se repite el último precio, en gris y cursiva. */
 .matriz-tco td.tco-repetido { color: var(--muted); font-style: italic; }
 /* IPU de un material sin compra el año anterior: no entra al IPU. */

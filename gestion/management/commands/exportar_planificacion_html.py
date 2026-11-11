@@ -9,6 +9,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.template.loader import render_to_string
 
 from dashboard import queries as q
+from gestion import escenarios_sop
 
 _GESTION = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PLANTILLA = os.path.join(_GESTION, "report_templates", "planificacion_estatico.html")
@@ -109,7 +110,7 @@ class Command(BaseCommand):
         # HTML solo filtra y suma (ver sección 5 de la plantilla).
         proyeccion_rows = []
         proyeccion_inicial = {}
-        acopio_proyeccion = {}
+        acopio_proyeccion, pares_traslado = {}, {}
         diagnostico_rows = []
         # Meses cerrados de la Evolución de inventario (filtro "Desde"): stock
         # real de cierre por material/centro, el mismo de la web
@@ -133,7 +134,13 @@ class Command(BaseCommand):
                  "parte": f"acopio para {q.nombre_centro(d).title()}"}
                 for (m, c), (p, d) in q.participacion_propia_acopio(fecha_inicial).items()
             ]
-            for r in q.proyeccion_inventario_sop(snapshot).itertuples():
+            proyeccion = q.proyeccion_inventario_sop(snapshot)
+            # De qué centro recibe y a cuál envía cada material/centro (simulación de traslados).
+            de_quien, a_quien = escenarios_sop.pares_traslado(proyeccion)
+            pares_traslado[snapshot.isoformat()] = {
+                f"{m}|{c}": {"envia": de_quien.get((m, c), ""), "recibe": a_quien.get((m, c), "")}
+                for m, c in set(de_quien) | set(a_quien)}
+            for r in proyeccion.itertuples():
                 proyeccion_rows.append({
                     "snapshot": snapshot.isoformat(), "mes": r.mes.isoformat(),
                     "material_codigo": r.material_codigo, "texto_breve": r.texto_breve,
@@ -231,6 +238,8 @@ class Command(BaseCommand):
             "proyeccion_rows": proyeccion_rows, "proyeccion_inicial": proyeccion_inicial,
             # Lo que Condorcocha recibe solo por traslado (Movimiento de inventario por material).
             "solo_traslado": [f"{m}|{q.CENTRO_CONDORCOCHA}" for m in q.MATERIALES_TRASLADO_ATOCONGO_CONDORCOCHA],
+            # Simulación de compras y traslados: pares de traslado y escenarios guardados en el localhost.
+            "pares_traslado": pares_traslado, "escenarios": escenarios_sop.listar(),
             "acopio_proyeccion": acopio_proyeccion,
             "stock_real_rows": stock_real_rows, "cierres_fecha": cierres_fecha, "mov_real_rows": mov_real_rows,
             "diagnostico_rows": diagnostico_rows, "estados_stock": q.ESTADOS_STOCK,            "meses": [m.isoformat() for m in meses],
@@ -253,8 +262,8 @@ class Command(BaseCommand):
         with open(os.path.join(ESTATICOS, "js", "zonas.js"), encoding="utf-8") as f:
             zonas_js = f.read()
         # Transición de los gráficos al abrir cada zona y menú lateral, accesos directos,
-        # tema y filtros flotantes (mismos archivos que el localhost).
-        for nombre in ("graficos.js", "navegacion.js"):
+        # tema y filtros flotantes, y la simulación de compras y traslados (mismos archivos que el localhost).
+        for nombre in ("graficos.js", "navegacion.js", "simulacion_inventario.js"):
             with open(os.path.join(ESTATICOS, "js", nombre), encoding="utf-8") as f:
                 zonas_js += "\n" + f.read()
         # Logo de UNACEM incrustado (el archivo se abre sin servidor).
