@@ -236,8 +236,10 @@ class Command(BaseCommand):
             "meses_fbl3n": sorted(m.isoformat() for m in q.meses_con_fbl3n()),
             "pcs_fijo": next(iter(q.regla_local("pcs_fijo_energia", {}).values()), None),
             "proyeccion_rows": proyeccion_rows, "proyeccion_inicial": proyeccion_inicial,
-            # Lo que Condorcocha recibe solo por traslado (Movimiento de inventario por material).
-            "solo_traslado": [f"{m}|{q.CENTRO_CONDORCOCHA}" for m in q.MATERIALES_TRASLADO_ATOCONGO_CONDORCOCHA],
+            # Lo que llega solo por traslado y lo que llega por compra o por traslado
+            # (Movimiento de inventario por material, escenarios_sop).
+            "solo_traslado": [f"{m}|{c}" for m, c in escenarios_sop.SOLO_TRASLADO],
+            "compra_o_traslado": [f"{m}|{c}" for m, c in escenarios_sop.COMPRA_O_TRASLADO],
             # Simulación de compras y traslados: pares de traslado y escenarios guardados en el localhost.
             "pares_traslado": pares_traslado, "escenarios": escenarios_sop.listar(),
             # Consumo mínimo de la cobertura proyectada (plan_consumo.consumo_minimo_cobertura).

@@ -103,8 +103,9 @@ def correr(stdout=None):
         return
     while True:
         datos = _leer()
+        if datos.get("estado") != "actualizando":  # lanzado a mano, sin regenerar(): el inicio viejo lo daría por vencido
+            datos.update(inicio=_ahora(), motivo="Regeneración manual", mensaje="")
         datos.update(estado="actualizando", repetir=False)
-        datos.setdefault("inicio", _ahora())
         _escribir(datos)
         try:
             call_command("exportar_planificacion_html", rutas["planificacion"], stdout=stdout)

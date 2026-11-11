@@ -1348,9 +1348,11 @@ function renderSeccion5(){
     "; si en los meses siguientes no hay ninguno, el promedio de esos meses en todo el horizonte." : "";
   // Movimiento de inventario por material, como la corrida S&OP en Excel (replica
   // views._movimientos_por_material): lo recibido por traslado en su propia fila
-  // (todo, en lo que Condorcocha recibe solo desde Atocongo) y Abastecimiento solo
-  // con las compras; salidas en negativo; menos de media tonelada = "—".
+  // (todo, en lo que llega solo por traslado) y Abastecimiento solo con las compras;
+  // lo que llega por compra o por traslado, con las dos filas; salidas en negativo;
+  // menos de media tonelada = "—".
   const SOLO_TRASLADO = new Set(DATA.solo_traslado || []);
+  const COMPRA_O_TRASLADO = new Set(DATA.compra_o_traslado || []);
   const flujo = (valores, signo) => valores.map(v => Math.abs(v) >= 0.5 ? signo * v : null);
   // Valores sin redondear y par de traslado de cada bloque: la simulación de compras y
   // traslados (simulacion_inventario.js) recalcula la tabla con ellos.
@@ -1376,23 +1378,22 @@ function renderSeccion5(){
     return x;
   });
   const movimientos = matriz.map(f => {
-    const g = grupos.get(f.material_codigo+"|"+f.centro);
-    const h = historiaDe(f.material_codigo+"|"+f.centro);
+    const clave = f.material_codigo+"|"+f.centro, g = grupos.get(clave), h = historiaDe(clave), par = pares[clave] || {};
     const hayH = campo => h.some(x => Math.abs(x[campo]) >= 0.5);
     const reales = (campo, signo) => h.map(x => (campo === "inicial" || campo === "final") ? x[campo]
       : (x[campo] !== null && Math.abs(x[campo]) >= 0.5 ? signo * x[campo] : null));
-    const recibido = g.map(r => SOLO_TRASLADO.has(f.material_codigo+"|"+f.centro) ? r.abastecimiento : (r.traslado_recibido || 0));
+    const recibido = g.map(r => SOLO_TRASLADO.has(clave) ? r.abastecimiento : (r.traslado_recibido || 0));
     const comprasT = g.map((r, i) => r.abastecimiento - recibido[i]);
     const compras = flujo(comprasT, 1), recibidos = flujo(recibido, 1);
-    const traslados = flujo(g.map(r => r.traslado), -1), hayRecibidos = recibidos.some(v => v !== null) || hayH("recibido");
+    const traslados = flujo(g.map(r => r.traslado), -1), hayRecibidos = recibidos.some(v => v !== null) || hayH("recibido") || !!par.envia;
     const filasMov = [["Inventario inicial", g.map(r => r.stock_inicial), "inicial", "inicial", g.map(r => r.stock_inicial), reales("inicial")]];
-    if(!hayRecibidos || compras.some(v => v !== null) || hayH("compras")) filasMov.push(["Abastecimiento", compras, "entrada", "compras", comprasT, reales("compras", 1)]);
+    if(!hayRecibidos || compras.some(v => v !== null) || hayH("compras") || COMPRA_O_TRASLADO.has(clave)) filasMov.push(["Abastecimiento", compras, "entrada", "compras", comprasT, reales("compras", 1)]);
     if(hayRecibidos) filasMov.push(["Traslado recibido", recibidos, "entrada", "recibido", recibido, reales("recibido", 1)]);
     filasMov.push(["Consumo", flujo(g.map(r => r.consumo), -1), "salida", "consumo", g.map(r => r.consumo), reales("consumo", -1)]);
-    if(traslados.some(v => v !== null) || hayH("traslado")) filasMov.push(["Traslados a otro centro", traslados, "salida", "traslado", g.map(r => r.traslado), reales("traslado", -1)]);
+    if(traslados.some(v => v !== null) || hayH("traslado") || !!par.recibe) filasMov.push(["Traslados a otro centro", traslados, "salida", "traslado", g.map(r => r.traslado), reales("traslado", -1)]);
     if(h.some(x => x.otros !== null && Math.abs(x.otros) >= 0.5))
       filasMov.push(["Otros movimientos y diferencias", g.map(() => null), "otros", "otros", g.map(() => null), reales("otros", 1)]);
-    return {...f, filasMov, finalesReales: reales("final"), par: pares[f.material_codigo+"|"+f.centro] || {}, limites: g.map(r => [r.stock_minimo, r.stock_maximo])};
+    return {...f, filasMov, finalesReales: reales("final"), par, limites: g.map(r => [r.stock_minimo, r.stock_maximo])};
   });
   // Celdas de los meses cerrados: sin data-v (la simulación no las toca); la última, con el corte de la partida.
   const celdasReales = valores => valores.map((v, j) => `<td class="num mov-real${j === valores.length - 1 ? " mov-corte" : ""}">${v === null ? "—" : numero(v)}</td>`).join("");
@@ -1495,7 +1496,7 @@ function renderSeccion5(){
       </table>
     </div>` : ""}
     <h3 class="subtitulo">Movimiento de inventario por material (T)</h3>
-    <p class="nota">Cada material con su inventario inicial, abastecimiento (compras), traslado recibido (si lo tiene), consumo, traslados a otro centro (si los tiene) e inventario final de cada mes, como en la corrida S&amp;OP. Las salidas van en negativo: cada columna suma su inventario final. Primero los materiales con el quiebre más cercano.${mesesReales.length ? " Los meses cerrados (en gris, desde el mes elegido en «Desde» hasta la partida) son reales: inventario al cierre de cada mes (MB5B) y abastecimiento, traslados y consumo de la MB51; lo que esos movimientos no explican de la variación del stock (humedad, ajustes de inventario, material en tránsito) va en «Otros movimientos y diferencias»." : ""}</p>
+    <p class="nota">Cada material con su inventario inicial, abastecimiento (compras), traslado recibido (si lo tiene), consumo, traslados a otro centro (si los tiene) e inventario final de cada mes, como en la corrida S&amp;OP. La Caliza Roca Extraída de Atocongo y el Clinker y el Carbón Importado de Condorcocha llegan solo por traslado; el Carbón Trujillo de Condorcocha, por compra o por traslado desde Atocongo. Las salidas van en negativo: cada columna suma su inventario final. Primero los materiales con el quiebre más cercano.${mesesReales.length ? " Los meses cerrados (en gris, desde el mes elegido en «Desde» hasta la partida) son reales: inventario al cierre de cada mes (MB5B) y abastecimiento, traslados y consumo de la MB51; lo que esos movimientos no explican de la variación del stock (humedad, ajustes de inventario, material en tránsito) va en «Otros movimientos y diferencias»." : ""}</p>
     <div class="leyenda-curva">
       ${mesesReales.length ? `<span class="leyenda-item"><span class="leyenda-marca mov-real-marca"></span>Real (MB5B y MB51)</span>` : ""}
       <span class="leyenda-item"><span class="leyenda-marca estado-quiebre"></span>Quiebre (negativo)</span>

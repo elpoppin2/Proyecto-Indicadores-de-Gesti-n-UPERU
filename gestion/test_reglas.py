@@ -371,6 +371,22 @@ class EscenariosSopTest(SimpleTestCase):
         self.assertEqual(de_quien, {("06-00000003", "U002"): "U001"})
         self.assertEqual(a_quien, {("06-00000003", "U001"): "U002"})
 
+    def test_solo_traslado_y_compra_o_traslado(self):
+        # Caliza Roca Extraída de Atocongo: todo lo que llega es traslado desde U002.
+        # Carbón Trujillo de Condorcocha: compra o traslado desde Atocongo, aunque el S&OP no traiga traslado.
+        fila = {"mes": self.mes, "traslado": 0.0, "traslado_recibido": 0.0, "texto_breve": "M"}
+        base = pd.DataFrame([
+            {**fila, "material_codigo": "14-00000024", "centro": "U001", "abastecimiento": 30.0},
+            {**fila, "material_codigo": "06-00001601", "centro": "U001", "abastecimiento": 1.0},
+            {**fila, "material_codigo": "06-00001601", "centro": "U002", "abastecimiento": 6.0},
+        ])
+        celdas = self.e.movimientos_por_celda(base)
+        self.assertEqual(celdas[("14-00000024", "U001", self.mes)], {"compras": 0.0, "recibido": 30.0, "traslado": 0.0})
+        self.assertEqual(celdas[("06-00001601", "U002", self.mes)], {"compras": 6.0, "recibido": 0.0, "traslado": 0.0})
+        de_quien, a_quien = self.e.pares_traslado(base)
+        self.assertEqual(de_quien, {("14-00000024", "U001"): "U002", ("06-00001601", "U002"): "U001"})
+        self.assertEqual(a_quien, {("06-00001601", "U001"): "U002"})
+
     def test_el_archivo_recibe_compras_mas_traslado(self):
         escenario = {"cambios": {
             "compras": {"07-00000001|U001|2027-01": {"base": 25.0, "valor": 30.0}},
@@ -442,3 +458,11 @@ class MovimientoHistoriaYCopiasTest(SimpleTestCase):
                 viejo = (datetime.datetime.now() - datetime.timedelta(hours=2)).isoformat(timespec="seconds")
                 estado.write_text(f'{{"estado": "actualizando", "inicio": "{viejo}"}}', encoding="utf-8")
                 self.assertEqual(copias_html.estado()["estado"], "error")
+                # Lanzada a mano después de una corrida vieja: mientras corre no se da por vencida.
+                config.write_text('{"planificacion": "p.html", "sitio": "s"}', encoding="utf-8")
+                estado.write_text(f'{{"estado": "listo", "inicio": "{viejo}", "fin": "{viejo}"}}', encoding="utf-8")
+                vistos = []
+                with mock.patch.object(copias_html, "call_command", lambda *a, **k: vistos.append(copias_html.estado()["estado"])):
+                    copias_html.correr()
+                self.assertEqual(vistos, ["actualizando", "actualizando"])
+                self.assertEqual(copias_html.estado()["estado"], "listo")

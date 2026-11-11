@@ -54,10 +54,30 @@ class ErrorEscenario(Exception):
 
 
 # --- Reglas de la tabla Movimiento de inventario ------------------------------
+# Lo que un centro recibe solo por traslado: todo su abastecimiento del S&OP es
+# traslado recibido, no compra. {(material, centro que recibe): centro que envía}.
+# Clinker y Carbón Importado de Condorcocha (desde Atocongo) y la Caliza Roca
+# Extraída de Atocongo, que llega toda por 641 desde U002 (pedido del usuario,
+# 2026-11-11: "es netamente traslado entre centros").
+SOLO_TRASLADO = {
+    **{(m, q.CENTRO_CONDORCOCHA): q.CENTRO_ATOCONGO for m in q.MATERIALES_TRASLADO_ATOCONGO_CONDORCOCHA},
+    ("14-00000024", q.CENTRO_ATOCONGO): q.CENTRO_CONDORCOCHA,
+}
+# Lo que un centro recibe por compra o por traslado (pedido del usuario,
+# 2026-11-11: el Carbón Trujillo de Condorcocha "puede ser abastecimiento y
+# traslado entre centros"): van las dos filas, y la de quien envía, aunque el
+# S&OP no traiga el traslado, y el traslado se puede simular.
+COMPRA_O_TRASLADO = {
+    ("06-00001601", q.CENTRO_CONDORCOCHA): q.CENTRO_ATOCONGO,
+}
+
+
 def solo_traslado(material, centro):
-    """Lo que Condorcocha recibe solo desde Atocongo (Clinker y Carbón
-    Importado): todo su abastecimiento es traslado recibido, no compra."""
-    return centro == q.CENTRO_CONDORCOCHA and material in q.MATERIALES_TRASLADO_ATOCONGO_CONDORCOCHA
+    return (material, centro) in SOLO_TRASLADO
+
+
+def compra_o_traslado(material, centro):
+    return (material, centro) in COMPRA_O_TRASLADO
 
 
 def movimientos_por_celda(base):
@@ -77,21 +97,25 @@ def pares_traslado(base):
     """({(material, centro que recibe): centro que envía},
         {(material, centro que envía): centro que recibe}) de una proyección.
     Quien recibe sabe de dónde le llega por la regla del S&OP
-    (q._TRASLADOS_SOP), por el único otro centro que traslada ese material o,
-    en lo que Condorcocha recibe solo de Atocongo, Atocongo. Sin par claro
-    queda vacío y esa fila no se edita."""
+    (q._TRASLADOS_SOP), por SOLO_TRASLADO / COMPRA_O_TRASLADO o por el único
+    otro centro que traslada ese material. Sin par claro queda vacío y esa
+    fila no se edita. Quien envía según COMPRA_O_TRASLADO tiene su par aunque
+    el S&OP no le planifique traslados."""
+    origen_fijo = {**COMPRA_O_TRASLADO, **SOLO_TRASLADO}
+    claves = set(zip(base["material_codigo"], base["centro"]))
     recibe, envia = set(), set()
     for r in base.itertuples():
         if r.traslado >= TOLERANCIA:
             envia.add((r.material_codigo, r.centro))
-        if r.traslado_recibido >= TOLERANCIA or (solo_traslado(r.material_codigo, r.centro) and r.abastecimiento >= TOLERANCIA):
+        if r.traslado_recibido >= TOLERANCIA or (r.material_codigo, r.centro) in origen_fijo:
             recibe.add((r.material_codigo, r.centro))
+    envia |= {(m, origen) for (m, c), origen in COMPRA_O_TRASLADO.items() if (m, c) in claves and (m, origen) in claves}
     de_quien = {}
     for material, centro in recibe:
         otros = {c for m, c in envia if m == material and c != centro}
         de_quien[(material, centro)] = (q._TRASLADOS_SOP.get((material, centro))
-                                        or (next(iter(otros)) if len(otros) == 1 else "")
-                                        or (q.CENTRO_ATOCONGO if solo_traslado(material, centro) else ""))
+                                        or origen_fijo.get((material, centro))
+                                        or (next(iter(otros)) if len(otros) == 1 else ""))
     a_quien = {}
     for material, centro in envia:
         destinos = {c for (m, c), origen in de_quien.items() if m == material and origen == centro}
@@ -354,12 +378,20 @@ def aplicar(id_escenario, usuario):
                     raise ErrorEscenario("Este S&OP trae sus traslados en un archivo aparte: los traslados del "
                                          "escenario todavía no se pueden aplicar.")
         de_quien, _ = pares_traslado(base)
+        textos = {(r.material_codigo, r.centro): r.texto_breve for r in base.itertuples()}
         for clave in escenario["cambios"]["traslados"]:
             material, envia, recibe, _ = clave.split("|")
             if de_quien.get((material, recibe)) != envia and q._TRASLADOS_SOP.get((material, recibe)) != envia:
                 raise ErrorEscenario(f"El traslado {clave.replace('|', ' · ')} no sigue la regla del S&OP.")
+            # Lo que llega por compra o por traslado (COMPRA_O_TRASLADO): el archivo de
+            # abastecimiento solo dice cuánto llega al centro, no por dónde.
+            if not solo_traslado(material, recibe) and (material, recibe) not in q._TRASLADOS_SOP:
+                nombre = (textos.get((material, recibe)) or material).title()
+                raise ErrorEscenario(
+                    f"El traslado de {nombre} de {q.nombre_centro(envia).title()} a {q.nombre_centro(recibe).title()} "
+                    "todavía no se puede aplicar: el archivo de abastecimiento del S&OP solo trae lo que llega a cada "
+                    "centro, sin separar lo que llega por traslado. El escenario sigue guardado.")
 
-        textos = {(r.material_codigo, r.centro): r.texto_breve for r in base.itertuples()}
         objetivo = _valores_objetivo(escenario, celdas)
         ruta = archivo_abastecimiento(sop)
         ahora = datetime.datetime.now()

@@ -486,9 +486,12 @@ def _movimientos_por_material(grupos, matriz, pares, historia=None):
     más cercano). Lo que llega por traslado va en su propia fila, "Traslado
     recibido", y Abastecimiento queda solo para las compras (pedido del
     usuario, 2026-11-10: "abastecimiento se entiende como compra"): el
-    traslado que trae el S&OP y, en Condorcocha, todo el abastecimiento de lo
-    que solo llega desde Atocongo (q.MATERIALES_TRASLADO_ATOCONGO_CONDORCOCHA:
-    Clinker y Carbón Importado). Sin compras, la fila Abastecimiento no va.
+    traslado que trae el S&OP y todo el abastecimiento de lo que solo llega por
+    traslado (escenarios_sop.SOLO_TRASLADO: Clinker y Carbón Importado de
+    Condorcocha, Caliza Roca Extraída de Atocongo). Sin compras, la fila
+    Abastecimiento no va; lo que llega por compra o por traslado
+    (escenarios_sop.COMPRA_O_TRASLADO: Carbón Trujillo de Condorcocha) lleva
+    siempre las dos filas, y quien se lo envía, la de Traslados a otro centro.
     Un movimiento menor a media tonelada se muestra como "—" (None).
 
     Cada celda lleva además su valor sin redondear ("dato", en positivo) y
@@ -529,13 +532,13 @@ def _movimientos_por_material(grupos, matriz, pares, historia=None):
         def hay(valores, campo):
             return any(v is not None for v in flujo(valores, 1)) or any(abs(x[campo]) >= 0.5 for x in h)
         filas = [("Inventario inicial", [float(v) for v in g["stock_inicial"]], "inicial", "inicial", g["stock_inicial"], 1)]
-        hay_recibidos = hay(recibido, "recibido")
-        if not hay_recibidos or hay(compras, "compras"):
+        hay_recibidos = hay(recibido, "recibido") or bool(de_quien.get(clave))
+        if not hay_recibidos or hay(compras, "compras") or escenarios_sop.compra_o_traslado(*clave):
             filas.append(("Abastecimiento", flujo(compras, 1), "entrada", "compras", compras, 1))
         if hay_recibidos:
             filas.append(("Traslado recibido", flujo(recibido, 1), "entrada", "recibido", recibido, 1))
         filas.append(("Consumo", flujo(g["consumo"], -1), "salida", "consumo", g["consumo"], -1))
-        if hay(g["traslado"], "traslado"):
+        if hay(g["traslado"], "traslado") or a_quien.get(clave):
             filas.append(("Traslados a otro centro", flujo(g["traslado"], -1), "salida", "traslado", g["traslado"], -1))
         filas = [{"concepto": c, "clase": k, "clave": ck,
                   "celdas": reales(h, ck, signo) + [{"valor": v, "dato": dato(abs(d) if ck != "inicial" else d)}
