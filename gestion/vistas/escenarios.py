@@ -11,7 +11,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 
-from .. import escenarios_sop
+from .. import copias_html, escenarios_sop
 from .reglas import puede_editar
 
 
@@ -81,4 +81,14 @@ def escenarios_aplicar(request):
     guardado (con respaldo en _RETIRADOS) y lo vuelve a cargar."""
     if not puede_editar(request.user):
         return JsonResponse({"error": "Solo un administrador puede aplicar un escenario al archivo del S&OP."}, status=403)
-    return JsonResponse({"ok": True, **escenarios_sop.aplicar(str(_datos(request).get("id") or ""), request.user)})
+    resultado = escenarios_sop.aplicar(str(_datos(request).get("id") or ""), request.user)
+    # Las copias HTML toman el plan nuevo en segundo plano (pedido del usuario, 2026-11-11).
+    resultado["copias"] = copias_html.regenerar(f"Escenario aplicado por {request.user.username}")
+    return JsonResponse({"ok": True, **resultado})
+
+
+@login_required
+@require_GET
+def escenarios_copias(request):
+    """Estado de la regeneración de las copias HTML (la barra de la simulación lo consulta)."""
+    return JsonResponse(copias_html.estado())

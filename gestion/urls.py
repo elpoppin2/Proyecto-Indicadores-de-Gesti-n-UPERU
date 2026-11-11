@@ -21,6 +21,7 @@ urlpatterns = [
     path("planificacion/escenarios/guardar/", views.escenarios_guardar, name="escenarios_guardar"),
     path("planificacion/escenarios/eliminar/", views.escenarios_eliminar, name="escenarios_eliminar"),
     path("planificacion/escenarios/aplicar/", views.escenarios_aplicar, name="escenarios_aplicar"),
+    path("planificacion/escenarios/copias/", views.escenarios_copias, name="escenarios_copias"),
     path("planificacion/presentacion/", views.presentacion_inventarios, name="presentacion_inventarios"),
     path("logistica-materias-primas/", views.logistica_materias_primas, name="logistica_materias_primas"),
     path("reglas-y-metas/", views.reglas_y_metas, name="reglas_y_metas"),

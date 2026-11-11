@@ -438,7 +438,44 @@ def _fila_cobertura(material, texto, centro, inicial, finales, flujo, minimos, m
             "consumo_minimo": minimo_mes, "celdas": celdas}
 
 
-def _movimientos_por_material(grupos, matriz, pares):
+def _historia_movimiento(cierres, movimientos, meses, claves, meses_cierre):
+    """Meses cerrados del Movimiento de inventario por material (pedido del
+    usuario, 2026-11-11: "considerar la historia de abastecimiento y consumos,
+    respetando la estructura"): los mismos meses reales del gráfico, desde el
+    «Desde» de la sección hasta el de la partida. Por material/centro y mes:
+    inventario inicial y final = MB5B al cierre del mes anterior y del mes;
+    abastecimiento = ingresos 101/102 de compra o producción; traslado recibido
+    = ingresos de un traslado; consumo y traslados a otro centro de la MB51
+    (q.movimientos_reales_sop); lo que esos movimientos no explican de la
+    variación del stock (humedad, ajustes de inventario, tránsito) va en
+    "otros". {(material, centro): [fila por mes]}; vacío sin meses reales."""
+    if not meses:
+        return {}
+    en_meses = set(meses)
+    stock = {(r.material_codigo, r.centro, r.mes): float(r.stock) for r in cierres.itertuples()
+             if (r.material_codigo, r.centro) in claves}
+    flujos = {}
+    for r in movimientos.itertuples():
+        if (r.material_codigo, r.centro) not in claves or r.mes not in en_meses:
+            continue
+        tipo = {"consumo": "consumo", "envio": "traslado"}.get(r.tipo, "recibido" if r.contraparte else "compras")
+        clave = (r.material_codigo, r.centro, r.mes, tipo)
+        flujos[clave] = flujos.get(clave, 0.0) + float(r.cantidad)
+    historia = {}
+    for material, centro in claves:
+        filas = []
+        for mes in meses:
+            anterior = q._sumar_meses(mes, -1)
+            inicial = stock.get((material, centro, anterior), 0.0) if anterior in meses_cierre else None
+            final = stock.get((material, centro, mes), 0.0)
+            f = {tipo: flujos.get((material, centro, mes, tipo), 0.0) for tipo in ("compras", "recibido", "consumo", "traslado")}
+            otros = None if inicial is None else final - (inicial + f["compras"] + f["recibido"] - f["consumo"] - f["traslado"])
+            filas.append({"mes": mes, "inicial": inicial, "final": final, "otros": otros, **f})
+        historia[(material, centro)] = filas
+    return historia
+
+
+def _movimientos_por_material(grupos, matriz, pares, historia=None):
     """Movimiento de inventario por material, como las hojas de la corrida
     S&OP en Excel (pedido del usuario, 2026-11-10: "a fin de dar un vistazo
     rápido de cuándo es el mes donde existe quiebre de stock"): por cada
@@ -471,30 +508,50 @@ def _movimientos_por_material(grupos, matriz, pares):
     def nulo(valor):
         return "" if valor is None or valor != valor else dato(valor)
 
+    def reales(h, campo, signo=1):
+        """Celdas de los meses cerrados (sin data-v: la simulación no las toca); la última, con el corte."""
+        celdas = []
+        for i, x in enumerate(h):
+            v = x[campo]
+            if campo not in ("inicial", "final"):
+                v = signo * v if v is not None and abs(v) >= 0.5 else None
+            celdas.append({"valor": v, "real": True, "corte": i == len(h) - 1, "estado": ""})
+        return celdas
+
     bloques = []
     for f in matriz:
         clave = (f["material_codigo"], f["centro"])
         g = por_clave[clave]
+        h = (historia or {}).get(clave, [])
         recibido = g["abastecimiento"] if escenarios_sop.solo_traslado(*clave) else g["traslado_recibido"]
         compras = g["abastecimiento"] - recibido
-        filas = [("Inventario inicial", [float(v) for v in g["stock_inicial"]], "inicial", "inicial", g["stock_inicial"])]
-        hay_recibidos = any(v is not None for v in flujo(recibido, 1))
-        if not hay_recibidos or any(v is not None for v in flujo(compras, 1)):
-            filas.append(("Abastecimiento", flujo(compras, 1), "entrada", "compras", compras))
+
+        def hay(valores, campo):
+            return any(v is not None for v in flujo(valores, 1)) or any(abs(x[campo]) >= 0.5 for x in h)
+        filas = [("Inventario inicial", [float(v) for v in g["stock_inicial"]], "inicial", "inicial", g["stock_inicial"], 1)]
+        hay_recibidos = hay(recibido, "recibido")
+        if not hay_recibidos or hay(compras, "compras"):
+            filas.append(("Abastecimiento", flujo(compras, 1), "entrada", "compras", compras, 1))
         if hay_recibidos:
-            filas.append(("Traslado recibido", flujo(recibido, 1), "entrada", "recibido", recibido))
-        filas.append(("Consumo", flujo(g["consumo"], -1), "salida", "consumo", g["consumo"]))
-        if any(v is not None for v in flujo(g["traslado"], -1)):
-            filas.append(("Traslados a otro centro", flujo(g["traslado"], -1), "salida", "traslado", g["traslado"]))
+            filas.append(("Traslado recibido", flujo(recibido, 1), "entrada", "recibido", recibido, 1))
+        filas.append(("Consumo", flujo(g["consumo"], -1), "salida", "consumo", g["consumo"], -1))
+        if hay(g["traslado"], "traslado"):
+            filas.append(("Traslados a otro centro", flujo(g["traslado"], -1), "salida", "traslado", g["traslado"], -1))
+        filas = [{"concepto": c, "clase": k, "clave": ck,
+                  "celdas": reales(h, ck, signo) + [{"valor": v, "dato": dato(abs(d) if ck != "inicial" else d)}
+                                                    for v, d in zip(vals, datos)]}
+                 for c, vals, k, ck, datos, signo in filas]
+        # Meses cerrados: lo que la MB51 no explica de la variación del MB5B, para que cada columna sume.
+        if any(x["otros"] is not None and abs(x["otros"]) >= 0.5 for x in h):
+            filas.append({"concepto": "Otros movimientos y diferencias", "clase": "otros", "clave": "otros",
+                          "celdas": reales(h, "otros") + [{"valor": None, "dato": ""} for _ in range(len(g))]})
         bloques.append({
             "material_codigo": f["material_codigo"], "texto_breve": f["texto_breve"], "centro": f["centro"],
             "stock_minimo": f["stock_minimo"], "stock_maximo": f["stock_maximo"], "quiebre_corto": f["quiebre_corto"],
             "envia": de_quien.get(clave, ""), "recibe": a_quien.get(clave, ""),
-            "filas": [{"concepto": c, "clase": k, "clave": ck,
-                       "celdas": [{"valor": v, "dato": dato(abs(d) if ck != "inicial" else d)} for v, d in zip(vals, datos)]}
-                      for c, vals, k, ck, datos in filas],
-            "finales": [{**celda, "dato": dato(celda["valor"]), "minimo": nulo(mi), "maximo": nulo(ma)}
-                        for celda, mi, ma in zip(f["celdas"], g["stock_minimo"], g["stock_maximo"])],
+            "filas": filas,
+            "finales": reales(h, "final") + [{**celda, "dato": dato(celda["valor"]), "minimo": nulo(mi), "maximo": nulo(ma)}
+                                             for celda, mi, ma in zip(f["celdas"], g["stock_minimo"], g["stock_maximo"])],
         })
     return bloques
 
@@ -578,7 +635,8 @@ def _contexto_proyeccion_sop(request):
     # traslado entre dos centros de la selección no entra ni sale del total
     # (igual que en el plan); lo que la MB51 no explica de la variación del
     # MB5B (humedad, ajustes de inventario, tránsito) va al recuadro.
-    movimientos = q.movimientos_reales_sop()
+    movimientos_todos = q.movimientos_reales_sop()
+    movimientos = movimientos_todos
     if len(movimientos):
         centros_sel = df.groupby("material_codigo")["centro"].agg(set).to_dict()
         externos = [
@@ -599,9 +657,9 @@ def _contexto_proyeccion_sop(request):
               + [(_mes_corto(r["mes"]), r["stock_final"]) for r in resumen])
 
     # Con UN solo material/centro seleccionado, la banda mínimo–máximo va en el
-    # gráfico y en el Detalle mensual (sumar mínimos de materiales distintos
-    # no tiene sentido). El punto de partida se compara con el mínimo/máximo
-    # del primer mes.
+    # gráfico y en su recuadro (sumar mínimos de materiales distintos no tiene
+    # sentido). El punto de partida se compara con el mínimo/máximo del primer
+    # mes.
     grupos = df.groupby(["material_codigo", "centro"])
     un_material = grupos.ngroups == 1
     banda = None
@@ -729,7 +787,8 @@ def _contexto_proyeccion_sop(request):
         })
     matriz.sort(key=lambda f: (f["quiebre"] is None, f["quiebre"] or datetime.date.max, f["centro"], f["material_codigo"]))
     matriz_cobertura = [fc for f in matriz for fc in f["filas_cobertura"]]
-    movimientos = _movimientos_por_material(grupos, matriz, escenarios_sop.pares_traslado(base))
+    historia_mov = _historia_movimiento(cierres, movimientos_todos, meses_reales, claves_sel, meses_cierre)
+    movimientos = _movimientos_por_material(grupos, matriz, escenarios_sop.pares_traslado(base), historia_mov)
 
     # Diagnóstico de mínimos/máximos, con los mismos filtros de la sección.
     diagnostico = q.diagnostico_minmax_sop(snapshot_sel)
@@ -759,6 +818,7 @@ def _contexto_proyeccion_sop(request):
         "resumen": resumen, "matriz": matriz, "matriz_cobertura": matriz_cobertura, "un_material": un_material,
         "consumos_minimos": [fc for fc in matriz_cobertura if fc["consumo_minimo"]],
         "movimientos": movimientos,
+        "meses_historia": [{"fecha": m, "corto": _mes_corto(m)} for m in meses_reales] if historia_mov else [],
         "cobertura_meses_siguientes": _COBERTURA_MESES_SIGUIENTES,
         "stock_partida": resumen[0]["stock_inicial"], "stock_cierre": resumen[-1]["stock_final"],
         "mes_cierre": meses[-1], "con_quiebre": sum(1 for f in matriz if f["quiebre"]),

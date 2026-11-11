@@ -407,3 +407,38 @@ class EscenariosSopTest(SimpleTestCase):
         self.assertEqual(filas[0][4], 30)
         self.assertEqual((filas[1][4], filas[2][4]), (16, 4))  # 20 en total: 16 + los 4 del chancado
         self.assertEqual(filas[3], ("07-00000009", "U002", "M5", "CONDORCOCHA", 7.5))
+
+
+class MovimientoHistoriaYCopiasTest(SimpleTestCase):
+    """Meses cerrados del Movimiento de inventario por material y estado de las copias HTML al aplicar."""
+
+    def test_historia_reparte_ingresos_y_cuadra_con_otros(self):
+        from gestion.vistas import plan_consumo as pc
+        m1, m2 = D(2026, 8, 1), D(2026, 9, 1)
+        cierres = pd.DataFrame([{"material_codigo": "M1", "centro": "U1", "mes": m, "stock": s}
+                                for m, s in ((D(2026, 7, 1), 100.0), (m1, 120.0), (m2, 90.0))])
+        movs = pd.DataFrame([
+            {"material_codigo": "M1", "centro": "U1", "mes": m1, "tipo": "ingreso", "contraparte": "", "cantidad": 50.0},
+            {"material_codigo": "M1", "centro": "U1", "mes": m1, "tipo": "ingreso", "contraparte": "U2", "cantidad": 10.0},
+            {"material_codigo": "M1", "centro": "U1", "mes": m1, "tipo": "consumo", "contraparte": "", "cantidad": 35.0},
+            {"material_codigo": "M1", "centro": "U1", "mes": m2, "tipo": "envio", "contraparte": "U2", "cantidad": 30.0},
+            {"material_codigo": "M9", "centro": "U1", "mes": m2, "tipo": "consumo", "contraparte": "", "cantidad": 99.0},
+        ])
+        h = pc._historia_movimiento(cierres, movs, [m1, m2], {("M1", "U1")}, set(cierres["mes"]))[("M1", "U1")]
+        self.assertEqual((h[0]["inicial"], h[0]["compras"], h[0]["recibido"], h[0]["consumo"], h[0]["final"]),
+                         (100.0, 50.0, 10.0, 35.0, 120.0))
+        self.assertAlmostEqual(h[0]["otros"], -5.0)  # 100 + 50 + 10 − 35 = 125 contra 120 de cierre
+        self.assertEqual((h[1]["inicial"], h[1]["traslado"], h[1]["otros"]), (120.0, 30.0, 0.0))
+        self.assertEqual(pc._historia_movimiento(cierres, movs, [], {("M1", "U1")}, set()), {})
+
+    def test_copias_estado_vencido_y_sin_destino(self):
+        import tempfile
+        from pathlib import Path
+        from gestion import copias_html
+        with tempfile.TemporaryDirectory() as carpeta:
+            estado, config = Path(carpeta) / "estado.json", Path(carpeta) / "config.json"
+            with mock.patch.object(copias_html, "ESTADO", estado), mock.patch.object(copias_html, "CONFIG", config):
+                self.assertEqual(copias_html.regenerar("prueba")["estado"], "sin_destino")
+                viejo = (datetime.datetime.now() - datetime.timedelta(hours=2)).isoformat(timespec="seconds")
+                estado.write_text(f'{{"estado": "actualizando", "inicio": "{viejo}"}}', encoding="utf-8")
+                self.assertEqual(copias_html.estado()["estado"], "error")

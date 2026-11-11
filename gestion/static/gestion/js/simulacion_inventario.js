@@ -261,6 +261,7 @@
         '<button type="button" class="sim-boton sim-boton-aplicar" data-sim="aplicar">Aplicar al archivo del S&amp;OP</button>' +
       '</div>' +
       '<p class="sim-estado" aria-live="polite" data-sim="estado"></p>' +
+      '<p class="sim-estado sim-copias" role="status" aria-live="polite" data-sim="copias" hidden></p>' +
     '</div>';
   }
 
@@ -460,7 +461,8 @@
     boton.classList.add('ocupado');
     mensaje(modelo, 'Aplicando el escenario: respaldo, archivo y recarga del S&OP… (puede tardar un minuto)');
     pedir(sim.url + 'aplicar/', { id: actual.id }).then(function (j) {
-      mensaje(modelo, 'Listo: «' + j.archivo + '» quedó con el escenario (' + j.celdas + ' celdas). Respaldo en ' + j.respaldo + '. Recargando la página…');
+      var nota = j.copias && j.copias.estado === 'actualizando' ? ' Las copias HTML se actualizan en segundo plano.' : '';
+      mensaje(modelo, 'Listo: «' + j.archivo + '» quedó con el escenario (' + j.celdas + ' celdas). Respaldo en ' + j.respaldo + '.' + nota + ' Recargando la página…');
       sim.activa = false;
       setTimeout(function () { location.reload(); }, 1800);
     }).catch(function (err) {
@@ -468,6 +470,38 @@
       boton.classList.remove('ocupado');
       mensaje(modelo, err.message, true);
     });
+  }
+
+  // --- Copias HTML ------------------------------------------------------------------
+  // Al aplicar un escenario, el servidor regenera en segundo plano la copia de
+  // Planificación y la del sitio (gestion/copias_html.py; pedido del usuario,
+  // 2026-11-11): la barra dice cómo va, consultando cada 5 s mientras dura.
+  var copias = { datos: null, espera: null };
+  function reciente(iso) { var t = Date.parse(iso || ''); return isFinite(t) && Date.now() - t < 60 * 60 * 1000; }
+  function pintarCopias() {
+    var d = copias.datos || {}, texto = '', error = false;
+    if (d.estado === 'actualizando') texto = 'Actualizando las copias HTML (Planificación y sitio)… toma unos minutos.';
+    else if (d.estado === 'listo' && reciente(d.fin)) texto = 'Copias HTML actualizadas a las ' + d.fin.slice(11, 16) + '.';
+    else if (d.estado === 'error' && reciente(d.fin)) {
+      texto = (d.mensaje || 'No se pudieron actualizar las copias HTML.') + ' Se actualizarán con la tarea diaria.';
+      error = true;
+    }
+    modelos.forEach(function (m) {
+      var p = m.barra && m.barra.querySelector('[data-sim="copias"]');
+      if (!p) return;
+      p.hidden = !texto;
+      p.textContent = texto;
+      p.classList.toggle('sim-error', error);
+    });
+  }
+  function revisarCopias() {
+    if (enCopia() || !sim.url) return;
+    clearTimeout(copias.espera);
+    pedir(sim.url + 'copias/').then(function (d) {
+      copias.datos = d;
+      pintarCopias();
+      if (d.estado === 'actualizando') copias.espera = setTimeout(revisarCopias, 5000);
+    }).catch(function () { /* sin estado, la barra no dice nada de las copias */ });
   }
 
   // --- Montaje ---------------------------------------------------------------------
@@ -547,6 +581,7 @@
     pintar(modelo);
     pintarBarra(modelo);
     if (sim.activa && sim.cargado !== sim.sop) cargarEscenarios(modelo);
+    revisarCopias();
   }
 
   function buscar(raiz) {

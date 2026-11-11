@@ -211,44 +211,11 @@
       </div>
     {% endif %}
 
-    <h3 class="subtitulo">Detalle mensual</h3>
-    <div class="tabla-scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>Mes</th>
-            <th class="num">Stock inicial (T)</th>
-            <th class="num">Abastecimiento (T)</th>
-            <th class="num">Consumo (T)</th>
-            {% if p.hay_traslados %}<th class="num">Traslados a otro centro (T)</th>{% endif %}
-            <th class="num">Stock final (T)</th>
-            {% if p.un_material %}<th class="num">Mínimo (T)</th><th class="num">Máximo (T)</th><th>Estado</th>{% endif %}
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in p.resumen %}
-            <tr>
-              <td>{{ r.mes|mesanio }}</td>
-              <td class="num">{{ r.stock_inicial|numero:0 }}</td>
-              <td class="num">{{ r.abastecimiento|numero:0 }}</td>
-              <td class="num">{{ r.consumo|numero:0 }}</td>
-              {% if p.hay_traslados %}<td class="num">{{ r.traslado|numero:0 }}</td>{% endif %}
-              <td class="num {% if r.estado %}estado-{{ r.estado }}{% elif r.stock_final < 0 %}dato-negativo{% endif %}">{{ r.stock_final|numero:0 }}</td>
-              {% if p.un_material %}
-                <td class="num">{{ r.stock_minimo|numero:0|default:"—" }}</td>
-                <td class="num">{{ r.stock_maximo|numero:0|default:"—" }}</td>
-                <td>{{ r.estado_texto }}</td>
-              {% endif %}
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    {# Movimiento por material, como las hojas de la corrida S&OP en Excel (pedido del usuario, 2026-11-10). #}
+    {# Movimiento por material, como las hojas de la corrida S&OP en Excel (pedido del usuario, 2026-11-10); con los meses cerrados desde «Desde» (2026-11-11). El Detalle mensual y el Stock final proyectado por material se quitaron a pedido del usuario (2026-11-11): esta tabla ya los cubre. #}
     <h3 class="subtitulo">Movimiento de inventario por material (T)</h3>
-    <p class="nota">Cada material con su inventario inicial, abastecimiento (compras), traslado recibido (si lo tiene), consumo, traslados a otro centro (si los tiene) e inventario final de cada mes, como en la corrida S&amp;OP. Las salidas van en negativo: cada columna suma su inventario final. Primero los materiales con el quiebre más cercano.</p>
+    <p class="nota">Cada material con su inventario inicial, abastecimiento (compras), traslado recibido (si lo tiene), consumo, traslados a otro centro (si los tiene) e inventario final de cada mes, como en la corrida S&amp;OP. Las salidas van en negativo: cada columna suma su inventario final. Primero los materiales con el quiebre más cercano.{% if p.meses_historia %} Los meses cerrados (en gris, desde el mes elegido en «Desde» hasta la partida) son reales: inventario al cierre de cada mes (MB5B) y abastecimiento, traslados y consumo de la MB51; lo que esos movimientos no explican de la variación del stock (humedad, ajustes de inventario, material en tránsito) va en «Otros movimientos y diferencias».{% endif %}</p>
     <div class="leyenda-curva">
+      {% if p.meses_historia %}<span class="leyenda-item"><span class="leyenda-marca mov-real-marca"></span>Real (MB5B y MB51)</span>{% endif %}
       <span class="leyenda-item"><span class="leyenda-marca estado-quiebre"></span>Quiebre (negativo)</span>
       <span class="leyenda-item"><span class="leyenda-marca estado-bajo_minimo"></span>Bajo mínimo</span>
       <span class="leyenda-item"><span class="leyenda-marca estado-en_rango"></span>En rango</span>
@@ -260,6 +227,8 @@
         <thead>
           <tr>
             <th class="mov-fija mov-f1">Material</th><th class="mov-fija mov-f2">Concepto</th>
+            {# Meses cerrados sin data-mes: la simulación solo toma las columnas del S&OP. #}
+            {% for m in p.meses_historia %}<th class="num mov-real{% if forloop.last %} mov-corte{% endif %}" title="Real: MB5B y MB51">{{ m.corto }}</th>{% endfor %}
             {% for m in p.meses %}<th class="num" data-mes="{{ m.fecha|date:'Y-m' }}">{{ m.corto }}</th>{% endfor %}
           </tr>
         </thead>
@@ -276,51 +245,15 @@
                   </th>
                 {% endif %}
                 <td class="mov-fija mov-f2">{{ fila.concepto }}</td>
-                {% for c in fila.celdas %}<td class="num" data-v="{{ c.dato }}">{{ c.valor|numero:0|default:"—" }}</td>{% endfor %}
+                {% for c in fila.celdas %}{% if c.real %}<td class="num mov-real{% if c.corte %} mov-corte{% endif %}">{{ c.valor|numero:0|default:"—" }}</td>{% else %}<td class="num" data-v="{{ c.dato }}">{{ c.valor|numero:0|default:"—" }}</td>{% endif %}{% endfor %}
               </tr>
             {% endfor %}
             <tr class="mov-final" data-concepto="final">
               <td class="mov-fija mov-f2">Inventario final</td>
-              {% for c in b.finales %}<td class="num estado-{{ c.estado }}" data-v="{{ c.dato }}" data-min="{{ c.minimo }}" data-max="{{ c.maximo }}">{{ c.valor|numero:0 }}</td>{% endfor %}
+              {% for c in b.finales %}{% if c.real %}<td class="num mov-real{% if c.corte %} mov-corte{% endif %}">{{ c.valor|numero:0 }}</td>{% else %}<td class="num estado-{{ c.estado }}" data-v="{{ c.dato }}" data-min="{{ c.minimo }}" data-max="{{ c.maximo }}">{{ c.valor|numero:0 }}</td>{% endif %}{% endfor %}
             </tr>
           </tbody>
         {% endfor %}
-      </table>
-    </div>
-
-    <h3 class="subtitulo">Stock final proyectado por material (T)</h3>
-    <div class="leyenda-curva">
-      <span class="leyenda-item"><span class="leyenda-marca estado-quiebre"></span>Quiebre (negativo)</span>
-      <span class="leyenda-item"><span class="leyenda-marca estado-bajo_minimo"></span>Bajo mínimo</span>
-      <span class="leyenda-item"><span class="leyenda-marca estado-en_rango"></span>En rango</span>
-      <span class="leyenda-item"><span class="leyenda-marca estado-sobre_maximo"></span>Sobre máximo</span>
-      <span class="leyenda-item leyenda-nota">Sin color: sin mínimo/máximo definido</span>
-    </div>
-    <div class="tabla-scroll">
-      <table class="matriz-proyeccion">
-        <thead>
-          <tr>
-            <th class="col-fija fija-1">Material</th><th class="col-fija fija-2">Descripción</th><th class="col-fija fija-3">Centro</th>
-            <th class="num col-fija fija-4">Mín.</th><th class="num col-fija fija-5">Máx.</th>
-            <th class="num">Inicial</th>
-            {% for m in p.meses %}<th class="num">{{ m.corto }}</th>{% endfor %}
-            <th>Quiebre</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for f in p.matriz %}
-            <tr>
-              <td class="celda-codigo col-fija fija-1">{{ f.material_codigo }}</td>
-              <td class="col-fija fija-2" title="{{ f.texto_breve }}">{{ f.texto_breve }}</td>
-              <td class="col-fija fija-3">{{ f.centro|centro }}</td>
-              <td class="num col-fija fija-4">{{ f.stock_minimo|numero:0|default:"—" }}</td>
-              <td class="num col-fija fija-5">{{ f.stock_maximo|numero:0|default:"—" }}</td>
-              <td class="num">{{ f.stock_inicial|numero:0 }}</td>
-              {% for c in f.celdas %}<td class="num estado-{{ c.estado }}">{{ c.valor|numero:0 }}</td>{% endfor %}
-              <td class="{% if f.quiebre %}dato-negativo{% endif %}">{{ f.quiebre_corto|default:"—" }}</td>
-            </tr>
-          {% endfor %}
-        </tbody>
       </table>
     </div>
 

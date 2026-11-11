@@ -1818,6 +1818,13 @@ details.detalle-calculo[open] > summary.boton-detalle { margin-bottom: 12px; }
 .matriz-movimiento .mov-salida td.num { color: var(--muted); }
 .matriz-movimiento .mov-final td { font-weight: 600; border-bottom: 0; }
 .matriz-movimiento .mov-final .mov-f2 { background: var(--surface-2); }
+/* Meses cerrados (real, desde «Desde»; pedido del usuario 2026-11-11): fondo
+   gris y una línea punteada en la partida, como el corte del gráfico. */
+.matriz-movimiento .mov-real { background: var(--surface-2); }
+.matriz-movimiento thead th.mov-real { color: var(--muted); font-weight: 500; }
+.matriz-movimiento .mov-corte { border-right: 1.5px dashed var(--muted); }
+.matriz-movimiento .mov-otros td { font-style: italic; color: var(--muted); }
+.leyenda-marca.mov-real-marca { height: 10px; width: 14px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--table-line); }
 /* Total de la selección (Precio real vs S&OP): fondo propio sobre los materiales. */
 .matriz-movimiento tbody.mov-total > tr > * { background: var(--surface-2); }
 @media (max-width: 760px) {
@@ -1856,6 +1863,7 @@ details.detalle-calculo[open] > summary.boton-detalle { margin-bottom: 12px; }
 .sim-estado { flex-basis: 100%; margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); max-width: 120ch; }
 .sim-estado:empty { display: none; }
 .sim-estado.sim-error { color: var(--down-texto); font-weight: 500; }
+.sim-copias:not(.sim-error) { color: var(--sim-texto); font-weight: 500; }
 .matriz-movimiento td.sim-editable { cursor: text; box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--sim) 55%, transparent); }
 .matriz-movimiento td.sim-editable:hover { background: color-mix(in srgb, var(--sim) 7%, transparent); }
 .matriz-movimiento td.sim-editable:focus { outline: 2px solid var(--sim); outline-offset: -2px; }
