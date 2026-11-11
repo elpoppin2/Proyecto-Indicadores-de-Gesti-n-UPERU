@@ -387,6 +387,18 @@ class EscenariosSopTest(SimpleTestCase):
         self.assertEqual(de_quien, {("14-00000024", "U001"): "U002", ("06-00001601", "U002"): "U001"})
         self.assertEqual(a_quien, {("06-00001601", "U001"): "U002"})
 
+    def test_compra_guardada_en_lo_que_llega_solo_por_traslado(self):
+        # Escenario guardado cuando la Caliza Roca Extraída de Atocongo era compra: pasa a su traslado recibido;
+        # si la celda ya tenía traslado, vale ese.
+        cambios = self.e._limpiar_cambios({
+            "compras": {"14-00000024|U001|2027-01": {"base": 50, "valor": 30}, "14-00000024|U001|2027-02": {"base": 50, "valor": 30},
+                        "07-00000001|U001|2027-01": {"base": 25, "valor": 30}},
+            "traslados": {"14-00000024|U002|U001|2027-02": {"base": 50, "valor": 35}}})
+        self.assertEqual(cambios, {
+            "compras": {"07-00000001|U001|2027-01": {"base": 25.0, "valor": 30.0}},
+            "traslados": {"14-00000024|U002|U001|2027-01": {"base": 50.0, "valor": 30.0},
+                          "14-00000024|U002|U001|2027-02": {"base": 50.0, "valor": 35.0}}})
+
     def test_el_archivo_recibe_compras_mas_traslado(self):
         escenario = {"cambios": {
             "compras": {"07-00000001|U001|2027-01": {"base": 25.0, "valor": 30.0}},

@@ -385,10 +385,20 @@
     repintar();
   }
 
+  // Una compra guardada en lo que ahora llega solo por traslado (bloque sin fila Abastecimiento, p. ej. la Caliza
+  // Roca Extraída de Atocongo desde 2026-11-11) pasa a ser su traslado recibido, como escenarios_sop._normalizar.
+  function compraATraslado(b, mes) {
+    var k = claveCompra(b, mes), c = sim.cambios.compras[k];
+    if (!c || b.filas.compras || !b.filas.recibido || !b.envia) return;
+    delete sim.cambios.compras[k];
+    if (!sim.cambios.traslados[claveRecibido(b, mes)]) sim.cambios.traslados[claveRecibido(b, mes)] = c;
+  }
+
   // Actualiza la base de cada cambio con el S&OP que muestra la tabla (los bloques que estén a la vista).
   function rebasar(modelo) {
     modelo.bloques.forEach(function (b) {
       modelo.meses.forEach(function (m, i) {
+        compraATraslado(b, m.mes);
         var pares = [['compras', claveCompra(b, m.mes), b.base.compras], ['traslados', claveRecibido(b, m.mes), b.base.recibido],
                      ['traslados', claveEnvio(b, m.mes), b.base.traslado]];
         pares.forEach(function (p) {

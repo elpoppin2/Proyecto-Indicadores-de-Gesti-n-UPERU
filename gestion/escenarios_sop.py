@@ -124,11 +124,28 @@ def pares_traslado(base):
 
 
 # --- Guardado -------------------------------------------------------------------
+def _normalizar(cambios):
+    """Una compra en lo que ahora llega solo por traslado (SOLO_TRASLADO: la
+    Caliza Roca Extraída de Atocongo pasó ahí el 2026-11-11, con escenarios ya
+    guardados como compra) pasa a ser su traslado recibido: al archivo va el
+    mismo número, el abastecimiento de quien recibe. Si la celda ya tiene su
+    traslado, vale ese: es la fila que se ve en la tabla."""
+    for clave in list(cambios["compras"]):
+        material, centro, mes = clave.split("|")
+        envia = SOLO_TRASLADO.get((material, centro))
+        if envia:
+            cambios["traslados"].setdefault(f"{material}|{envia}|{centro}|{mes}", cambios["compras"].pop(clave))
+    return cambios
+
+
 def _leer():
     try:
-        return json.loads(ARCHIVO.read_text(encoding="utf-8")).get("escenarios", [])
+        escenarios = json.loads(ARCHIVO.read_text(encoding="utf-8")).get("escenarios", [])
     except FileNotFoundError:
         return []
+    for e in escenarios:
+        _normalizar(e["cambios"])
+    return escenarios
 
 
 def _escribir(escenarios):
@@ -165,7 +182,7 @@ def _limpiar_cambios(cambios):
             limpio[tipo][clave] = {"base": _numero(celda.get("base")), "valor": _numero(celda.get("valor"))}
     if sum(len(v) for v in limpio.values()) > MAX_CELDAS:
         raise ErrorEscenario(f"El escenario cambia más de {MAX_CELDAS:,} celdas.")
-    return limpio
+    return _normalizar(limpio)
 
 
 def guardar(datos, usuario):
