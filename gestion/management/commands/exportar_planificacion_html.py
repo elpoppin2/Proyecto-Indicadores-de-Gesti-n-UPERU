@@ -240,6 +240,8 @@ class Command(BaseCommand):
             "solo_traslado": [f"{m}|{q.CENTRO_CONDORCOCHA}" for m in q.MATERIALES_TRASLADO_ATOCONGO_CONDORCOCHA],
             # Simulación de compras y traslados: pares de traslado y escenarios guardados en el localhost.
             "pares_traslado": pares_traslado, "escenarios": escenarios_sop.listar(),
+            # Consumo mínimo de la cobertura proyectada (plan_consumo.consumo_minimo_cobertura).
+            "consumo_minimo_cobertura": q.regla_local("consumo_minimo_cobertura", {}),
             "acopio_proyeccion": acopio_proyeccion,
             "stock_real_rows": stock_real_rows, "cierres_fecha": cierres_fecha, "mov_real_rows": mov_real_rows,
             "diagnostico_rows": diagnostico_rows, "estados_stock": q.ESTADOS_STOCK,            "meses": [m.isoformat() for m in meses],

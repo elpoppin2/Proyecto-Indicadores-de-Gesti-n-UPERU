@@ -1303,13 +1303,20 @@ function renderSeccion5(){
     if(ma != null && cob > ma) return "sobre_maximo";
     return (mi != null || ma != null) ? "en_rango" : "sin_parametro";
   };
+  // Consumo mínimo (views.consumo_minimo_cobertura): en los promedios solo entran los meses que
+  // lo superan; si en los meses siguientes no hay ninguno, los que lo superan en todo el horizonte.
   const filaCobertura = (g, factor, flujo, parte) => {
-    const prom = flujo.length ? flujo.reduce((s,v)=>s+v,0) / flujo.length : 0;
+    let minimoMes = parte ? null : ((DATA.consumo_minimo_cobertura || {})[g[0].material_codigo+"|"+g[0].centro] || null);
+    const grandes = minimoMes ? flujo.filter(v => v > minimoMes) : [];
+    if(!grandes.length) minimoMes = null;
+    const referencia = grandes.length ? grandes : flujo;
+    const prom = referencia.length ? referencia.reduce((s,v)=>s+v,0) / referencia.length : 0;
+    const salidas = tramo => { if(minimoMes === null) return tramo; const t = tramo.filter(v => v > minimoMes); return t.length ? t : grandes; };
     const aMeses = v => (parte || nulo(v) || prom <= 0) ? null : v / prom;
-    const siguientes = i => { const s = flujo.slice(i+1, i+1+COB_SIGUIENTES); return s.length ? s : flujo.slice(i, i+1); };
-    return {material_codigo:g[0].material_codigo, texto_breve:g[0].texto_breve, centro:g[0].centro, parte,
+    const siguientes = i => { const s = flujo.slice(i+1, i+1+COB_SIGUIENTES); return salidas(s.length ? s : flujo.slice(i, i+1)); };
+    return {material_codigo:g[0].material_codigo, texto_breve:g[0].texto_breve, centro:g[0].centro, parte, consumo_minimo: minimoMes,
             minimo_meses: aMeses(g[0].stock_minimo), maximo_meses: aMeses(g[0].stock_maximo),
-            cobertura_inicial: coberturaMeses(g[0].stock_inicial * factor, flujo.slice(0, COB_SIGUIENTES)),
+            cobertura_inicial: coberturaMeses(g[0].stock_inicial * factor, salidas(flujo.slice(0, COB_SIGUIENTES))),
             celdas: g.map((f,i) => {
               const v = f.stock_final * factor, cob = coberturaMeses(v, siguientes(i));
               return {valor:v, cobertura:cob, estado: estadoCobertura(v, cob, aMeses(f.stock_minimo), aMeses(f.stock_maximo))};
@@ -1334,6 +1341,11 @@ function renderSeccion5(){
   }).sort((a,b) => (a.quiebre===null) - (b.quiebre===null) || (a.quiebre||"").localeCompare(b.quiebre||"") ||
                    a.centro.localeCompare(b.centro) || a.material_codigo.localeCompare(b.material_codigo));
   const matrizCobertura = matriz.flatMap(f => f.filasCobertura);
+  // Materiales con consumo mínimo en la cobertura (replica la nota de _proyeccion.html).
+  const conMinimo = matrizCobertura.filter(f => f.consumo_minimo);
+  const notaConsumoMinimo = conMinimo.length ? " Solo los meses de producción, porque los meses chicos bajan el promedio:" +
+    conMinimo.map(f => ` ${tituloPalabras(f.texto_breve)} de ${tituloPalabras(nombreCentro(f.centro))}, salidas mayores a ${numero(f.consumo_minimo)} T`).join(";") +
+    "; si en los meses siguientes no hay ninguno, el promedio de esos meses en todo el horizonte." : "";
   // Movimiento de inventario por material, como la corrida S&OP en Excel (replica
   // views._movimientos_por_material): lo recibido por traslado en su propia fila
   // (todo, en lo que Condorcocha recibe solo desde Atocongo) y Abastecimiento solo
@@ -1504,13 +1516,13 @@ function renderSeccion5(){
       </table>
     </div>
     <h3 class="subtitulo">Cobertura proyectada por material (meses)</h3>
-    <p class="nota">Cuántos meses alcanza el stock final de cada mes al ritmo de las salidas planificadas (consumo más traslados a otro centro) de los ${COB_SIGUIENTES} meses siguientes; un quiebre cubre 0 meses. El color compara esos meses con el mínimo y el máximo pasados a meses (mínimo y máximo en T ÷ salidas planificadas promedio de todo el horizonte). En Atocongo, el Carbón Importado y el Carbón Trujillo van en dos filas sin color: lo propio (contra su consumo) y lo que está en acopio para Condorcocha (contra el consumo de Condorcocha), en la proporción de su consumo y sus reenvíos de los 12 meses al cierre de partida.</p>
+    <p class="nota">Cuántos meses alcanza el stock final de cada mes al ritmo de las salidas planificadas (consumo más traslados a otro centro) de los ${COB_SIGUIENTES} meses siguientes; un quiebre cubre 0 meses. El color compara esos meses con el mínimo y el máximo pasados a meses (mínimo y máximo en T ÷ salidas planificadas promedio de todo el horizonte). En Atocongo, el Carbón Importado y el Carbón Trujillo van en dos filas sin color: lo propio (contra su consumo) y lo que está en acopio para Condorcocha (contra el consumo de Condorcocha), en la proporción de su consumo y sus reenvíos de los 12 meses al cierre de partida.${notaConsumoMinimo}</p>
     <div class="tabla-scroll">
       <table class="matriz-proyeccion">
         <thead><tr>${fijasCabecera("Mín. (meses)", "Máx. (meses)")}<th class="num">Inicial</th>
           ${meses.map(m=>`<th class="num">${mesCorto(m)}</th>`).join("")}</tr></thead>
         <tbody>${matrizCobertura.map(f=>`<tr><td class="celda-codigo col-fija fija-1">${f.material_codigo}</td>
-          <td class="col-fija fija-2" title="${f.texto_breve}${f.parte ? " · "+f.parte : ""}">${f.texto_breve}${f.parte ? ` <span class="parte-acopio">· ${f.parte}</span>` : ""}</td>
+          <td class="col-fija fija-2" title="${f.texto_breve}${f.parte ? " · "+f.parte : ""}">${f.texto_breve}${f.parte ? ` <span class="parte-acopio">· ${f.parte}</span>` : ""}${f.consumo_minimo ? ` <span class="parte-acopio">· meses con más de ${numero(f.consumo_minimo)} T</span>` : ""}</td>
           <td class="col-fija fija-3">${nombreCentro(f.centro)}</td>
           <td class="num col-fija fija-4">${f.minimo_meses==null?'—':numero(f.minimo_meses,1)}</td><td class="num col-fija fija-5">${f.maximo_meses==null?'—':numero(f.maximo_meses,1)}</td>
           <td class="num">${f.cobertura_inicial==null?'—':numero(f.cobertura_inicial,1)}</td>

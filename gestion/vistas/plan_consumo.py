@@ -6,7 +6,7 @@ import datetime
 import pandas as pd
 from dashboard import queries as q
 
-from .. import charts, escenarios_sop
+from .. import charts, escenarios_sop, presentacion_sop
 from .comun import _mes_corto, _opciones_categoria_centro, _opciones_material, _por_materiales, _por_str, _selector_material
 
 
@@ -391,6 +391,18 @@ def _estado_cobertura(stock, cobertura, minimo, maximo):
     return "en_rango" if minimo is not None or maximo is not None else "sin_parametro"
 
 
+def consumo_minimo_cobertura(material, centro):
+    """Salida mensual (T) que un mes tiene que superar para entrar en los
+    promedios de la cobertura proyectada, o None. Pedido del usuario
+    (2026-11-11): la Caliza Roca Extraída de Atocongo solo se consume en
+    cantidad cuando hay producción de clínker; los meses sin producción traen
+    consumos chicos que bajan el promedio y la cobertura sale inflada. La
+    cantidad va en datos_locales/reglas_locales.json
+    ("consumo_minimo_cobertura": {"material|centro": T})."""
+    valor = q.regla_local("consumo_minimo_cobertura", {}).get(f"{material}|{centro}")
+    return float(valor) if valor else None
+
+
 def _fila_cobertura(material, texto, centro, inicial, finales, flujo, minimos, maximos, parte=""):
     """Una fila de la matriz de cobertura proyectada (meses): stock ÷ `flujo`
     promedio (T por mes) de los _COBERTURA_MESES_SIGUIENTES meses siguientes.
@@ -398,20 +410,32 @@ def _fila_cobertura(material, texto, centro, inicial, finales, flujo, minimos, m
     Atocongo salía "bajo mínimo" en dic-26 con 9.3 meses porque ene–mar casi no
     consume): mínimo y máximo (T) ÷ flujo promedio de todo el horizonte. Las
     filas de una `parte` de un centro de acopio van sin color: el mínimo y
-    máximo del S&OP son del stock físico."""
-    promedio = sum(flujo) / len(flujo) if flujo else 0.0
+    máximo del S&OP son del stock físico. Con consumo mínimo
+    (consumo_minimo_cobertura), en los dos promedios solo entran los meses que
+    lo superan; si en los meses siguientes no hay ninguno, se usa el promedio
+    de los que lo superan en todo el horizonte."""
+    minimo_mes = None if parte else consumo_minimo_cobertura(material, centro)
+    grandes = [v for v in flujo if v > minimo_mes] if minimo_mes else []
+    if not grandes:  # ningún mes lo supera: la regla no aplica
+        minimo_mes = None
+    referencia = grandes or flujo
+    promedio = sum(referencia) / len(referencia) if referencia else 0.0
+
+    def salidas(tramo):
+        return tramo if minimo_mes is None else [v for v in tramo if v > minimo_mes] or grandes
 
     def a_meses(valor):
         return None if parte or valor is None or valor != valor or promedio <= 0 else float(valor) / promedio
 
     celdas = []
     for i, v in enumerate(finales):
-        cobertura = _cobertura_meses(v, flujo[i + 1:i + 1 + _COBERTURA_MESES_SIGUIENTES] or flujo[i:i + 1])
+        cobertura = _cobertura_meses(v, salidas(flujo[i + 1:i + 1 + _COBERTURA_MESES_SIGUIENTES] or flujo[i:i + 1]))
         celdas.append({"valor": v, "cobertura": cobertura,
                        "estado": _estado_cobertura(v, cobertura, a_meses(minimos[i]), a_meses(maximos[i]))})
     return {"material_codigo": material, "texto_breve": texto, "centro": centro, "parte": parte, "stock_inicial": inicial,
             "minimo_meses": a_meses(minimos[0]), "maximo_meses": a_meses(maximos[0]),
-            "cobertura_inicial": _cobertura_meses(inicial, flujo[:_COBERTURA_MESES_SIGUIENTES]), "celdas": celdas}
+            "cobertura_inicial": _cobertura_meses(inicial, salidas(flujo[:_COBERTURA_MESES_SIGUIENTES])),
+            "consumo_minimo": minimo_mes, "celdas": celdas}
 
 
 def _movimientos_por_material(grupos, matriz, pares):
@@ -492,6 +516,8 @@ def _contexto_proyeccion_sop(request):
         "materiales": [{"codigo": "Todos", "texto": "Todos"}], "material_sel": [],
         "grafico": None, "meses": [], "resumen": [], "matriz": [],
         "opciones_desde": [], "desde_sel": None, "n_historia": 0,
+        # Materiales para la presentación PowerPoint (todo el S&OP, sin los filtros de la sección).
+        "presentacion": presentacion_sop.opciones(snapshot_sel),
     }
     if base.empty:
         return contexto
@@ -731,6 +757,7 @@ def _contexto_proyeccion_sop(request):
         "materiales": materiales_op, "material_sel": material_sel,
         "meses": [{"fecha": m, "corto": _mes_corto(m)} for m in meses],
         "resumen": resumen, "matriz": matriz, "matriz_cobertura": matriz_cobertura, "un_material": un_material,
+        "consumos_minimos": [fc for fc in matriz_cobertura if fc["consumo_minimo"]],
         "movimientos": movimientos,
         "cobertura_meses_siguientes": _COBERTURA_MESES_SIGUIENTES,
         "stock_partida": resumen[0]["stock_inicial"], "stock_cierre": resumen[-1]["stock_final"],

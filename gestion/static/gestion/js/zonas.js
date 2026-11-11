@@ -121,6 +121,8 @@
     return (i >= 0 ? t.slice(i + 3) : t).trim();
   }
   function grupoDe(opcion) {
+    // Un grupo propio (p. ej. el centro, en el selector de la presentación PowerPoint) manda.
+    if (opcion.dataset.grupo) return opcion.dataset.grupo;
     var d = descripcion(opcion).toUpperCase();
     for (var i = 0; i < GRUPOS.length; i++) if (GRUPOS[i][0].test(d)) return GRUPOS[i][1];
     var palabra = d.split(/\s+/)[0] || 'Otros';
@@ -290,7 +292,7 @@
         check.dataset.grupo = g.nombre;
         fila.appendChild(check);
         fila.appendChild(crear('span', 'opcion-nombre', enTitulo(descripcion(o))));
-        fila.appendChild(crear('span', 'opcion-codigo', o.value));
+        fila.appendChild(crear('span', 'opcion-codigo', o.dataset.codigo || o.value));
         fila.dataset.buscar = normalizar(o.value + ' ' + descripcion(o) + ' ' + g.nombre);
         bloque.appendChild(fila);
       });

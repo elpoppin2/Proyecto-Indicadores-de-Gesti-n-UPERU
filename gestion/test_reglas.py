@@ -264,6 +264,28 @@ class PlanificacionTest(SimpleTestCase):
         self.assertEqual(list(filtrado["mes"]), [D(2026, 8, 1)])
         self.assertEqual(len(base._en_alcance(df)), 3)  # fuera del alcance, todo
 
+    def test_cobertura_con_consumo_minimo_solo_meses_de_produccion(self):
+        from gestion.vistas import plan_consumo as pc
+        # Salidas: meses de producción (40, 60) entre meses chicos (2, 3, 1).
+        flujo, finales = [40.0, 2.0, 3.0, 60.0, 1.0], [100.0, 98.0, 95.0, 35.0, 34.0]
+        minimos, maximos = [25.0] * 5, [150.0] * 5
+        with mock.patch.object(pc.q, "regla_local", return_value={}):
+            sin = pc._fila_cobertura("M1", "CALIZA", "U1", 120.0, finales, flujo, minimos, maximos)
+        with mock.patch.object(pc.q, "regla_local", return_value={"M1|U1": 10}):
+            con = pc._fila_cobertura("M1", "CALIZA", "U1", 120.0, finales, flujo, minimos, maximos)
+            ajena = pc._fila_cobertura("M2", "OTRO", "U1", 120.0, finales, flujo, minimos, maximos)
+        self.assertIsNone(sin["consumo_minimo"])
+        self.assertAlmostEqual(sin["celdas"][0]["cobertura"], 100 / ((2 + 3 + 60) / 3))
+        self.assertEqual(con["consumo_minimo"], 10)
+        # Ventana de los 3 meses siguientes: solo entra el de producción (60).
+        self.assertAlmostEqual(con["celdas"][0]["cobertura"], 100 / 60)
+        # Sin producción en los siguientes: promedio de los meses de producción del horizonte (50).
+        self.assertAlmostEqual(con["celdas"][3]["cobertura"], 35 / 50)
+        self.assertAlmostEqual(con["cobertura_inicial"], 120 / 40)  # primeros 3 meses: solo el 40
+        self.assertAlmostEqual(con["minimo_meses"], 25 / 50)
+        # Otro material, sin regla: igual que antes.
+        self.assertEqual(ajena["celdas"], sin["celdas"])
+
 
 class ReglasYMetasTest(SimpleTestCase):
     """Página Reglas y metas: guarda en archivos temporales (no en los reales)."""

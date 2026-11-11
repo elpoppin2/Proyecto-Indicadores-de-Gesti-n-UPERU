@@ -24,6 +24,7 @@ from .vistas.plan_consumo import _contexto_consumo, _contexto_consumo_especifico
 from .vistas.plan_simulacion import descargar_precios_sop, plantilla_precios_sop
 from .vistas.planificacion import _html_indicadores, _html_indicadores_cuadrantes, asistente_planificacion, logistica_materias_primas, planificacion
 from .vistas.portada import _area_ejecutiva, informe_mensual, inicio, portada
+from .vistas.presentacion import presentacion_inventarios
 from .vistas.reglas import reglas_y_metas
 from .vistas.zonas import _ZONAS_LOGISTICA, _ZONAS_PLANIFICACION, _zonas_categoria
 
@@ -34,6 +35,7 @@ __all__ = [
     "plantilla_precios_sop", "categoria_detalle", "exportar_excel",
     "rotacion_materiales_pagina", "desglose_filas", "reglas_y_metas",
     "escenarios_lista", "escenarios_guardar", "escenarios_eliminar", "escenarios_aplicar",
+    "presentacion_inventarios",
     # Usados por los comandos (calentar_cache, exportar_*_html, revisar_paginas, verificar_calculos)
     "q", "_categorias_disponibles", "_slug", "_zonas_categoria", "_ZONAS_PLANIFICACION", "_ZONAS_LOGISTICA",
     "_area_ejecutiva", "_html_indicadores", "_html_indicadores_cuadrantes", "_contexto_consumo", "_contexto_consumo_especifico",

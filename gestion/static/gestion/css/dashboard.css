@@ -1408,6 +1408,10 @@ td.precio-real, th.precio-real { color: var(--muted); }
 .filtro-multi-lista { overflow-y: auto; min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
 .grupo-bloque { display: flex; flex-direction: column; }
 .grupo-bloque[hidden], .opcion-material[hidden] { display: none; }
+/* Conteo de materiales y "Marcar los encontrados" (solo con una búsqueda). */
+.filtro-multi-resultado { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
+.filtro-multi-resultado .btn-link { font-size: 12px; }
+.filtro-multi-resultado .btn-link[hidden] { display: none; }
 .grupo-titulo {
   display: flex; align-items: center; gap: 8px; padding: 5px 2px; cursor: pointer;
   font-size: 12px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--line);
@@ -1870,6 +1874,45 @@ details.detalle-calculo[open] > summary.boton-detalle { margin-bottom: 12px; }
   .sim-controles { width: 100%; }
 }
 @media print { .sim-barra { display: none; } }
+/* Presentación PowerPoint de Evolución de inventario (js/presentacion_sop.js,
+   pedido del usuario 2026-11-11): plegada bajo los filtros, como «Cómo se
+   calcula», con el selector de materiales y el botón de descarga. */
+details.presentacion-ppt { margin: 0 0 12px; font-size: 13px; }
+details.presentacion-ppt > summary {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer; list-style: none;
+  font-weight: 500; color: var(--ink); border-radius: 4px;
+}
+details.presentacion-ppt > summary::-webkit-details-marker { display: none; }
+details.presentacion-ppt > summary::before {
+  content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg); transition: transform .18s;
+}
+details.presentacion-ppt[open] > summary::before { transform: rotate(45deg) translate(-1px, -1px); }
+details.presentacion-ppt > summary:hover { color: var(--accent-texto); }
+details.presentacion-ppt > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.presentacion-cuerpo {
+  margin-top: 8px; padding: 12px 14px; border-left: 2px solid var(--line); background: var(--surface-2);
+  border-radius: 0 6px 6px 0; display: flex; flex-direction: column; gap: 10px;
+}
+.presentacion-cuerpo > p { margin: 0; max-width: 92ch; color: var(--muted); line-height: 1.5; }
+.presentacion-acciones { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; }
+.presentacion-descargar {
+  height: 34px; padding: 0 16px; border-radius: 6px; border: 0; cursor: pointer;
+  font: 600 13.5px var(--f-texto); background: var(--accent-texto); color: var(--accent-ink); transition: transform .1s, opacity .15s;
+}
+.presentacion-descargar:active:not(:disabled) { transform: translateY(1px); }
+.presentacion-descargar:disabled { opacity: .7; cursor: progress; }
+.presentacion-descargar:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.presentacion-estado { margin: 0; min-height: 1.2em; font-size: 12.5px; color: var(--muted); }
+.presentacion-estado:empty { display: none; }
+.presentacion-estado.presentacion-error { color: var(--down-texto); font-weight: 500; }
+details.presentacion-ppt[open] .presentacion-cuerpo { animation: metodo-abrir .2s ease-out; }
+@media (prefers-reduced-motion: reduce) { details.presentacion-ppt[open] .presentacion-cuerpo { animation: none; } }
+@media (max-width: 640px) {
+  .presentacion-acciones .campo, .presentacion-descargar { width: 100%; }
+  .presentacion-descargar { font-size: 16px; }
+}
+@media print { details.presentacion-ppt { display: none !important; } }
 /* Mes sin compra: se repite el último precio, en gris y cursiva. */
 .matriz-tco td.tco-repetido { color: var(--muted); font-style: italic; }
 /* IPU de un material sin compra el año anterior: no entra al IPU. */

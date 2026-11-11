@@ -61,6 +61,28 @@
     <noscript><button type="submit">Aplicar</button></noscript>
   </form>
 
+  {# Presentación PowerPoint (presentacion_sop.py, js/presentacion_sop.js; pedido del usuario, 2026-11-11). Fuera del formulario de filtros: elegir materiales aquí no vuelve a pedir la sección. Sin servidor no se arma: la copia del sitio la oculta (exportar_sitio_html._CSS_ESTATICO). #}
+  {% if p.presentacion %}
+    <details class="presentacion-ppt" data-presentacion data-url="{% url 'presentacion_inventarios' %}" data-sop="{{ p.snapshot|fechaiso }}">
+      <summary>Presentación de evolución de inventarios (PowerPoint)</summary>
+      <div class="presentacion-cuerpo">
+        <p>Una lámina por material, con el stock real de los últimos meses cerrados y la proyección del S&amp;OP {{ p.snapshot|mesanio }} frente a su mínimo y máximo, y la tabla de coberturas de cada centro. Los mismos cálculos de esta sección; el S&amp;OP es el elegido arriba.</p>
+        <div class="presentacion-acciones">
+          <div class="campo campo-multi">
+            <label for="presentacion_materiales-boton">Materiales</label>
+            <div class="filtro-multi">
+              <select id="presentacion_materiales" multiple hidden data-multi tabindex="-1" aria-hidden="true">
+                {% for o in p.presentacion %}<option value="{{ o.valor }}" data-grupo="{{ o.centro|centro|title }}" data-codigo="{{ o.material }}"{% if o.defecto %} selected{% endif %}>{{ o.material }} — {{ o.nombre }} · {{ o.centro|centro|title }}</option>{% endfor %}
+              </select>
+            </div>
+          </div>
+          <button type="button" class="presentacion-descargar" data-presentacion-descargar>Descargar PowerPoint</button>
+        </div>
+        <p class="presentacion-estado" data-presentacion-estado role="status" aria-live="polite"></p>
+      </div>
+    </details>
+  {% endif %}
+
   {% if not p.fecha_inicial %}
     <p class="aviso">Todavía no está cargado el inventario de cierre del mes anterior a este S&amp;OP: la proyección parte de stock 0.</p>
   {% endif %}
@@ -303,7 +325,7 @@
     </div>
 
     <h3 class="subtitulo">Cobertura proyectada por material (meses)</h3>
-    <p class="nota">Cuántos meses alcanza el stock final de cada mes al ritmo de las salidas planificadas (consumo más traslados a otro centro) de los {{ p.cobertura_meses_siguientes }} meses siguientes; un quiebre cubre 0 meses. El color compara esos meses con el mínimo y el máximo pasados a meses (mínimo y máximo en T ÷ salidas planificadas promedio de todo el horizonte). En Atocongo, el Carbón Importado y el Carbón Trujillo van en dos filas sin color: lo propio (contra su consumo) y lo que está en acopio para Condorcocha (contra el consumo de Condorcocha), en la proporción de su consumo y sus reenvíos de los 12 meses al cierre de partida.</p>
+    <p class="nota">Cuántos meses alcanza el stock final de cada mes al ritmo de las salidas planificadas (consumo más traslados a otro centro) de los {{ p.cobertura_meses_siguientes }} meses siguientes; un quiebre cubre 0 meses. El color compara esos meses con el mínimo y el máximo pasados a meses (mínimo y máximo en T ÷ salidas planificadas promedio de todo el horizonte). En Atocongo, el Carbón Importado y el Carbón Trujillo van en dos filas sin color: lo propio (contra su consumo) y lo que está en acopio para Condorcocha (contra el consumo de Condorcocha), en la proporción de su consumo y sus reenvíos de los 12 meses al cierre de partida.{% for f in p.consumos_minimos %}{% if forloop.first %} Solo los meses de producción, porque los meses chicos bajan el promedio:{% endif %} {{ f.texto_breve|title }} de {{ f.centro|centro|title }}, salidas mayores a {{ f.consumo_minimo|numero:0 }} T{% if forloop.last %}; si en los meses siguientes no hay ninguno, el promedio de esos meses en todo el horizonte.{% else %};{% endif %}{% endfor %}</p>
     <div class="tabla-scroll">
       <table class="matriz-proyeccion">
         <thead>
@@ -318,7 +340,7 @@
           {% for f in p.matriz_cobertura %}
             <tr>
               <td class="celda-codigo col-fija fija-1">{{ f.material_codigo }}</td>
-              <td class="col-fija fija-2" title="{{ f.texto_breve }}{% if f.parte %} · {{ f.parte }}{% endif %}">{{ f.texto_breve }}{% if f.parte %} <span class="parte-acopio">· {{ f.parte }}</span>{% endif %}</td>
+              <td class="col-fija fija-2" title="{{ f.texto_breve }}{% if f.parte %} · {{ f.parte }}{% endif %}">{{ f.texto_breve }}{% if f.parte %} <span class="parte-acopio">· {{ f.parte }}</span>{% endif %}{% if f.consumo_minimo %} <span class="parte-acopio">· meses con más de {{ f.consumo_minimo|numero:0 }} T</span>{% endif %}</td>
               <td class="col-fija fija-3">{{ f.centro|centro }}</td>
               <td class="num col-fija fija-4">{{ f.minimo_meses|numero:1|default:"—" }}</td>
               <td class="num col-fija fija-5">{{ f.maximo_meses|numero:1|default:"—" }}</td>

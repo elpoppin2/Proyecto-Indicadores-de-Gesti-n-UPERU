@@ -31,10 +31,11 @@ SIN_COPIA = {INICIO, "/overview/", "/informe-mensual/"}
 
 # Lo que en la copia no puede funcionar (necesita el servidor): los filtros
 # quedan en su valor por defecto y deshabilitados, y se ocultan la sesión, el
-# reinicio de filtros, el detalle fila por fila y el asistente de IA.
+# reinicio de filtros, el detalle fila por fila, el asistente de IA y la
+# presentación PowerPoint de la Evolución de inventario.
 _CSS_ESTATICO = """
 .btn-reiniciar, details.desglose, .sesion form, .sesion-usuario,
-.asistente-lanzador, .asistente-panel { display: none !important; }
+.asistente-lanzador, .asistente-panel, details.presentacion-ppt { display: none !important; }
 form.filtros select:disabled, form.filtros input:disabled, .filtro-multi-boton:disabled,
 [data-buscar-servidor]:disabled { cursor: not-allowed; opacity: .7; }
 a[data-solo-localhost] { pointer-events: none; color: inherit; text-decoration: none; }
