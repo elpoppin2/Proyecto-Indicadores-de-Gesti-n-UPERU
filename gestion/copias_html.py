@@ -87,10 +87,13 @@ def regenerar(motivo):
         opciones = {}
         if os.name == "nt":  # sin ventana y fuera del grupo del servidor (reiniciarlo no corta la copia)
             opciones["creationflags"] = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+        # Como la tarea diaria: el servidor corre con DJANGO_DEBUG=False y, heredado, los estáticos salen con
+        # nombre versionado (zonas.<hash>.js) que las copias no encuentran (falló así el 2026-11-11).
+        entorno = {**os.environ, "DJANGO_DEBUG": "True"}
         with REGISTRO.open("w", encoding="utf-8") as registro:
             subprocess.Popen([str(python if python.exists() else sys.executable), "manage.py", "regenerar_copias"],
                              cwd=settings.BASE_DIR, stdout=registro, stderr=subprocess.STDOUT,
-                             stdin=subprocess.DEVNULL, **opciones)
+                             stdin=subprocess.DEVNULL, env=entorno, **opciones)
     return estado()
 
 

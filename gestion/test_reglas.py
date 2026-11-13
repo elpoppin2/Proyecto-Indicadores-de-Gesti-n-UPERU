@@ -460,6 +460,7 @@ class MovimientoHistoriaYCopiasTest(SimpleTestCase):
         self.assertEqual(pc._historia_movimiento(cierres, movs, [], {("M1", "U1")}, set()), {})
 
     def test_copias_estado_vencido_y_sin_destino(self):
+        import os
         import tempfile
         from pathlib import Path
         from gestion import copias_html
@@ -478,3 +479,10 @@ class MovimientoHistoriaYCopiasTest(SimpleTestCase):
                     copias_html.correr()
                 self.assertEqual(vistos, ["actualizando", "actualizando"])
                 self.assertEqual(copias_html.estado()["estado"], "listo")
+                # Lanzada desde el servidor (DJANGO_DEBUG=False): el proceso de las copias corre con DEBUG, como la
+                # tarea diaria (sin eso los estáticos salen versionados y las copias no encuentran zonas.js).
+                with mock.patch.object(copias_html, "REGISTRO", Path(carpeta) / "copias.log"), \
+                        mock.patch.dict(os.environ, {"DJANGO_DEBUG": "False"}), \
+                        mock.patch.object(copias_html.subprocess, "Popen") as popen:
+                    copias_html.regenerar("prueba")
+                self.assertEqual(popen.call_args.kwargs["env"]["DJANGO_DEBUG"], "True")

@@ -16,6 +16,14 @@ from ._seguimiento_archivos import necesita_importar, registrar_importado
 # órdenes...) cambia el valor del stock sin cantidad en MB51.
 CLASES_EN_MB51 = {"WE", "WA", "WL", "WI"}
 
+# Cuentas que no se cargan. 2310001000 (semielaborados: clinker, caliza...)
+# llegó con la FBL3N de oct-26, bajada con el rango 23*-28*: la historia
+# (ene-24 a set-26) no la tiene y no cambia ningún precio (fuera de lo que ya
+# está en MB51, solo trae las reclasificaciones del cierre del Material Ledger
+# entre ella y la 2310002000, que no se emparejan con la Caliza Roca Extraída).
+# Cargarla solo en octubre ensuciaba el desglose de la caliza.
+CUENTAS_FUERA = {"2310001000"}
+
 # Columnas que el layout de la FBL3N debe traer (definido con el usuario en
 # oct-2026). Sin Centro o Código transacción no se puede asignar el ajuste a
 # una planta ni saber de qué trata: el archivo se rechaza para volver a
@@ -79,12 +87,15 @@ class Command(BaseCommand):
             return ("Le faltan las columnas " + ", ".join(faltan)
                     + ": vuelve a exportarlo con la disposición completa.")
 
-        objetos, fechas, cuentas, leidas = [], [], set(), 0
+        objetos, fechas, cuentas, leidas, fuera = [], [], set(), 0, 0
 
         def agregar(f):
-            nonlocal leidas
+            nonlocal leidas, fuera
             fecha_cont = fecha_texto(f.get("Fecha contabiliz."))
             if fecha_cont is None:
+                return
+            if texto(f.get("Cuenta de mayor")) in CUENTAS_FUERA:
+                fuera += 1
                 return
             leidas += 1
             fechas.append(fecha_cont)
@@ -140,6 +151,7 @@ class Command(BaseCommand):
         self.stdout.write(
             f"  {os.path.basename(archivo)}: {leidas} líneas del {desde:%d/%m/%Y} al {hasta:%d/%m/%Y}, "
             f"{len(objetos)} ajustes guardados ({borrados} reemplazados)"
+            + (f"; {fuera} líneas de {', '.join(sorted(CUENTAS_FUERA))} sin cargar" if fuera else "")
         )
         return len(objetos)
 
