@@ -12,8 +12,10 @@ cuando se cambió ("base") y el nuevo ("valor"), en toneladas:
   quien envía: es el mismo número).
 El recálculo del inventario lo hace el navegador (js/simulacion_inventario.js);
 aquí se guardan los escenarios (datos_locales/escenarios_sop.json, fuera del
-repositorio) y se aplican al archivo del S&OP vigente ('Abastecimiento SOP -
-<mes> <año>.xlsx'), con respaldo previo en _RETIRADOS, recarga y verificación.
+repositorio) y se aplican a los archivos del S&OP vigente ('Abastecimiento SOP -
+<mes> <año>.xlsx' y, con traslados entre sus dos centros, 'Traslados SOP - <mes>
+<año>.xlsx', que se crea si no está), con respaldo previo en _RETIRADOS, recarga
+y verificación.
 """
 
 import datetime
@@ -31,14 +33,16 @@ from pathlib import Path
 import openpyxl
 from django.conf import settings
 from django.core.management import call_command
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 
 from dashboard import queries as q
-from dashboard.consultas.sop_inventario import _plan_traslados_sop
 from gestion.management.commands._excel_utils import texto
-from gestion.models import ArchivoImportado
+from gestion.models import ArchivoImportado, PlanTrasladoSOP
 
 ARCHIVO = Path(settings.BASE_DIR) / "datos_locales" / "escenarios_sop.json"
 CARPETA_ABASTECIMIENTO = "TABLA SOP ABASTECIMIENTO"
+CARPETA_TRASLADOS = "TABLA SOP TRASLADOS"
 CARPETA_RESPALDOS = "_RETIRADOS"
 # Menos de media tonelada no es un cambio (mismo umbral que la tabla, que muestra "—").
 TOLERANCIA = 0.5
@@ -223,14 +227,51 @@ def eliminar(id_escenario, usuario, puede_editar):
 
 
 # --- Aplicar al archivo del S&OP -----------------------------------------------
-def archivo_abastecimiento(sop):
-    """Ruta del 'Abastecimiento SOP - <mes> <año>.xlsx' cargado para ese S&OP
-    (el registro de cargas guarda dónde está), o None."""
+def _archivo_cargado(sop, carpeta):
     from gestion.management.commands._sop_excel import mes_snapshot_desde_nombre
-    for registro in ArchivoImportado.objects.filter(ruta__icontains=CARPETA_ABASTECIMIENTO).order_by("-fecha_importado"):
+    for registro in ArchivoImportado.objects.filter(ruta__icontains=carpeta).order_by("-fecha_importado"):
         if mes_snapshot_desde_nombre(registro.ruta) == sop and os.path.isfile(registro.ruta):
             return registro.ruta
     return None
+
+
+def archivo_abastecimiento(sop):
+    """Ruta del 'Abastecimiento SOP - <mes> <año>.xlsx' cargado para ese S&OP
+    (el registro de cargas guarda dónde está), o None."""
+    return _archivo_cargado(sop, CARPETA_ABASTECIMIENTO)
+
+
+def archivo_traslados(sop):
+    """Ruta del 'Traslados SOP - <mes> <año>.xlsx' cargado para ese S&OP, o None."""
+    return _archivo_cargado(sop, CARPETA_TRASLADOS)
+
+
+def ruta_traslados(sop):
+    """Dónde está o va el archivo de traslados del S&OP: el cargado o, si no
+    tiene, TABLA SOP TRASLADOS junto a la carpeta de su abastecimiento."""
+    from gestion.management.commands.convertir_corrida_sop import nombre_archivo
+    cargado = archivo_traslados(sop)
+    if cargado:
+        return cargado
+    abastecimiento = archivo_abastecimiento(sop)
+    if not abastecimiento:
+        return None
+    return os.path.join(os.path.dirname(os.path.dirname(abastecimiento)), CARPETA_TRASLADOS,
+                        nombre_archivo("traslados", sop))
+
+
+def pares_archivo_traslados(base):
+    """Traslados que van en el archivo de traslados del S&OP, como los de la
+    corrida: los de q._TRASLADOS_SOP y COMPRA_O_TRASLADO con los dos centros en
+    la proyección (Carbón Importado y Carbón Trujillo, de Atocongo a
+    Condorcocha). {(material, centro que envía): centro que recibe}. Lo que
+    llega solo por traslado desde un centro que el S&OP no planifica (Clinker
+    desde Atocongo, Caliza Roca Extraída desde U002) no va: su envío sumaría a
+    la proyección el stock de ese centro; queda en el abastecimiento de quien
+    recibe (SOLO_TRASLADO)."""
+    claves = set(zip(base["material_codigo"], base["centro"]))
+    return {(m, envia): recibe for (m, recibe), envia in {**q._TRASLADOS_SOP, **COMPRA_O_TRASLADO}.items()
+            if (m, recibe) in claves and (m, envia) in claves}
 
 
 def motivo_no_aplicable(sop):
@@ -287,6 +328,49 @@ def _sin_codigo(descripcion):
     return (q.PREFIJO_SIN_CODIGO_SOP + descripcion.upper())[:40]
 
 
+def _columnas_mes(hoja):
+    """{mes: columna} del encabezado de un Excel del S&OP (un mes por columna desde la quinta)."""
+    columnas = {}
+    for celda in hoja[1][4:]:
+        if isinstance(celda.value, (datetime.datetime, datetime.date)):
+            fecha = celda.value.date() if isinstance(celda.value, datetime.datetime) else celda.value
+            columnas[fecha.replace(day=1)] = celda.column
+    return columnas
+
+
+def _sin_columna(objetivo, columnas, ruta):
+    faltan = sorted({clave[-1] for clave in objetivo if clave[-1] not in columnas})
+    if faltan:
+        raise ErrorEscenario(f"«{os.path.basename(ruta)}» no trae la columna de {q.formato_mes_anio(faltan[0])}.")
+
+
+def _fila_nueva(hoja, fijas):
+    """Agrega al final una fila con el formato de la última y sus cuatro columnas fijas; devuelve su número."""
+    nueva = hoja.max_row + 1
+    for columna in range(1, hoja.max_column + 1):
+        origen, destino = hoja.cell(nueva - 1, columna), hoja.cell(nueva, columna)
+        if origen.has_style:
+            destino._style = copiar_estilo(origen._style)
+    for columna, valor in enumerate(fijas, start=1):
+        hoja.cell(nueva, columna).value = valor
+    return nueva
+
+
+def _cifra(valor):
+    valor = round(valor, 2)
+    return int(valor) if float(valor).is_integer() else valor
+
+
+def _guardar(libro, ruta):
+    tmp = ruta + ".escenario.tmp"
+    libro.save(tmp)
+    try:
+        os.replace(tmp, ruta)
+    except PermissionError:
+        os.remove(tmp)
+        raise ErrorEscenario(f"No se pudo reemplazar «{os.path.basename(ruta)}»: ciérralo en Excel y vuelve a intentarlo.")
+
+
 def _escribir_abastecimiento(ruta, objetivo, textos):
     """Escribe en el Excel de abastecimiento (Cod. SAP | Centro Destino |
     Material | Destino | un mes por columna) el abastecimiento de cada celda.
@@ -296,11 +380,7 @@ def _escribir_abastecimiento(ruta, objetivo, textos):
     archivo se agrega al final con el formato de la última fila."""
     libro = openpyxl.load_workbook(ruta)
     hoja = libro.worksheets[0]
-    columnas = {}
-    for celda in hoja[1][4:]:
-        if isinstance(celda.value, (datetime.datetime, datetime.date)):
-            fecha = celda.value.date() if isinstance(celda.value, datetime.datetime) else celda.value
-            columnas[fecha.replace(day=1)] = celda.column
+    columnas = _columnas_mes(hoja)
     fusion = {real: origen for origen, real in q._MATERIALES_CONSUMO_VIA_OTRO.items()}
     filas = {}
     for fila in range(2, hoja.max_row + 1):
@@ -313,40 +393,140 @@ def _escribir_abastecimiento(ruta, objetivo, textos):
         clave = fusion.get((codigo, centro), (codigo, centro))
         filas.setdefault(clave, []).append((fila, codigo))
 
-    faltan = sorted({mes for _, _, mes in objetivo if mes not in columnas})
-    if faltan:
-        raise ErrorEscenario(f"El archivo del S&OP no trae la columna de {q.formato_mes_anio(faltan[0])}.")
+    _sin_columna(objetivo, columnas, ruta)
     for (material, centro, mes), valor in sorted(objetivo.items()):
         if (material, centro) not in filas:
-            nueva = hoja.max_row + 1
-            for columna in range(1, hoja.max_column + 1):
-                origen, destino = hoja.cell(nueva - 1, columna), hoja.cell(nueva, columna)
-                if origen.has_style:
-                    destino._style = copiar_estilo(origen._style)
             es_sin_codigo = material.startswith(q.PREFIJO_SIN_CODIGO_SOP)
-            hoja.cell(nueva, 1).value = None if es_sin_codigo else material
-            hoja.cell(nueva, 2).value = centro
-            hoja.cell(nueva, 3).value = textos.get((material, centro)) or material
-            hoja.cell(nueva, 4).value = q.nombre_centro(centro)
+            nueva = _fila_nueva(hoja, [None if es_sin_codigo else material, centro,
+                                       textos.get((material, centro)) or material, q.nombre_centro(centro)])
             filas[(material, centro)] = [(nueva, material)]
         propias = filas[(material, centro)]
         principal = next((f for f, codigo in propias if codigo == material), propias[0][0])
         columna = columnas[mes]
         otras = sum(float(hoja.cell(f, columna).value or 0) for f, _ in propias if f != principal)
-        nuevo = round(valor - otras, 2)
-        hoja.cell(principal, columna).value = int(nuevo) if float(nuevo).is_integer() else nuevo
-    tmp = ruta + ".escenario.tmp"
-    libro.save(tmp)
-    try:
-        os.replace(tmp, ruta)
-    except PermissionError:
-        os.remove(tmp)
-        raise ErrorEscenario(f"No se pudo reemplazar «{os.path.basename(ruta)}»: ciérralo en Excel y vuelve a intentarlo.")
+        hoja.cell(principal, columna).value = _cifra(valor - otras)
+    _guardar(libro, ruta)
+
+
+def _escribir_traslados(ruta, objetivo, textos):
+    """Escribe en el Excel de traslados (Cod. SAP | Centro Origen | Material |
+    Centro Destino | un mes por columna) lo que se traslada en cada celda
+    {(material, centro que envía, centro que recibe, mes): valor}. Un traslado
+    sin fila en el archivo se agrega al final."""
+    libro = openpyxl.load_workbook(ruta)
+    hoja = libro.worksheets[0]
+    columnas = _columnas_mes(hoja)
+    _sin_columna(objetivo, columnas, ruta)
+    filas = {(texto(hoja.cell(f, 1).value), texto(hoja.cell(f, 2).value), texto(hoja.cell(f, 4).value)): f
+             for f in range(2, hoja.max_row + 1) if texto(hoja.cell(f, 1).value)}
+    for (material, envia, recibe, mes), valor in sorted(objetivo.items()):
+        if (material, envia, recibe) not in filas:
+            filas[(material, envia, recibe)] = _fila_nueva(
+                hoja, [material, envia, textos.get((material, envia)) or material, recibe])
+        hoja.cell(filas[(material, envia, recibe)], columnas[mes]).value = _cifra(valor)
+    _guardar(libro, ruta)
+
+
+def _libro_traslados(ruta, titulo, meses, filas, notas):
+    """Excel de traslados nuevo con el formato de los de la corrida
+    (convertir_corrida_sop): filas [(material, envía, texto, recibe, [valor por
+    mes])] y una hoja «Cómo se armó» con `notas`."""
+    letra, negrita = Font(name="Arial", size=10), Font(name="Arial", size=10, bold=True)
+    libro = openpyxl.Workbook()
+    hoja = libro.active
+    hoja.title = "Traslados"
+    hoja.append(["Cod. SAP", "Centro Origen", "Material", "Centro Destino",
+                 *[datetime.datetime(m.year, m.month, 1) for m in meses]])
+    for j in range(1, 5 + len(meses)):
+        celda = hoja.cell(1, j)
+        celda.font, celda.fill = negrita, PatternFill("solid", fgColor="D9D9D9")
+        celda.alignment = Alignment(horizontal="center", vertical="center")
+        if j > 4:
+            celda.number_format = "mmm-yy"
+    for i, (material, envia, nombre, recibe, valores) in enumerate(filas, start=2):
+        for j, valor in enumerate((material, envia, nombre, recibe), start=1):
+            hoja.cell(i, j, valor).font = letra
+        for j, valor in enumerate(valores, start=5):
+            celda = hoja.cell(i, j, _cifra(valor))
+            celda.font, celda.number_format = letra, "#,##0.00"
+    for j, ancho in enumerate((13, 13, 40, 14), start=1):
+        hoja.column_dimensions[get_column_letter(j)].width = ancho
+    for j in range(5, 5 + len(meses)):
+        hoja.column_dimensions[get_column_letter(j)].width = 11
+    hoja.freeze_panes = "E2"
+    hoja.auto_filter.ref = f"A1:{get_column_letter(4 + len(meses))}{len(filas) + 1}"
+    ayuda = libro.create_sheet("Cómo se armó")
+    for i, nota in enumerate([titulo, *notas], start=1):
+        celda = ayuda.cell(i, 1, nota)
+        celda.font = Font(name="Arial", size=12 if i == 1 else 10, bold=i == 1)
+        celda.alignment = Alignment(wrap_text=True, vertical="top")
+    ayuda.column_dimensions["A"].width = 110
+    os.makedirs(os.path.dirname(ruta), exist_ok=True)
+    libro.save(ruta)
 
 
 def _recargar(ruta):
     """Vuelve a cargar el archivo (reemplaza su S&OP en la base e invalida la caché)."""
     call_command("import_plan_abastecimiento_sop", ruta, forzar=True, stdout=io.StringIO())
+
+
+def _recargar_traslados(ruta):
+    call_command("import_traslados_sop", ruta, forzar=True, stdout=io.StringIO())
+
+
+def _misma_proyeccion(antes, despues):
+    return set(antes) == set(despues) and all(abs(despues[k][c] - v) < 0.01 for k, celda in antes.items()
+                                              for c, v in celda.items())
+
+
+def crear_archivo_traslados(sop):
+    """Crea y carga el 'Traslados SOP - <mes> <año>.xlsx' de un S&OP que no lo
+    tiene (pedido del usuario, 2026-11-12: compras y traslados "son dos fuentes
+    de suministro distintas, uno viene por proveedores y otro por traslado
+    entre centros"), con los traslados que ya tiene su proyección
+    (pares_archivo_traslados). Como los de la corrida: lo que envía cada
+    centro; el que recibe lo sigue teniendo en su abastecimiento (todo lo que
+    llega a la planta, contra lo que se miden el cumplimiento y el Plan vs
+    Real). No cambia ninguna cifra: si cambiara, lo retira. Devuelve la ruta."""
+    ruta = ruta_traslados(sop)
+    if ruta is None:
+        raise ErrorEscenario("No se encontró el archivo de abastecimiento cargado de este S&OP.")
+    if os.path.exists(ruta):
+        raise ErrorEscenario(f"Ya existe «{os.path.basename(ruta)}»: no se reemplaza.")
+    base = q.proyeccion_inventario_sop(sop)
+    antes = movimientos_por_celda(base)
+    pares = pares_archivo_traslados(base)
+    if not pares:
+        raise ErrorEscenario("Este S&OP no tiene materiales que se trasladen entre sus dos centros.")
+    meses = sorted(set(base["mes"]))
+    textos = {(r.material_codigo, r.centro): r.texto_breve for r in base.itertuples()}
+    filas = [(m, envia, textos.get((m, envia)) or m, recibe,
+              [antes.get((m, recibe, mes), {}).get("recibido", 0.0) for mes in meses])
+             for (m, envia), recibe in sorted(pares.items())]
+    titulo = os.path.splitext(os.path.basename(ruta))[0]
+    _libro_traslados(ruta, titulo, meses, filas, [
+        "Lo que cada centro envía a la otra planta, en toneladas y desde el mes de emisión. El centro que recibe lo "
+        "sigue teniendo en su abastecimiento (todo lo que llega a la planta): lo que no le llega por traslado es "
+        "compra a proveedores.",
+        f"Creado por el tablero el {datetime.date.today():%d/%m/%Y} con los traslados que ya tenía el S&OP: "
+        + "; ".join(f"{(nombre or m).title()} de {q.nombre_centro(envia).title()} a {q.nombre_centro(recibe).title()}, "
+                    f"{sum(valores):,.0f} T en el horizonte" for m, envia, nombre, recibe, valores in filas) + ".",
+        "Al aplicar un escenario con traslados, el tablero escribe aquí y en el abastecimiento (con respaldo en "
+        "_RETIRADOS).",
+        "Lo que llega solo por traslado desde un centro que el S&OP no planifica (Clinker, Caliza Roca Extraída) "
+        "sigue solo en el abastecimiento del centro que recibe.",
+    ])
+    try:
+        _recargar_traslados(ruta)
+        if not _misma_proyeccion(antes, movimientos_por_celda(q.proyeccion_inventario_sop(sop))):
+            raise ErrorEscenario("El archivo de traslados nuevo cambiaba la proyección del S&OP: no se creó.")
+    except Exception:
+        os.remove(ruta)
+        PlanTrasladoSOP.objects.filter(mes_snapshot=sop).delete()
+        ArchivoImportado.objects.filter(ruta=ruta).delete()
+        q.marcar_datos_actualizados()
+        raise
+    return ruta
 
 
 def _diferencias(escenario, celdas):
@@ -364,10 +544,13 @@ def _diferencias(escenario, celdas):
 
 
 def aplicar(id_escenario, usuario):
-    """Pasa el escenario al archivo de abastecimiento del S&OP vigente:
-    respalda el archivo en _RETIRADOS, escribe las celdas, lo vuelve a cargar
-    y comprueba que la proyección quedó con los valores del escenario. Si algo
-    falla, devuelve el archivo respaldado y lo vuelve a cargar."""
+    """Pasa el escenario a los archivos del S&OP vigente: el de abastecimiento
+    (compras más lo que llega por traslado a cada centro) y, si trae traslados
+    entre sus dos centros (pares_archivo_traslados), el de traslados, que se
+    crea si el S&OP no lo tiene (crear_archivo_traslados). Respalda los
+    archivos en _RETIRADOS, escribe las celdas, los vuelve a cargar y comprueba
+    que la proyección quedó con los valores del escenario. Si algo falla,
+    devuelve los archivos respaldados y los vuelve a cargar."""
     with _CANDADO_APLICAR:
         escenario = next((e for e in listar() if e["id"] == id_escenario), None)
         if escenario is None:
@@ -387,56 +570,66 @@ def aplicar(id_escenario, usuario):
             raise ErrorEscenario(
                 f"El S&OP cambió desde que se guardó el escenario ({len(conflictos)} celda(s), p. ej. "
                 f"{conflictos[0].replace('|', ' · ')}). Ábrelo, revísalo y guárdalo otra vez antes de aplicarlo.")
-        if escenario["cambios"]["traslados"]:
-            con_archivo = {(m, origen) for m, origen, _, _ in _plan_traslados_sop(sop)}
-            for clave in escenario["cambios"]["traslados"]:
-                material, envia = clave.split("|")[:2]
-                if (material, envia) in con_archivo:
-                    raise ErrorEscenario("Este S&OP trae sus traslados en un archivo aparte: los traslados del "
-                                         "escenario todavía no se pueden aplicar.")
         de_quien, _ = pares_traslado(base)
         textos = {(r.material_codigo, r.centro): r.texto_breve for r in base.itertuples()}
-        for clave in escenario["cambios"]["traslados"]:
-            material, envia, recibe, _ = clave.split("|")
+        en_archivo = pares_archivo_traslados(base)
+        traslados = {}  # los que van al archivo de traslados: {(material, envía, recibe, mes): valor}
+        for clave, c in escenario["cambios"]["traslados"].items():
+            material, envia, recibe, mes = clave.split("|")
             if de_quien.get((material, recibe)) != envia and q._TRASLADOS_SOP.get((material, recibe)) != envia:
                 raise ErrorEscenario(f"El traslado {clave.replace('|', ' · ')} no sigue la regla del S&OP.")
-            # Lo que llega por compra o por traslado (COMPRA_O_TRASLADO): el archivo de
-            # abastecimiento solo dice cuánto llega al centro, no por dónde.
-            if not solo_traslado(material, recibe) and (material, recibe) not in q._TRASLADOS_SOP:
+            if en_archivo.get((material, envia)) == recibe:
+                traslados[(material, envia, recibe, _mes(mes))] = c["valor"]
+            elif not solo_traslado(material, recibe):
                 nombre = (textos.get((material, recibe)) or material).title()
                 raise ErrorEscenario(
                     f"El traslado de {nombre} de {q.nombre_centro(envia).title()} a {q.nombre_centro(recibe).title()} "
-                    "todavía no se puede aplicar: el archivo de abastecimiento del S&OP solo trae lo que llega a cada "
-                    "centro, sin separar lo que llega por traslado. El escenario sigue guardado.")
+                    "no se puede aplicar: el S&OP no planifica ese material en el centro que envía.")
 
         objetivo = _valores_objetivo(escenario, celdas)
         ruta = archivo_abastecimiento(sop)
+        ruta_traslados_sop = (archivo_traslados(sop) or crear_archivo_traslados(sop)) if traslados else None
+        archivos = [ruta] + ([ruta_traslados_sop] if ruta_traslados_sop else [])
         ahora = datetime.datetime.now()
         carpeta_base = os.path.dirname(os.path.dirname(ruta))
         nombre_carpeta = re.sub(r'[<>:"/\\|?*]', "", f"{ahora:%Y-%m-%d %H%M} antes del escenario {escenario['nombre']}").strip()
-        respaldo = os.path.join(carpeta_base, CARPETA_RESPALDOS, nombre_carpeta, os.path.basename(ruta))
-        os.makedirs(os.path.dirname(respaldo), exist_ok=True)
-        shutil.copy2(ruta, respaldo)
+        carpeta_respaldo = os.path.join(carpeta_base, CARPETA_RESPALDOS, nombre_carpeta)
+        os.makedirs(carpeta_respaldo, exist_ok=True)
+        for archivo in archivos:
+            shutil.copy2(archivo, os.path.join(carpeta_respaldo, os.path.basename(archivo)))
+
+        def recargar():
+            _recargar(ruta)
+            if ruta_traslados_sop:
+                _recargar_traslados(ruta_traslados_sop)
         try:
             _escribir_abastecimiento(ruta, objetivo, textos)
-            _recargar(ruta)
-            diferencias = _diferencias(escenario, movimientos_por_celda(q.proyeccion_inventario_sop(sop)))
+            if ruta_traslados_sop:
+                _escribir_traslados(ruta_traslados_sop, traslados, textos)
+            recargar()
+            nuevas = movimientos_por_celda(q.proyeccion_inventario_sop(sop))
+            # Además de lo que recibe cada centro, lo que sale del que envía.
+            diferencias = _diferencias(escenario, nuevas) + [
+                f"{m}|{envia}|{recibe}|{mes:%Y-%m}" for (m, envia, recibe, mes), valor in traslados.items()
+                if abs(nuevas.get((m, envia, mes), {}).get("traslado", 0.0) - valor) >= TOLERANCIA]
             if diferencias:
-                raise ErrorEscenario(f"Después de cargar el archivo, {len(diferencias)} celda(s) no quedaron con el "
-                                     f"valor del escenario (p. ej. {diferencias[0].replace('|', ' · ')}). Se devolvió el archivo anterior.")
+                raise ErrorEscenario(f"Después de cargar los archivos, {len(diferencias)} celda(s) no quedaron con el "
+                                     f"valor del escenario (p. ej. {diferencias[0].replace('|', ' · ')}). Se devolvieron "
+                                     "los archivos anteriores.")
         except Exception:
-            shutil.copy2(respaldo, ruta)
-            _recargar(ruta)
+            for archivo in archivos:
+                shutil.copy2(os.path.join(carpeta_respaldo, os.path.basename(archivo)), archivo)
+            recargar()
             raise
 
+        nombres = [os.path.basename(a) for a in archivos]
+        respaldo = os.path.relpath(carpeta_respaldo, carpeta_base)
         with _CANDADO:
             escenarios = _leer()
             for e in escenarios:
                 if e["id"] == id_escenario:
                     e.setdefault("aplicado", []).append({
                         "fecha": ahora.isoformat(timespec="seconds"), "usuario": usuario.username,
-                        "archivo": os.path.basename(ruta), "celdas": n_celdas,
-                        "respaldo": os.path.relpath(respaldo, carpeta_base)})
+                        "archivo": nombres[0], "archivos": nombres, "celdas": n_celdas, "respaldo": respaldo})
             _escribir(escenarios)
-        return {"archivo": os.path.basename(ruta), "celdas": n_celdas,
-                "respaldo": os.path.relpath(respaldo, carpeta_base)}
+        return {"archivo": nombres[0], "archivos": nombres, "celdas": n_celdas, "respaldo": respaldo}

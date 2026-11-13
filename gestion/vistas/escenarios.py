@@ -50,11 +50,15 @@ def escenarios_lista(request):
     if not motivo and not puede_editar(request.user):
         motivo = "Solo un administrador puede aplicar un escenario al archivo del S&OP."
     ruta = escenarios_sop.archivo_abastecimiento(sop)
+    traslados = escenarios_sop.ruta_traslados(sop)
     return JsonResponse({
         "escenarios": escenarios_sop.listar(sop.isoformat()),
         "usuario": request.user.username, "administrador": puede_editar(request.user),
         "puede_aplicar": not motivo, "motivo_no_aplicar": motivo,
         "archivo": ruta.rsplit("\\", 1)[-1] if ruta else "", "sop_texto": q.formato_mes_anio(sop),
+        # Los traslados entre los dos centros van además al archivo de traslados (se crea si no está).
+        "archivo_traslados": traslados.rsplit("\\", 1)[-1] if traslados else "",
+        "traslados_existe": bool(escenarios_sop.archivo_traslados(sop)),
     })
 
 
@@ -77,8 +81,9 @@ def escenarios_eliminar(request):
 @require_POST
 @_respuesta
 def escenarios_aplicar(request):
-    """Reemplaza el archivo de abastecimiento del S&OP vigente con el escenario
-    guardado (con respaldo en _RETIRADOS) y lo vuelve a cargar."""
+    """Reemplaza los archivos de abastecimiento y, si trae traslados entre los
+    dos centros, de traslados del S&OP vigente con el escenario guardado (con
+    respaldo en _RETIRADOS) y los vuelve a cargar."""
     if not puede_editar(request.user):
         return JsonResponse({"error": "Solo un administrador puede aplicar un escenario al archivo del S&OP."}, status=403)
     resultado = escenarios_sop.aplicar(str(_datos(request).get("id") or ""), request.user)

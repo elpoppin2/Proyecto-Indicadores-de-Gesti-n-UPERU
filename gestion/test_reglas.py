@@ -436,6 +436,31 @@ class EscenariosSopTest(SimpleTestCase):
         self.assertEqual((filas[1][4], filas[2][4]), (16, 4))  # 20 en total: 16 + los 4 del chancado
         self.assertEqual(filas[3], ("07-00000009", "U002", "M5", "CONDORCOCHA", 7.5))
 
+    def test_archivo_de_traslados(self):
+        # Van al archivo los traslados con los dos centros en la proyección (Carbón Importado por regla, Carbón
+        # Trujillo compra o traslado); la Caliza Roca Extraída llega de un centro que el S&OP no planifica.
+        import os
+        import tempfile
+        from gestion.management.commands._sop_excel import leer_matriz_mensual
+        fila = {"mes": self.mes, "abastecimiento": 1.0, "traslado": 0.0, "traslado_recibido": 0.0, "texto_breve": "M"}
+        base = pd.DataFrame([{**fila, "material_codigo": m, "centro": c} for m, c in (
+            ("06-00000003", "U001"), ("06-00000003", "U002"), ("06-00001601", "U001"), ("06-00001601", "U002"),
+            ("14-00000024", "U001"))])
+        self.assertEqual(self.e.pares_archivo_traslados(base),
+                         {("06-00000003", "U001"): "U002", ("06-00001601", "U001"): "U002"})
+        # Creado con el formato de la corrida, se escribe un traslado que ya tiene fila y otro nuevo.
+        febrero = D(2027, 2, 1)
+        ruta = os.path.join(tempfile.mkdtemp(), "Traslados SOP - Enero 2027.xlsx")
+        self.e._libro_traslados(ruta, "Traslados SOP - Enero 2027", [self.mes, febrero],
+                                [("06-00000003", "U001", "M1", "U002", [40.0, 0.0])], ["nota"])
+        self.e._escribir_traslados(ruta, {("06-00000003", "U001", "U002", febrero): 12.5,
+                                          ("06-00001601", "U001", "U002", self.mes): 3.0}, {("06-00001601", "U001"): "M6"})
+        celdas = {(c["material_codigo"], c["centro"], c["destino"], c["mes"]): float(c["valor"])
+                  for c in leer_matriz_mensual(ruta) if c["valor"] is not None}
+        self.assertEqual(celdas, {("06-00000003", "U001", "U002", self.mes): 40.0,
+                                  ("06-00000003", "U001", "U002", febrero): 12.5,
+                                  ("06-00001601", "U001", "U002", self.mes): 3.0})
+
 
 class MovimientoHistoriaYCopiasTest(SimpleTestCase):
     """Meses cerrados del Movimiento de inventario por material y estado de las copias HTML al aplicar."""

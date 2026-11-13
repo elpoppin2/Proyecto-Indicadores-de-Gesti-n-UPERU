@@ -465,14 +465,20 @@
     if (!actual || !sim.servidor || !sim.servidor.puede_aplicar) return;
     if (sinGuardar()) { mensaje(modelo, 'Guarda los cambios del escenario antes de aplicarlo.', true); return; }
     var n = Object.keys(actual.cambios.compras).length + Object.keys(actual.cambios.traslados).length;
+    // Los traslados entre Atocongo y Condorcocha van además al archivo de traslados del S&OP.
+    var traslados = Object.keys(actual.cambios.traslados).length && sim.servidor.archivo_traslados
+      ? '\n\nSus traslados entre centros van también a «' + sim.servidor.archivo_traslados + '»' +
+        (sim.servidor.traslados_existe ? '' : ' (se crea con los traslados que ya tiene el S&OP)') + '.' : '';
     if (!window.confirm('Se reemplazará «' + sim.servidor.archivo + '» con las ' + n + ' celda(s) del escenario «' + actual.nombre +
-        '» y se volverá a cargar el S&OP.\n\nEl archivo actual queda respaldado en _RETIRADOS. ¿Continuar?')) return;
+        '» y se volverá a cargar el S&OP.' + traslados + '\n\nLos archivos actuales quedan respaldados en _RETIRADOS. ¿Continuar?')) return;
     boton.disabled = true;
     boton.classList.add('ocupado');
     mensaje(modelo, 'Aplicando el escenario: respaldo, archivo y recarga del S&OP… (puede tardar un minuto)');
     pedir(sim.url + 'aplicar/', { id: actual.id }).then(function (j) {
       var nota = j.copias && j.copias.estado === 'actualizando' ? ' Las copias HTML se actualizan en segundo plano.' : '';
-      mensaje(modelo, 'Listo: «' + j.archivo + '» quedó con el escenario (' + j.celdas + ' celdas). Respaldo en ' + j.respaldo + '.' + nota + ' Recargando la página…');
+      var archivos = (j.archivos || [j.archivo]).map(function (a) { return '«' + a + '»'; });
+      mensaje(modelo, 'Listo: ' + archivos.join(' y ') + (archivos.length > 1 ? ' quedaron' : ' quedó') + ' con el escenario (' +
+        j.celdas + ' celdas). Respaldo en ' + j.respaldo + '.' + nota + ' Recargando la página…');
       sim.activa = false;
       setTimeout(function () { location.reload(); }, 1800);
     }).catch(function (err) {
